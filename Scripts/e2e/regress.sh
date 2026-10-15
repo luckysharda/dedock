@@ -122,6 +122,7 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
   print -l "x-00 UIElement" "x-00 status item" "x-00 no permission prompt" "x-00 starts hidden" "REG-026 first launch" \
            "REG-043 X" "REG-018 X" "REG-059 X" "REG-014 X" "contract X" "REG-006 X" \
            "REG-057 corrupt layout: dock up, notice after, no input" "REG-057 corrupt layout: dock reveals while the alert is up" "REG-057 the notice does not take focus" "REG-006 C" \
+           ${${(M)edges:#*L*}:+"REG-062 edge change re-derives the dwell (top 300 → left 120)"} \
            "REG-057 unreadable layout: dock up read-only, notice after, no input" "REG-006 U"
   for t in $edge_list; do
     print -l "geom $t (REG-013 …)" "REG-043 $t" "REG-018 $t" "REG-059 $t" "REG-014 $t" "contract $t" "REG-006 $t" "REG-006 ${t}0" \
@@ -324,9 +325,39 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
     python3 $E/log-order.py $SP pid=$pid '^debug[.]command cmd=openSettings ok=true' '^inhibitor .*token=editing on=true' '^inhibitor .*token=editing on=false' '^reveal[.]transition .*to=hidden' > $C/c8-close.txt
     $B/axprobe windows $pid > $C/settings-windows-after.jsonl
   fi
+  [[ $side == L ]] && reg062 $R $pid
   cmp -s $C/geom-pair.json $G || print "relayout during step (GEOM changed after the snapshot; C1/C3 use the paired GEOM)" >> $C/pair.txt
   DEDOCK_REG061=$reg061 python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt 2> $C/cua-eval.err; tool "cua-eval $side" $? 0
   while IFS=$'\t' read -r cid ok detail; do check "$cid" $ok "$detail"; done < $C/results.txt
+}
+
+# REG-062: edge-derived reveal values are derived when the dock is mapped, never stored, so an edge
+# change re-derives them: setEdge=top → effective showDwellMs 300 (the top edge's minimum); then
+# setEdge=left → 120 with a 3 pt zone (the native Dock is not on the left). Debug channel only, no
+# input; once per run (left launch). SKIP when the build's GEOM has no showDwellMs or settings=0.
+reg062() {  # reg062 <run dir> <pid>
+  local R=$1 pid=$2 cid="REG-062 edge change re-derives the dwell (top 300 → left 120)" t l
+  if (( ! settings )) || ! grep -q '"showDwellMs"' $R/data/e2e/geometry.json 2>/dev/null; then
+    check "$cid" skip "needs settings=1 and a build whose GEOM reports showDwellMs"; return
+  fi
+  geom_at() {  # geom_at <edge>: wait (≤ 3 s) for GEOM edge, print "dwell thickness"
+    local k
+    for k in {1..30}; do
+      python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))['docks'][0]
+if d['edge'] != sys.argv[2]: sys.exit(1)
+z = [q['rect']['topLeft'] for q in d.get('zones', [])]
+th = min((r[2] if d['edge'] in ('left', 'right') else r[3]) for r in z) if z else -1
+print(d.get('showDwellMs', -1), th)" $R/data/e2e/geometry.json $1 2>/dev/null && return
+      sleep 0.1
+    done
+    print -- "-1 -1"
+  }
+  $B/notify setEdge=top > /dev/null; t=($(geom_at top))
+  $B/notify setEdge=left > /dev/null; l=($(geom_at left))
+  sleep 0.5
+  check "$cid" $(( t[1] == 300 && l[1] == 120 && l[2] == 3 )) "top: showDwellMs ${t[1]}, zone ${t[2]} pt; left: showDwellMs ${l[1]}, zone ${l[2]} pt (exp 300 → 120, 3 pt)"
 }
 
 run_scn() {  # run_scn <sub-run> <L|R> <scenario> [args]; re-runs once if contaminated (VOID)
