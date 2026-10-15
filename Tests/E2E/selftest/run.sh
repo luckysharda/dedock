@@ -24,12 +24,20 @@ cleanup() {
 trap cleanup EXIT
 # Never alongside a real run: the self-test launches fake apps and listens to input, which would
 # muddle an E2E run's logs and process checks (2026-10-15). Refuse while ANYONE holds the real lock.
-if [[ -d $HOME/dedock/.locks/desktop.lock ]]; then
-  echo "selftest: refusing — the real desktop lock is held ($(sed -n 's/^owner=//p' $HOME/dedock/.locks/desktop.lock/info 2>/dev/null || echo '?')); run it when the desktop is free"
+if holder=$(Scripts/e2e/desktop-lock.sh real-holder); then
+  echo "selftest: refusing — the real desktop lock is held ($holder); run it when the desktop is free"
   exit 2
 fi
 export DEDOCK_LOCK_OWNER=selftest-owner   # no default owner anywhere (review of #12)
 export DEDOCK_SELFTEST=1                  # fake bundle ids and private locks only; never posts input
+# REG-055: regress.sh refuses while OS pointer sharing is on. Stub that one `defaults` read so the
+# self-test does not depend on this Mac's setting (DEDOCK_STUB_PSHARING=on|off); everything else
+# goes to the real defaults.
+mkdir -p $T/stubbin
+print -r -- '#!/bin/zsh
+if [[ "$*" == "-currentHost read com.apple.universalcontrol Disable" ]]; then [[ ${DEDOCK_STUB_PSHARING:-off} == off ]] && echo 1 || echo 0; exit 0; fi
+exec /usr/bin/defaults "$@"' > $T/stubbin/defaults; chmod +x $T/stubbin/defaults
+export PATH=${T:A}/stubbin:$PATH
 check() { if eval "$2"; then echo "PASS $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi }
 skipped=0
 skip() { echo "SKIP $1 ($2)"; skipped=$((skipped + 1)); }   # a skipped check is never a PASS
@@ -80,15 +88,21 @@ printf '{"subsystem":"app.dedock.Dedock","machTimestamp":1,"category":"reveal","
 $B/analyze timing $T/drift.ndjson > $T/drift.txt  # exits 1 (no gates): only the warning matters
 check "drift: unknown cause warned" "grep -q 'WARN unrecognized cause=timer' $T/drift.txt"
 check "bad: hide delay still passes" "grep -q '^PASS hide delay' $T/bad-timing.txt"
-printf 'mach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1\n' > $T/clean.txt
-printf 'mach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1\nmach=2 ev=move x=3 y=1 dx=2 dy=0 mods=0 syn=0\n' > $T/dirty.txt
-printf 'mach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0\n' > $T/untagged.txt
+printf 'ready mach=0\nmach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1\n' > $T/clean.txt
+printf 'ready mach=0\nmach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1\nmach=2 ev=move x=3 y=1 dx=2 dy=0 mods=0 syn=0\n' > $T/dirty.txt
+printf 'ready mach=0\nmach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0\n' > $T/untagged.txt
 check "contamination: clean passes" "$B/analyze contamination $T/clean.txt >/dev/null"
 check "contamination: foreign input fails" "! $B/analyze contamination $T/dirty.txt >/dev/null"
-: > $T/empty.txt
+printf 'ready mach=0\n' > $T/empty.txt
 check "contamination: idle run with no input passes" "$B/analyze contamination $T/empty.txt idle=1 >/dev/null"
 check "contamination: pointer run with no input fails" "! $B/analyze contamination $T/empty.txt >/dev/null"
+: > $T/noready.txt; tail -n +2 $T/clean.txt > $T/noready-move.txt
+$B/analyze contamination $T/noready.txt idle=1 > $T/noready-out.txt   # exits 1; read the file (pipefail)
+check "contamination: listener that never started fails, idle too" "! $B/analyze contamination $T/noready.txt idle=1 >/dev/null && ! $B/analyze contamination $T/noready-move.txt >/dev/null && grep -q 'listener never started' $T/noready-out.txt"
 check "contamination: untagged fails" "! $B/analyze contamination $T/untagged.txt >/dev/null"
+printf 'ready mach=0\nmach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1\nmach=2 ev=move x=3 y=1 dx=2 dy=0 mods=0 syn=0 src=945\nmach=3 ev=move x=4 y=1 dx=1 dy=0 mods=0 syn=0 src=945\n' > $T/srcs.txt
+$B/analyze contamination $T/srcs.txt > $T/srcs-out.txt   # exits 1 (foreign input)
+check "REG-055 contamination names the foreign source pid" "grep -q 'foreign sources: pid 945 x2' $T/srcs-out.txt"
 
 echo "-- score.py (verdicts, drift with noise floors, baseline, repo-relative paths)"
 SR=$B/runs
@@ -128,7 +142,46 @@ rm -rf $SR/selftest-s*
 echo "-- cua checks (fixture shaped like the real c7fb642 inspection)"
 python3 Scripts/e2e/cua-eval.py Tests/E2E/selftest/cua-fixture Tests/E2E/selftest/cua-geom.json 99 L > $T/cua.txt
 check "cua-eval: REG-040 fails on AXUnknown tiles" "grep -q \$'^cua C3 REG-040 tiles are buttons L\t0' $T/cua.txt"
-check "cua-eval: C1 C3 C4 C5 C6 C7 pass on the fixture" "[[ \$(grep -cE \$'^cua C(1|3 tiles|4|5|6|7)[^\t]*\t1' $T/cua.txt) == 7 ]]"
+check "cua-eval: C1 C3 C4 C5 C6 C7 (incl. cell edge) pass on the fixture" "[[ \$(grep -cE \$'^cua C(1|3 tiles|4|5|6|7)[^\t]*\t1' $T/cua.txt) == 8 ]]"
+# C7 cell edge: a hit on another app inside the cell fails; a missing probe fails (fails closed)
+rm -rf $T/cua-cell; cp -R Tests/E2E/selftest/cua-fixture $T/cua-cell
+print -r -- '{"pid":7,"role":"","label":"","other_app":true}' > $T/cua-cell/hit-shown-cell.json
+python3 Scripts/e2e/cua-eval.py $T/cua-cell Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-cell.txt
+rm $T/cua-cell/hit-shown-cell.json
+python3 Scripts/e2e/cua-eval.py $T/cua-cell Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-cell-missing.txt
+check "cua-eval: C7 cell edge fails when another app takes the hit, or when not probed" "grep -q \$'^cua C7 tile cell edge stays in the dock L\t0' $T/cua-cell.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t0\tnot probed' $T/cua-cell-missing.txt"
+# C3 lower bound: a degenerate 2x2 AX frame at the tile centre is inside and centred, but must fail
+rm -rf $T/cua-tiny; cp -R Tests/E2E/selftest/cua-fixture $T/cua-tiny
+python3 -c "
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for r in rows:
+    if r.get('depth', 0) >= 1 and 'w' in r and r.get('role') != 'AXMenuBarItem':
+        r['x'] += r['w'] / 2 - 1; r['y'] += r['h'] / 2 - 1; r['w'] = r['h'] = 2
+open(sys.argv[1], 'w').write(''.join(json.dumps(r) + '\\n' for r in rows))" $T/cua-tiny/tree.jsonl
+python3 Scripts/e2e/cua-eval.py $T/cua-tiny Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-tiny.txt
+check "cua-eval: C3 fails on a degenerate (2x2) AX tile frame" "grep -q \$'^cua C3 tiles in AX tree L\t0' $T/cua-tiny.txt"
+# REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
+check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
+rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id
+python3 -c "
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for r in rows:
+    if r.get('depth') == 0 and r.get('role') == 'AXWindow': r['subrole'] = 'AXFloatingWindow'; r['label'] = 'Edge Dock'
+open(sys.argv[1], 'w').write(''.join(json.dumps(r) + '\\n' for r in rows))" $T/cua-id/tree.jsonl
+python3 Scripts/e2e/cua-eval.py $T/cua-id Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-id.txt
+check "cua-eval: REG-056 passes with AXFloatingWindow 'Edge Dock'" "grep -q \$'^cua C1 REG-056 panel AX identity L\t1' $T/cua-id.txt"
+# log-order (REG-057 notices, REG-059): in order passes; notice before the dock, missing, other pid fail
+lo() { print -r -- "{\"subsystem\":\"app.dedock.Dedock\",\"processID\":${2:-5},\"eventMessage\":\"$1\"}" }
+{ lo 'settings.recovered source=backup'; lo 'launch.edgeReady ms=300'; lo 'settings.notice kind=recovered' } > $T/lo-good.ndjson
+{ lo 'settings.recovered source=backup'; lo 'settings.notice kind=recovered'; lo 'launch.edgeReady ms=9000' } > $T/lo-modal.ndjson
+{ lo 'settings.recovered source=backup' 6; lo 'launch.edgeReady ms=300' 6; lo 'settings.notice kind=recovered' 6 } > $T/lo-other.ndjson
+LOP=('^settings[.]recovered' '^launch[.]edgeReady' '^settings[.]notice .*kind=recovered')
+check "log-order: launch notices in order pass" "python3 Scripts/e2e/log-order.py $T/lo-good.ndjson pid=5 \$LOP | grep -q '^1 '"
+check "log-order: a notice before launch.edgeReady fails (REG-057)" "python3 Scripts/e2e/log-order.py $T/lo-modal.ndjson pid=5 \$LOP | grep -q '^0 missing'"
+check "log-order: another process's lines do not count" "python3 Scripts/e2e/log-order.py $T/lo-other.ndjson pid=5 \$LOP | grep -q '^0 '"
+check "log-order: unreadable log fails closed" "python3 Scripts/e2e/log-order.py $T/no-such.ndjson '^x' | grep -q '^0 log unreadable'"
 $B/axprobe at 960 540 only=1 > $T/axp.json 2>&1
 check "REG-041 axprobe never records another app's AX text" "python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not (d.get('other_app') is True and d.get('label')=='' and d.get('role')=='' and 'app' not in d))\" $T/axp.json"
 
@@ -173,7 +226,7 @@ check "REG-042 nothing in the app text was executed" "[[ ! -e $T/pwned1 && ! -e 
 echo "-- fail-closed and teardown (REG-049 / REG-050, review of #12)"
 # judge: analyze cannot read the log → not judged → FAIL, never PASS
 J=$T/judge-missing; mkdir -p $J; print "scn=x-01 edge=left show=120 hide=400 n=1 run=selftest" > $J/params.env
-print 'mach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1' > $J/listen.txt
+print 'ready mach=0\nmach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1' > $J/listen.txt
 Scripts/e2e/judge.sh $J > /dev/null 2>&1; echo $? > $T/judge-missing.rc
 check "REG-049 judge: analyze that cannot run is FAIL" "[[ \$(cat $T/judge-missing.rc) == 1 ]] && grep -q '^FAIL tool analyze timing exited 2' $J/report.txt"
 J=$T/judge-nogate; mkdir -p $J; print "scn=perf-move edge=left show=120 hide=400 n=1 run=selftest" > $J/params.env
@@ -226,20 +279,33 @@ sleep 0.5; kill -TERM $rp; wait $rp 2>/dev/null
 tr_app=$(sed -n 's/^APP_PID=//p' $B/runs/selftest-trap-X/run.env 2>/dev/null)
 check "REG-050 regress trap tears down on interrupt" "[[ -n '$tr_app' ]] && ! kill -0 ${tr_app:-0} 2>/dev/null && [[ -f $B/runs/selftest-trap-X/teardown.txt ]]"
 sleep 1; kill $tl 2>/dev/null; wait $tl 2>/dev/null
-check "REG-051 self-test mode posted no input" "! grep -q ' syn=1' $T/trap-listen.txt"
+check "REG-051 self-test mode posted no input" "grep -q '^ready ' $T/trap-listen.txt && ! grep -q ' syn=1' $T/trap-listen.txt"
 DEDOCK_SELFTEST=0 Scripts/e2e/regress.sh run ../e2e-target id=selftest-nolock edges= idle=0 > $T/nolock.txt 2>&1   # exits 2 by design
 # REG-052: a complete self-test-mode run; the contract's analyze legitimately exits 1 on a
 # launch-only log, which must be recorded as a healthy tool run, not a tool failure.
 rm -rf $B/runs/selftest-full*
 Scripts/e2e/regress.sh run $FA id=selftest-full edges= idle=0 > $T/full.txt 2>&1
 check "REG-052 exit code 1 (gate failed) is a healthy tool run" "grep -q '\"tool\":\"analyze X\",\"rc\":1,\"ok\":true' $B/runs/selftest-full/tools.jsonl && ! grep -q 'FAIL tool analyze' $T/full.txt"
+check "REG-055 self-test run lists the hand-off check and SKIPs it (no input posted)" "grep -qx 'REG-055 no pointer hand-off' $B/runs/selftest-full/expected.txt && grep -q '\"id\": \"REG-055 no pointer hand-off\", \"ok\": false, \"skip\": true' $B/runs/selftest-full/checks.jsonl"
 check "REG-050 a completed run leaves nothing running" "! kill -0 \$(sed -n 's/^APP_PID=//p' $B/runs/selftest-full-X/run.env) 2>/dev/null"
+check "REG-057 rows run: corrupt layout written, notice + REG-006 rows recorded, the reveal row SKIPs (no input)" "! python3 -c 'import json,sys; json.load(open(sys.argv[1]))' $B/runs/selftest-full-C/data/layout.json 2>/dev/null && [[ \$(grep -cE '\"id\": \"(REG-057 (corrupt|unreadable) layout|REG-006 [CU])' $B/runs/selftest-full/checks.jsonl) == 5 ]] && grep -q '\"id\": \"REG-057 corrupt layout: dock reveals while the alert is up\", \"ok\": false, \"skip\": true' $B/runs/selftest-full/checks.jsonl && ! kill -0 \$(sed -n 's/^APP_PID=//p' $B/runs/selftest-full-C/run.env) \$(sed -n 's/^APP_PID=//p' $B/runs/selftest-full-U/run.env) 2>/dev/null"
+# REG-055 (review of #22): pointer sharing ON → refuse before any input, no run dir; allow → runs, recorded
+rm -rf $B/runs/selftest-ps*
+$B/listen 6 > $T/ps-listen.txt & pl=$!
+sleep 0.3
+DEDOCK_STUB_PSHARING=on Scripts/e2e/regress.sh run $FA id=selftest-pson edges= idle=0 > $T/pson.txt 2>&1; echo $? > $T/pson.rc
+sleep 0.5; kill $pl 2>/dev/null; wait $pl 2>/dev/null
+check "REG-055 pointer sharing on: refuses (exit 2) before any input, no run" "[[ \$(cat $T/pson.rc) == 2 ]] && grep -q 'refusing: OS pointer sharing across devices is ON' $T/pson.txt && [[ ! -e $B/runs/selftest-pson && ! -e $B/runs/selftest-pson-X ]] && grep -q '^ready ' $T/ps-listen.txt && ! grep -q ' syn=1' $T/ps-listen.txt"
+DEDOCK_STUB_PSHARING=on Scripts/e2e/regress.sh run $FA id=selftest-psallow edges= idle=0 psharing=allow > $T/psallow.txt 2>&1
+check "REG-055 psharing=allow runs and is recorded in env.json and on the scorecard" "grep -q '\"pointer_sharing\": \"on (psharing=allow)\"' $B/runs/selftest-psallow/env.json && grep -q 'OS pointer sharing: on (psharing=allow)' $B/runs/selftest-psallow/scorecard.md"
+rm -rf $B/runs/selftest-ps*
 rm -rf $B/runs/selftest-full*
 check "REG-051 regress refuses a real build without the REAL lock" "grep -q 'does not hold the REAL desktop lock' $T/nolock.txt && [[ ! -e $B/runs/selftest-nolock ]]"
 Scripts/e2e/desktop-lock.sh release $DEDOCK_LOCK_OWNER > /dev/null; unset DEDOCK_LOCKS
 rm -rf $B/runs/selftest-trap*
 # owner-checked touch; pointer release with nothing held posts nothing harmful
 DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh acquire owner-a e2e t > /dev/null
+check "a private lock dir never counts as the real lock" "! DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh real-holder > /dev/null && ! DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh require owner-a 2> /dev/null"
 check "touch is owner-checked" "! DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh touch owner-b > /dev/null && DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh touch owner-a > /dev/null"
 DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh release owner-a > /dev/null
 check "pointer release with nothing held" "$B/pointer release | grep -q 'label=released' && $B/pointer mods | grep -q '^mods=0'"

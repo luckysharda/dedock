@@ -55,8 +55,9 @@ Every message starts with the **event name**, then space-separated `key=value` p
 | `tiles` | `tile.reorderCancelled` | `id`, `reason` (relayout) | a reorder drag in progress was cancelled because the tile layout changed under it |
 | `settings` | `settings.changed` | `key`, `value`, `scenario` | any settings write |
 | `settings` | `settings.recovered` | `source` (backup/default), `moved` (file name) | a corrupt `layout.json` was moved aside (REG-036) |
-| `settings` | `settings.notice` | `kind` (recovered) | the one-time recovery notice is shown (REG-036) |
-| `settings` | `settings.readFailed` | — | `layout.json` unreadable (I/O error); left in place, not treated as corrupt (REG-036) |
+| `settings` | `settings.notice` | `kind` (recovered/readOnly) | a launch notice is posted, always AFTER `launch.edgeReady` (REG-036, REG-057) |
+| `settings` | `settings.readFailed` | `readOnly` (true) | `layout.json` unreadable (I/O error); left in place, not treated as corrupt; the app runs read-only (REG-036, REG-057) |
+| `display` | `display.fullscreenUnsettled` | `reholds` (3) | the full-display probe gave up re-holding a flapping window; waits for the next notification (REG-058) |
 | `pointer` | `pointer.mode` | `mode` (monitors/menuTimer) | swap to or from the 30 Hz menu-tracking timer |
 | `app` | `docks.sync` | `reason` (launch/displays/dockPrefs/settings/statusItems/reduceMotion), `docks` (count) | the set of Edge Docks is re-synced |
 

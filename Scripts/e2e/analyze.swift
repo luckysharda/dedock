@@ -375,13 +375,23 @@ func cmdFrames(_ ev: [Event], _ o: [String: Double]) {
 /// `idle=1`: a run that should see no input at all, so 0 events is the clean result.
 func cmdContamination(_ path: String, idle: Bool) {
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { fail("cannot read \(path)") }
-    let lines = text.split(separator: "\n").filter { $0.hasPrefix("mach=") }
+    let all = text.split(separator: "\n")
+    // The listener prints "ready" once its event tap is live; without it 0 events proves nothing
+    // (the listener never ran), so a missing ready line fails even an idle run.
+    let ready = all.contains { $0.hasPrefix("ready ") }
+    let lines = all.filter { $0.hasPrefix("mach=") }
     let foreign = lines.filter { $0.contains(" syn=0") }
     let untagged = lines.filter { !$0.contains(" syn=") } // listener built before tagging: cannot tell
+    // REG-055: the listener records each foreign event's source pid (src=; 0 = a real device).
+    var counts: [String: Int] = [:]
+    for l in foreign { if let r = l.range(of: " src=") { counts[String(l[r.upperBound...].prefix { $0 != " " }), default: 0] += 1 } }
+    let sources = counts.sorted { $0.key < $1.key }
     metric("foreign_events", Double(foreign.count + untagged.count))
-    gate((idle || !lines.isEmpty) && foreign.isEmpty && untagged.isEmpty, "input contamination\(idle ? " (idle: expect none)" : "")",
-         "\(lines.count) events seen, \(foreign.count) not from the driver, \(untagged.count) unverifiable (no syn= field)"
-         + (foreign.first.map { " (first: \($0))" } ?? ""))
+    gate(ready && (idle || !lines.isEmpty) && foreign.isEmpty && untagged.isEmpty, "input contamination\(idle ? " (idle: expect none)" : "")",
+         (ready ? "" : "listener never started (no ready line); ")
+         + "\(lines.count) events seen, \(foreign.count) not from the driver, \(untagged.count) unverifiable (no syn= field)"
+         + (foreign.first.map { " (first: \($0))" } ?? "")
+         + (sources.isEmpty ? "" : "; foreign sources: " + sources.map { "pid \($0.key) x\($0.value)" }.joined(separator: ", ")))
 }
 
 // MARK: - Main

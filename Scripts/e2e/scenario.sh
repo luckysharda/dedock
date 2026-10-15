@@ -118,6 +118,12 @@ fi
 $B/pointer -q script $S > $O/driver.txt
 [[ -n ${ppid:-} ]] && wait $ppid || true
 wait $lpid 2>/dev/null || true
+# REG-055: name the processes behind foreign input now, while their pids still exist. LOCAL ONLY:
+# this file is never copied into a scorecard (another process's name can be the user's own app).
+{ grep -oE 'syn=0 src=-?[0-9]+' $O/listen.txt 2>/dev/null || true; } | sed 's/.*src=//' | sort | uniq -c | while read -r n spid; do
+  print -r -- "pid=$spid events=$n process=$( (( spid > 0 )) && ps -o comm= -p $spid 2>/dev/null | xargs basename 2>/dev/null || echo '(HID device or gone)')"
+done > $O/foreign-sources.txt
+[[ -s $O/foreign-sources.txt ]] || rm -f $O/foreign-sources.txt
 sleep 0.5
 
 # Only this scenario's log lines: between the driver's first and last marks (+1 s for trailing hides).

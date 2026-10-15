@@ -1,7 +1,7 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=6] [gap=8] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [dry=1]
 #       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
 #       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
 #       (never committed; no user window is ever in the frame).
@@ -56,8 +56,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=6 gap=8 shots=0
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing=
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -74,7 +74,8 @@ fi
 edge_list=(${(s:,:)edges})
 # Calibrated on the first full run (2026-10-15: 489 s for edges L,R + idle): launches, settle
 # waits and VOID re-runs make each edge ~200 s; each extra x-06 seed ~15 s.
-est=$(( 15 + ${#edge_list} * (200 + ${#extra_seeds} * 15 + 25 + (shots ? 15 : 0)) + (idle ? 75 : 0) ))
+# Calibrated on the 82d2d69 candidate (edges L,R + 3 extra x-06 seeds + shots + idle: 293 s measured).
+est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0)) + (idle ? 70 : 0) ))
 echo "regress $id: app $(git -C $app rev-parse --short HEAD) edges=$edges idle=$idle — moves the cursor for about $est s"
 if (( dry )); then
   echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}; idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
@@ -90,27 +91,45 @@ else
   $E/desktop-lock.sh require $me || exit 2
 fi
 
+# REG-055 preflight, before ANY input: OS pointer sharing across devices has edge zones, so the
+# harness's edge pushes can hand the pointer to another device, and everything it posts next (glides,
+# clicks, presses, drags) then lands there. Same class as REG-051: refuse. It is a user setting and is
+# never changed here; psharing=allow runs anyway (no other device nearby) and is shown on the card.
+psallow=0; [[ $psharing == allow ]] && psallow=1
+psharing=on
+[[ $(defaults -currentHost read com.apple.universalcontrol Disable 2>/dev/null) == 1 ]] && psharing=off
+if [[ $psharing == on ]]; then
+  if (( ! psallow )); then
+    echo "refusing: OS pointer sharing across devices is ON (REG-055): turn it off for this window, or pass psharing=allow if no other device is nearby" >&2
+    exit 2
+  fi
+  echo "WARN REG-055 OS pointer sharing across devices is ON; running anyway (psharing=allow): recorded on the scorecard"
+fi
+
 root=$B/runs/$id
 [[ -e $root ]] && { echo "run exists: $root" >&2; exit 2 }
 mkdir -p $root
 : > $root/index.txt; : > $root/checks.jsonl; : > $root/run-metrics.jsonl; : > $root/tools.jsonl
+run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-log query
 
 # Fail closed (review of #12): every row this run must produce is listed up front; score.py FAILs
 # any that is missing, and every tool's exit code is recorded (tools.jsonl, "tool health").
 {
   print -l "x-00 UIElement" "x-00 status item" "x-00 no permission prompt" "x-00 starts hidden" "REG-026 first launch" \
-           "REG-043 X" "REG-018 X" "REG-014 X" "contract X" "REG-006 X"
+           "REG-043 X" "REG-018 X" "REG-059 X" "REG-014 X" "contract X" "REG-006 X" \
+           "REG-057 corrupt layout: dock up, notice after, no input" "REG-057 corrupt layout: dock reveals while the alert is up" "REG-006 C" \
+           "REG-057 unreadable layout: dock up read-only, notice after, no input" "REG-006 U"
   for t in $edge_list; do
-    print -l "geom $t (REG-013 …)" "REG-043 $t" "REG-018 $t" "REG-014 $t" "contract $t" "REG-006 $t" "REG-006 ${t}0" \
-             "cua C1 panel window $t" "cua C2 cua-driver sees tiles $t" "cua C3 tiles in AX tree $t" "cua C3 REG-040 tiles are buttons $t" \
+    print -l "geom $t (REG-013 …)" "REG-043 $t" "REG-018 $t" "REG-059 $t" "REG-014 $t" "contract $t" "REG-006 $t" "REG-006 ${t}0" \
+             "cua C1 panel window $t" "cua C1 REG-056 panel AX identity $t" "cua C2 cua-driver sees tiles $t" "cua C3 tiles in AX tree $t" "cua C3 REG-040 tiles are buttons $t" \
              "cua C3 REG-040 tiles pressable $t" "cua C4 status item $t" "cua C5 non-activating $t" "cua C6 click-through while hidden $t" \
-             "cua C7 shown tile takes the hit $t" "cua C7 4 pt outside passes through $t" "cua C8 settings labelled $t"
+             "cua C7 shown tile takes the hit $t" "cua C7 tile cell edge stays in the dock $t" "cua C7 4 pt outside passes through $t" "cua C8 settings labelled $t"
     for scn in x-01 x-02 x-03 x-04 x-05a x-05b x-06; do print -r -- "$t.$scn-$t"; done
     for sd in $extra_seeds; do print -r -- "$t.x-06-$t-s$sd"; done
     (( shots )) && print -l "shot $t" "REG-006 S$t"
   done
   (( idle )) && print -l "I.idle-L" "REG-006 I"
-  print -l "REG-016 cursor restored" "REG-017 no modifier held" "REG-015 no Dedock left running"
+  print -l "REG-016 cursor restored" "REG-017 no modifier held" "REG-015 no Dedock left running" "REG-055 no pointer hand-off"
 } > $root/expected.txt
 
 tool() {  # tool <name> <rc> [ok-rcs…]: record a tool's exit code (default ok: 0 and 1 = "ran, gate failed")
@@ -154,6 +173,7 @@ json.dump({
   "display": "$($B/pointer screen | sed 's/x=[0-9.]* y=[0-9.]* //')",
   "native_dock": "$(defaults read com.apple.dock orientation 2>/dev/null), autohide=$(defaults read com.apple.dock autohide 2>/dev/null)",
   "refs_running": "$(pgrep -lf 'CoolDock|DockDoor' | wc -l | tr -d ' ')",
+  "pointer_sharing": "$psharing$( [[ $psharing == on ]] && print -n ' (psharing=allow)')",
   "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
 }, open(sys.argv[1], "w"), indent=1)
 EOF
@@ -189,6 +209,9 @@ ready = [i for i, n in enumerate(names) if n == "launch.edgeReady"]
 prep = [i for i, n in enumerate(names) if n in ("layout.pass", "docks.sync")]
 ok18 = len(ready) == 1 and prep and min(prep) < ready[0]
 print(f"REG-018 {int(bool(ok18))} launch.edgeReady x{len(ready)}, after layout.pass/docks.sync: {bool(prep and ready and min(prep) < ready[0])}; launch.firstArm x{names.count('launch.firstArm')}")
+syncs = [e for e in ev if e.startswith("docks.sync ")]
+first = next((kv for kv in (syncs[0].split() if syncs else []) if kv.startswith("reason=")), "none")
+print(f"REG-059 {int(first == 'reason=launch')} first docks.sync after launch: {first} (exp reason=launch)")
 try:
     tiles = {t.get("bundleId") or t.get("bundleID") for d in json.load(open(geom))["docks"] for t in d["tiles"]}
 except (OSError, ValueError, KeyError):
@@ -242,6 +265,14 @@ for t in g['docks'][0]['tiles']:
   print -l "edge $edge $probe_y" "wait 600" "glide ${first[2]} ${first[3]} 80" "wait 150" > $C/reveal.txt
   $B/pointer -q script $C/reveal.txt
   $B/axprobe at ${first[2]} ${first[3]} only=$pid > $C/hit-shown-tile.json
+  # C7 cell edge: inside the first tile's GEOM cell but outside its (smaller) icon/AX frame, 2 pt in
+  # from the cell's edge on the side away from the screen edge (along x on left/right docks, along y on
+  # bottom/top docks): still the dock, never the window under it.
+  local cell=($(python3 -c "
+import json; d = json.load(open('$R/data/e2e/geometry.json'))['docks'][0]; x, y, w, h = d['tiles'][0]['frame']['topLeft']
+print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (x + w / 2, y + 2), 'top': (x + w / 2, y + h - 2)}[d['edge']])"))
+  $B/pointer -q move ${cell[1]} ${cell[2]}; sleep 0.15
+  $B/axprobe at ${cell[1]} ${cell[2]} only=$pid > $C/hit-shown-cell.json
   $B/pointer -q move $outside ${first[3]}; sleep 0.15
   $B/axprobe at $outside ${first[3]} only=$pid > $C/hit-shown-outside.json
   $B/axprobe front > $C/front-shown.json
@@ -276,34 +307,37 @@ teardown_check() {  # REG-006 after every launch
 echo "x-00 / REG-026"
 (( selftest )) || tccutil reset All app.dedock.Dedock.debug >/dev/null 2>&1   # real lock held (checked above)
 X=$id-X
+# x-00 prompt baseline: window ids of permission/notification prompts already on screen BEFORE this
+# launch. A prompt the launch causes can appear in an already-running UserNotificationCenter or
+# SecurityAgent (whose process start predates the launch), so new = window id not in this snapshot.
+PROMPT_APPS='("UserNotificationCenter", "universalAccessAuthWarn", "SecurityAgent", "tccd")'
+command -v cua-driver >/dev/null && cua-driver call list_windows '{}' 2>/dev/null | python3 -c "
+import json, sys
+for x in json.load(sys.stdin)['windows']:
+    if x['is_on_screen'] and x['app_name'] in $PROMPT_APPS: print(x['window_id'])" > $B/runs/$id/prompts-before.txt 2>/dev/null \
+  || echo ERR > $B/runs/$id/prompts-before.txt
 if launch $X --app $app --no-seed --timeout 8 > $B/runs/$id/launch-X.txt 2>&1 && launched $B/runs/$id/launch-X.txt; then
   sleep 2
   pid=$(sed -n 's/^APP_PID=//p' $B/runs/$X/run.env)
   check "x-00 UIElement" $(lsappinfo info -only ApplicationType -app $pid 2>/dev/null | grep -q UIElement && echo 1 || echo 0) "no Dock icon (LSUIElement)"
   si=$(osascript -e "tell application \"System Events\" to tell (first process whose unix id is $pid) to get description of every menu bar item of menu bar 1" 2>/dev/null)
-  check "x-00 status item" $([[ $si == *dedock* ]] && echo 1 || echo 0) "status item: ${si:-none}"
+  check "x-00 status item" $([[ ${si:l} == *dedock* ]] && echo 1 || echo 0) "status item: ${si:-none}"   # any case: the UI name becomes "Dedock"
   if ! command -v cua-driver >/dev/null; then
     check "x-00 no permission prompt" 0 "cua-driver not installed: cannot check"
   else
-    # Only prompts that appeared with this launch count; one left on screen from before (e.g. an old
-    # universalAccessAuthWarn) is reported but is not an app result.
-    started=$(sed -n 's/^STARTED=//p' $B/runs/$X/run.env)
-    read prompts prior <<<$(cua-driver call list_windows '{}' 2>/dev/null | python3 -c '
-import json, sys, subprocess, datetime
-started = datetime.datetime.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
-w = json.load(sys.stdin)["windows"]
+    # Only prompt windows that appeared with this launch count (window id not in the pre-launch
+    # snapshot); one left on screen from before is reported but is not an app result. Fails closed:
+    # without a snapshot every prompt on screen counts as new, and unreadable output is "?".
+    read prompts prior <<<$(cua-driver call list_windows '{}' 2>/dev/null | python3 -c "
+import json, sys
+before = open(sys.argv[1]).read().split()
+if 'ERR' in before: before = []
 new = old = 0
-for x in w:
-    if not (x["is_on_screen"] and x["app_name"] in ("UserNotificationCenter", "universalAccessAuthWarn", "SecurityAgent", "tccd")):
-        continue
-    lstart = subprocess.run(["ps", "-o", "lstart=", "-p", str(x["pid"])], capture_output=True, text=True).stdout.strip()
-    try:
-        t = datetime.datetime.strptime(lstart, "%a %b %d %H:%M:%S %Y").astimezone(datetime.timezone.utc)
-    except ValueError:
-        t = started
-    if t >= started - datetime.timedelta(seconds=2): new += 1
-    else: old += 1
-print(new, old)' $started 2>/dev/null || echo "? ?")
+for x in json.load(sys.stdin)['windows']:
+    if not (x['is_on_screen'] and x['app_name'] in $PROMPT_APPS): continue
+    if str(x['window_id']) in before: old += 1
+    else: new += 1
+print(new, old)" $B/runs/$id/prompts-before.txt 2>/dev/null || echo "? ?")
     check "x-00 no permission prompt" $([[ $prompts == 0 ]] && echo 1 || echo 0) "new TCC/notification windows since launch: $prompts (pre-existing, not counted: ${prior:-?})"
   fi
   state=$(python3 -c "import json;print(json.load(open('$B/runs/$X/data/e2e/geometry.json'))['docks'][0]['state'])" 2>/dev/null)
@@ -326,6 +360,52 @@ PY
 else
   check "x-00 launch" 0 "app did not reach launch.edgeReady (see build/e2e/runs/$id/launch-X.txt)"
 fi
+
+# REG-057: a broken layout.json must not block the launch on a modal alert. The dock comes up
+# (launch.edgeReady) with NO input, and the notice is posted after it. Corrupt → recovered from the
+# seed; unreadable → runs read-only. The alert stays on screen (the app's own window, never clicked);
+# teardown quits the app.
+# While the recovery alert is on screen, an x-01-style reveal (pointer to the edge, dwell) must still
+# work: a modal run loop can stall default-mode work (review of #23/#24). Fails closed when the
+# alert is not on screen (then nothing was proven).
+alert_reveal() {  # alert_reveal <sub-run> <pid>
+  local S=$1 spid=$2 cid="REG-057 corrupt layout: dock reveals while the alert is up"
+  if (( selftest )); then check "$cid" skip "self-test mode posts no input"; return; fi
+  local G=$B/runs/$S/data/e2e/geometry.json
+  local alerts=$($B/axprobe windows $spid | python3 -c "import json,sys; print(sum(1 for l in sys.stdin if l.strip() and (w := json.loads(l))['onscreen'] and w['layer'] != 24 and w['w'] > 50))" 2>/dev/null || echo 0)
+  local pts=($(python3 -c "import json;d=json.load(open('$G'))['docks'][0];x,y,w,h=d['capsule']['topLeft'];L=d['edge']=='left';print(d['edge'], int(y+h/2), x+w+400 if L else x-400)" 2>/dev/null))
+  if (( ${#pts} != 3 )); then check "$cid" 0 "no GEOM for the recovered dock"; return; fi
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
+  print -l "edge ${pts[1]} ${pts[2]}" "wait 700" > $B/runs/$S/reveal.txt
+  $B/pointer -q script $B/runs/$S/reveal.txt
+  sleep 0.2
+  local r=$(python3 $E/log-order.py $B/runs/$S/log.ndjson pid=$spid '^settings[.]notice .*kind=recovered' '^reveal[.]transition .*to=shown' 2>/dev/null || echo "0 log-order did not run")
+  $B/pointer -q move ${pts[3]} ${pts[2]}   # leave, so the dock hides before teardown
+  sleep 0.5
+  check "$cid" $(( ${r%% *} == 1 && alerts >= 1 )) "alert windows on screen: $alerts; ${r#* }"
+}
+
+notice_run() {  # notice_run <tag> <launch flag> <check id> <regex…>
+  local tag=$1 flag=$2 cid=$3; shift 3
+  local S=$id-$tag
+  if launch $S --app $app $flag --timeout 8 > $B/runs/$id/launch-$tag.txt 2>&1 && launched $B/runs/$id/launch-$tag.txt; then
+    local spid=$(sed -n 's/^APP_PID=//p' $B/runs/$S/run.env) r
+    for i in {1..30}; do grep -q '"eventMessage":"settings.notice' $B/runs/$S/log.ndjson && break; sleep 0.1; done
+    sleep 0.3
+    r=$(python3 $E/log-order.py $B/runs/$S/log.ndjson pid=$spid "$@" 2>/dev/null || echo "0 log-order did not run")
+    check "$cid" ${r%% *} "${r#* }"
+    [[ $tag == C ]] && alert_reveal $S $spid
+  else
+    check "$cid" 0 "app did not reach launch.edgeReady within 8 s without input (a modal alert before the dock?): see build/e2e/runs/$id/launch-$tag.txt"
+  fi
+  teardown_check $S; check "REG-006 $tag" $(( $? == 0 )) "native Dock prefs unchanged"
+  chmod 644 $B/runs/$S/data/layout.json 2>/dev/null   # keep the run dir readable after the read-only case
+}
+notice_run C --corrupt-layout "REG-057 corrupt layout: dock up, notice after, no input" \
+  '^settings\.recovered' '^launch\.edgeReady' '^settings\.notice .*kind=recovered'
+notice_run U --unreadable-layout "REG-057 unreadable layout: dock up read-only, notice after, no input" \
+  '^settings\.readFailed' '^launch\.edgeReady' '^settings\.notice .*kind=readOnly'
 
 for tag in $edge_list; do
   side=$tag; [[ $tag == R ]] && set_edge=(--set 'docks[0].edge="right"') || set_edge=()
@@ -440,6 +520,25 @@ mods=$($B/pointer mods)
 check "REG-017 no modifier held" $([[ $mods == mods=0* ]] && echo 1 || echo 0) "$mods"
 left=$(pgrep -x Dedock | tr '\n' ' ')
 check "REG-015 no Dedock left running" $([[ -z $left ]] && echo 1 || echo 0) "${left:-none}"
+# REG-055: did the pointer leave this Mac through OS pointer sharing during the run? Read from the
+# system log (the feature's process logs each hand-off). Fails closed if the log cannot be read.
+if (( selftest )); then
+  check "REG-055 no pointer hand-off" skip "self-test mode posts no input"
+elif /usr/bin/log show --start "$run_start" --style compact --predicate \
+    'process == "UniversalControl" AND (eventMessage CONTAINS "Move Pointer to IDS" OR eventMessage CONTAINS "Move Target to Local" OR eventMessage CONTAINS "Hot Zone: Activating")' \
+    > $root/pointer-sharing.log 2>/dev/null; then
+  handoffs=$(grep -cE 'Move Pointer to IDS|Move Target to Local' $root/pointer-sharing.log || true)
+  zones=$(grep -c 'Hot Zone: Activating' $root/pointer-sharing.log || true)
+  if [[ $psharing == on ]] && (( handoffs == 0 && zones == 0 )); then
+    # With the feature on and edge pushes made, no message at all is suspicious (e.g. reworded by an
+    # OS update): unverifiable, never a PASS (review of #22).
+    check "REG-055 no pointer hand-off" 0 "unverifiable: OS pointer sharing is ON (psharing=allow) and the system log shows no zone or hand-off messages"
+  else
+    check "REG-055 no pointer hand-off" $(( handoffs == 0 )) "OS pointer sharing across devices: $psharing at start; hand-offs during the run: $handoffs; edge-zone activations: $zones"
+  fi
+else
+  check "REG-055 no pointer hand-off" 0 "could not read the system log: hand-offs unknown"
+fi
 
 echo
 score $root
