@@ -204,6 +204,18 @@ Run the whole list before merging `develop` into `staging`. Each PR runs the ite
 | REG-011 | Native-Dock 9-cell matrix (DD-991) | E2E | later (bottom edge) |
 | REG-012 | DockDoor regression set: #472, #297, #1222, #277, #1001 (`adoption-plan.md` §10.1 exit item 2) | E2E | later (previews) |
 
+### 5.1 Regression policy
+
+| Rule | Detail |
+|---|---|
+| **REG id first** | Every bug gets the next `REG-nnn` id in `Tests/E2E/regressions.md` (owned by the E2E lane) **before** its fix is written. The id names the symptom, the scenario that exposed it and the build it was seen on. Features add REG rows here when they merge (table above). |
+| **Layer 1: unit, in CI** | The fix ships with a `.regression` unit test **in the same commit**. Each test lives in a suite whose type name ends in `Regression` (for example `@Suite("Regression", .tags(.regression)) struct EdgeDockRegression`), with one `@Test("REG-nnn …")` per id. `ci/regression.sh` runs `swift test --filter Regression` as its own step on macOS and Linux, so a failure is reported under its REG id. Owner: implementer. |
+| **Layer 2: E2E, local** | `Scripts/e2e/regress.sh` replays every REG scenario that needs a real desktop against the build under test, inside the desktop lock, and writes a scorecard. The baseline (timings, CPU, RSS) is `Tests/E2E/baseline/m1.json`. Owner: E2E lane. Hosted CI cannot run it (no TCC grants, no real desktop). |
+| **Merge gates** | PR → `develop`: CI green, including the `Regression tests` step; app-code PRs attach the `regress.sh` scorecard (PR template). `develop` → `staging`: a full `regress.sh` run on the candidate build with 0 failures. `staging` → `main`: the same run on the release build. |
+| **Baseline drift** | `regress.sh` warns when a measured value drifts more than **20 %** from the baseline (worse direction), even if it is still under its budget. A drift warning blocks promotion to `staging` until it is explained in the PR or the baseline is updated on purpose (with the reason in `docs/status.md`). |
+| **Empty layer** | Until the first `.regression` tests land, an empty layer 1 passes with a notice. Setting the repository variable `REGRESSION_REQUIRED=true` makes an empty layer fail. |
+| **Never delete** | REG tests and scenarios are only retired with a written reason (feature removed), recorded in `Tests/E2E/regressions.md`. |
+
 ---
 
 ## 6. L5 performance budgets and how they are measured here
