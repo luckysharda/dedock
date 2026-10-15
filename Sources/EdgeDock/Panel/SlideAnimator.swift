@@ -54,6 +54,9 @@ import QuartzCore
         }
     }
 
+    /// The animation currently on the layer (tests).
+    var inFlightAnimation: CAAnimation? { layer.animation(forKey: Self.key) }
+
     // MARK: RevealAnimating
 
     public var presentationProgress: Double {
@@ -110,6 +113,12 @@ import QuartzCore
         activeTarget = request.target
         let kind = fadePath ? (request.target == .shown ? "fadeIn" : "fadeOut") : (request.target == .shown ? "reveal" : "hide")
         activeKind = kind
+
+        // Pin the start to now, in the layer's time base. With beginTime 0, Core Animation stamps
+        // the start when the transaction commits; if that lands a frame after the add, the slide
+        // effectively restarts one frame late (a small step back, then a lag; REG-039).
+        animation.beginTime = layer.convertTime(CACurrentMediaTime(), from: nil)
+        animation.fillMode = .backwards
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)

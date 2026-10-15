@@ -43,3 +43,19 @@ import Testing
         #expect(finished == [2])
     }
 }
+
+extension AnimatorRegressionTests {
+    /// REG-039: a reversal's animation took its start time from the transaction commit, which
+    /// could land a frame after the add, so the slide restarted ~17 ms late (a step back, then a
+    /// lag; x-06 R). The start is now pinned to the moment the animation is added.
+    @Test("REG-039: a new slide starts at the moment it is added, not at a later commit")
+    func reg039() throws {
+        let a = makeAnimator()
+        let before = CACurrentMediaTime()
+        a.run(AnimationRequest(target: .hidden, curve: .hideEaseIn, duration: .milliseconds(180), generation: 1)) { _ in }
+        let after = CACurrentMediaTime()
+        let anim = try #require(a.inFlightAnimation)
+        #expect(anim.beginTime >= before - 0.001 && anim.beginTime <= after + 0.001)
+        #expect(anim.fillMode == .backwards)
+    }
+}
