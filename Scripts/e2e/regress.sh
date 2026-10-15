@@ -1,7 +1,7 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [dry=1]
 #       The whole M1 set in ONE desktop-lock take (the caller holds the lock and has announced
 #       it): x-00 + REG-026 on an empty data dir, then per edge geom-check, log-contract checks
 #       and x-01…x-05a, then x-05b and x-06 in a hide-delay-0 run, then 60 s idle; post-run
@@ -50,17 +50,20 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds=
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; esac; done
+extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
 [[ $bid == app.dedock.Dedock.debug ]] || { echo "need a DEBUG build at $bundle (found '${bid:-none}'): Scripts/make-app.sh debug" >&2; exit 2 }
 
 edge_list=(${(s:,:)edges})
-est=$(( 15 + ${#edge_list} * 95 + (idle ? 75 : 0) ))
+# Calibrated on the first full run (2026-10-15: 489 s for edges L,R + idle): launches, settle
+# waits and VOID re-runs make each edge ~200 s; each extra x-06 seed ~15 s.
+est=$(( 15 + ${#edge_list} * (200 + ${#extra_seeds} * 15) + (idle ? 75 : 0) ))
 echo "regress $id: app $(git -C $app rev-parse --short HEAD) edges=$edges idle=$idle — moves the cursor for about $est s"
 if (( dry )); then
-  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06; idle 60 s; post checks"
+  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}; idle 60 s; post checks"
   exit 0
 fi
 
@@ -137,11 +140,13 @@ run_scn() {  # run_scn <sub-run> <L|R> <scenario> [args]; re-runs once if contam
   local sub=$1 side=$2 scn=$3; shift 3
   $E/desktop-lock.sh touch >/dev/null
   $E/scenario.sh $sub $side $scn "$@" > /dev/null; local rc=$?
+  local tg=""; for kv in "$@"; do [[ $kv == tag=* ]] && tg=-${kv#tag=}; done
+  local dir=$B/runs/$sub/$scn-$side$tg
   if (( rc == 3 )); then
-    mv $B/runs/$sub/$scn-$side $B/runs/$sub/$scn-$side.void-1
+    mv $dir $dir.void-1
     $E/scenario.sh $sub $side $scn "$@" > /dev/null; rc=$?
   fi
-  echo "  $scn $side: $(tail -1 $B/runs/$sub/$scn-$side/report.txt 2>/dev/null | cut -d' ' -f2)"
+  echo "  $scn $side$tg: $(tail -1 $dir/report.txt 2>/dev/null | cut -d' ' -f2)"
 }
 
 teardown_check() {  # REG-006 after every launch
@@ -214,6 +219,7 @@ for tag in $edge_list; do
     sleep 1
     run_scn $sub0 $side x-05b n=3
     run_scn $sub0 $side x-06 seed=1
+    for sd in $extra_seeds; do run_scn $sub0 $side x-06 seed=$sd tag=s$sd; done
     teardown_check $sub0; check "REG-006 ${tag}0" $(( $? == 0 )) "native Dock prefs unchanged"
   else
     check "launch ${tag}0" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-${tag}0.txt)"

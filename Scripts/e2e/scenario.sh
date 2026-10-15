@@ -22,8 +22,8 @@ run=${1:?usage: scenario.sh <run-id> <L|R> <scenario> [n=] [seed=]}
 side=${2:?L or R}
 scn=${3:?scenario}
 shift 3
-n=10 seed=1 dry=0
-for kv in "$@"; do case $kv in n=*) n=${kv#n=} ;; seed=*) seed=${kv#seed=} ;; dry=*) dry=${kv#dry=} ;; esac; done
+n=10 seed=1 dry=0 tag=
+for kv in "$@"; do case $kv in n=*) n=${kv#n=} ;; seed=*) seed=${kv#seed=} ;; dry=*) dry=${kv#dry=} ;; tag=*) tag=${kv#tag=} ;; esac; done
 
 R=$B/runs/$run
 [[ -f $R/run.env ]] || { echo "no run $run: start it with launch.sh" >&2; exit 2 }
@@ -59,7 +59,7 @@ EOF
 )
 fi
 
-O=$R/$scn-$side
+O=$R/$scn-$side${tag:+-$tag}   # tag=: repeat the same scenario (e.g. x-06 seeds) into separate dirs
 mkdir -p $O
 S=$O/driver-script.txt
 # Delays from the seeded layout (schema keys reveal.showDwellMs / reveal.hideDelayMs, in ms).
