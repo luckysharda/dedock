@@ -293,7 +293,7 @@ The user picked from the reference-based design board: **A2 Frosted** (whole app
 
 | Style | Capsule | Widget tile plate | Text | Notes |
 |---|---|---|---|---|
-| **Dark Glass** (default, A2) | behind-window blur, `.hudWindow`-class material forced `.active`, tint `#121214 @ 0.55`, saturation ≈ 1.6; 1 px inner edge `white @ 0.10`; shadow `0 8 24 black @ 0.25` | `white @ 0.09` + 1 px inner `white @ 0.08` | primary `#FFFFFF`, secondary `#A0A0A5` | wallpaper hue tints through |
+| **Dark Glass** (default, A2) | behind-window blur, `.hudWindow`-class material forced `.active`, tint `#121214 @ 0.55`, saturation from the system material (the ≈ 1.6 seen in the reference cannot be set on `NSVisualEffectView`); 1 px inner edge `white @ 0.10`; shadow `0 8 24 black @ 0.25` | `white @ 0.09` + 1 px inner `white @ 0.08` | primary `#FFFFFF`, secondary `#A0A0A5` | wallpaper hue tints through |
 | Black | `#0A0A0A @ 0.92`, blur 10 | `white @ 0.07` + 1 px inner `white @ 0.06` | `#FFFFFF` / `#878787` | CoolDock default in marketing |
 | Light Glass | blur, tint `#EAEDF2 @ 0.55`, 1 px inner `white @ 0.68` | `white @ 0.45` + 1 px inner `white @ 0.55` | `#111111` / `#555555`; dot `black @ 0.7` | |
 | Reduce Transparency | solid `#1C1C1E` (Dark Glass, Black) / `#EAEDF2` (Light Glass) | `#2A2A2C` / `#FFFFFF` | same | forced when the macOS setting is on |
