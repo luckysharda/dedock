@@ -33,6 +33,9 @@ plutil -lint -s "$APP/Contents/Info.plist"
 for b in "$BIN_DIR"/*.bundle; do [ -e "$b" ] && cp -R "$b" "$APP/Contents/Resources/"; done
 
 IDENTITY="${DEDOCK_SIGN_IDENTITY:--}"
-codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" --timestamp=none "$APP"
+SIGN_ARGS=(--force --sign "$IDENTITY" --identifier "$BUNDLE_ID" --timestamp=none)
+# Debug only: get-task-allow so `leaks`/`vmmap` can inspect the app. Release never gets it.
+[ "$CONFIG" = debug ] && SIGN_ARGS+=(--entitlements "$ROOT/Support/Debug.entitlements")
+codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --deep --strict "$APP"
 echo "built $APP ($BUNDLE_ID $SHORT, signed: $IDENTITY)"

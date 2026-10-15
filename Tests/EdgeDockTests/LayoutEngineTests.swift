@@ -3,6 +3,8 @@ import Foundation
 import Testing
 @testable import EdgeDock
 
+// Expected values built from integer-literal arithmetic are wrapped in CGFloat(...): with
+// swift-testing's #expect, `cgFloat == 1080 - 24 - 6` evaluates false even when equal.
 @Suite struct LayoutEngineTests {
     /// 1920×1080 at 1×, menu bar 24, native Dock 75 at the bottom → visibleFrame y 75…1056 (height 981, odd).
     let d = DisplaySnapshot(identity: DisplayIdentity(uuid: "d"), frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
@@ -33,7 +35,7 @@ import Testing
         case .left: #expect(c.minX == 6)
         case .right: #expect(c.maxX == 1914)
         case .bottom: #expect(c.minY == 6)
-        case .top: #expect(c.maxY == 1080 - 24 - 6)
+        case .top: #expect(c.maxY == CGFloat(1080 - 24 - 6))
         }
         for r in [l.capsuleFrame, l.panelFrame] + Array(l.tileFrames.values) {
             #expect(r.minX == r.minX.rounded() && r.minY == r.minY.rounded(), "\(r) not on whole pixels")
@@ -56,7 +58,7 @@ import Testing
     @Test(arguments: [DockAlignment.start, .end])
     func horizontalAlignment(alignment: DockAlignment) {
         let c = layout(.bottom, alignment).capsuleFrame
-        if alignment == .start { #expect(c.minX == 8) } else { #expect(c.maxX == 1920 - 8) }
+        if alignment == .start { #expect(c.minX == CGFloat(8)) } else { #expect(c.maxX == CGFloat(1920 - 8)) }
     }
 
     @Test func sideTilesRunTopToBottomInOrder() {
@@ -100,7 +102,7 @@ import Testing
 
     @Test func bottomDockSitsAboveAVisibleNativeDock() {
         let c = layout(.bottom, inset: 75).capsuleFrame
-        #expect(c.minY == 75 + 6)
+        #expect(c.minY == CGFloat(75 + 6))
     }
 
     @Test func overflowShrinksToFitThenStopsAtMinimumScale() {
@@ -116,12 +118,13 @@ import Testing
         let withSep = [TileSpec(id: "a"), TileSpec(id: "s", shape: .separator), TileSpec(id: "b")]
         let l = layout(.left, tiles: withSep)
         #expect(l.tileFrames["s"]!.height == 10)
-        #expect(l.capsuleFrame.height == 56 + 10 + 56 + 2 * 8 + 12)
+        let expected: CGFloat = 56 + 10 + 56 + 16 + 12
+        #expect(l.capsuleFrame.height == expected)
     }
 
     @Test func emptyDockStillHasACapsule() {
         let l = layout(.left, tiles: [])
-        #expect(l.capsuleFrame.height == 56 + 12)
+        #expect(l.capsuleFrame.height == CGFloat(56 + 12))
         #expect(l.tileFrames.isEmpty)
     }
 
