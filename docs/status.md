@@ -29,6 +29,10 @@ Newest entry first. Each entry: done, in progress, next, blockers and notes, the
 | S-7 | Desktop lock = `$DEDOCK_HOME/.locks/desktop.lock` (`organization.md` §6.1) | orchestrator |
 | S-8 | CI/CD + Docker: `docs/ci-cd.md` (on branch `planning`). Repo goes public only once CI runs, otherwise stays private; orchestrator performs the flip | user |
 | S-10 | Testing may quit CoolDock and DockDoor before edge tests (inside the desktop lock; the owner relaunches them). No observation or timing of CoolDock; comparisons use public reference screenshots only | user |
+| S-11 | Design: the look follows the references (revised D-6). Pick **A2 Frosted + E1 Capsule** (`design.md` §7) | user |
+| S-12 | Repo public since CI is green (PR #1 merged as 7312bb6) | user + orchestrator |
+| S-13 | Implementer decisions accepted: reversal region = zone or capsule + 16 pt; explicit reveal holds until first visit; timers `tolerance: .zero`; CLT test flags (`architecture.md` §6.5, §11) | planner |
+| S-14 | Cold launch gate = first launch after login, binary not rebuilt; post-rebuild launch reported only (`evaluation.md` §6) | planner |
 | S-9 | Disk full (≈0.4 GB free) after a Docker pull; Docker data purge pending with the user | user |
 
 ### In progress
@@ -122,7 +126,7 @@ Visual work (panel look, tiles, indicator, settings look) waits for the design p
 | DD-801 | Menu-bar item (minimal) | Missing | In design |
 | DD-802 | Settings window with the Edge Dock pane only | Missing | In design |
 | — | SettingsStore (schema v1, migration harness) | Missing | In design |
-| DD-978 | Edge Dock appearance (basic, from the design pick) | Missing | In design (waits for the pick) |
+| DD-978 | Edge Dock appearance (basic, from the design pick) | Missing | Design picked (A2 + E1); placeholder visuals in the build |
 | DD-1141 | Top edge, Reveal below the menu bar (beta; `docs/plan.md` D-11) | Missing | In design |
 | DD-941, DD-991, DD-992 | Main display with built-in fallback; native Dock read-only awareness; bottom dock above a visible native Dock (partial) | Missing | In design |
 | DD-814 | Edge trace (subset) | Missing | In design |

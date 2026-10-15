@@ -220,7 +220,7 @@ Budgets come from `dedock-plan/system-design.md` §9 and `dedock-plan/features.m
 | Reveal / hide frames | 0.22 s / 0.18 s, 0 dropped frames at 60 Hz (120 Hz deferred: no 120 Hz display) | debug frame log (`DEDOCK_FRAME_LOG=1`): a display-link callback logs the content layer's presentation translation on every frame. A dropped frame is a frame where the value did not change mid-animation. Recording (§8) as the second source | yes |
 | RSS, one Edge Dock | ≤ 120 MB (NFR-2) | `footprint $PID` → `phys_footprint`; `ps -o rss= -p $PID` | yes |
 | Leaks and growth | 0 leaks; growth ≤ 2 MB after 100 reveal / hide cycles | `leaks $PID` and `footprint` before and after a SYN loop | yes |
-| Cold launch → edge armed | ≤ 400 ms | the app logs `launch.edgeReady` with the time since process start (from `kinfo_proc` start time) | yes |
+| Cold launch → edge armed | ≤ 400 ms for the **first launch after login, binary not just rebuilt**; the first launch after a rebuild (macOS pre-main load and signature check of a freshly signed binary, measured ≈ 441 ms release vs ≈ 21 ms of dedock code) is reported, not gated. Warm launch measured 77–87 ms. | the app logs `launch.edgeReady` with the time since process start (from `kinfo_proc` start time) | yes |
 | Widget wakeups while hidden | 0 pull fetches | provider counters | later (widgets) |
 | Hover → preview, switcher, tap callback | NFR-3, NFR-5, NFR-6 | signposts and log timestamps | later (previews) |
 
@@ -444,7 +444,7 @@ Status on 2026-10-15: nothing is implemented, so every row is **Not run**. "x" =
 | 8 | DD-902 | Changing the edge re-lays out and re-animates within one reveal cycle | L1, L2 | §3.5 "Edge change", §4 | Not run |
 | 9 | DD-903 | Thickness / length grammar, concentric radii, top-to-bottom flow on side docks | L1, L6 | §3.5, §9.3 | Not run |
 | 10 | DD-903 | Hover label toward the screen centre, shown instantly (`dd.motion.tile.label`) | L1, E2E, L7 | §3.5, x-07 screenshot | Not run |
-| 11 | DD-903 | Running indicator on the inner side (`docs/design.md` §4.2); its look per `docs/design.md` §7 | L1, L6 | §3.5, §9.3 | Not run (look blocked on design.md §7) |
+| 11 | DD-903 | Running indicator on the inner side (`docs/design.md` §4.2); its look per `docs/design.md` §7.1 (4 pt white dot, inner side) | L1, L6 | §3.5, §9.3 | Not run |
 | 12 | DD-910 (subset) | Cards: Reveal on Left, Reveal on Right, Reveal at Bottom (beta), Pinned, Reveal at Top (beta) (`docs/plan.md` T17) | E2E | x-13 | Not run |
 | 13 | DD-910 | Recommended badge follows the native Dock edge (bottom → Reveal on Left) | L1, E2E | §3.6 Defaults, x-13 | Not run |
 | 14 | DD-910 | A card applies all its settings in one step and shows a 2 s hint at the edge | L1, E2E | §3.6 Scenario cards, x-13 | Not run |
@@ -484,7 +484,7 @@ Status on 2026-10-15: nothing is implemented, so every row is **Not run**. "x" =
 | 48 | NFR-2 | RSS ≤ 120 MB with one Edge Dock; 0 leaks after 100 cycles | L5 | §6 | Not run |
 | 49 | NFR-4 | Dwell → reveal start ≤ show delay + 16 ms (p95, 50 trials) | L5 | §6 | Not run |
 | 50 | Perf | Pointer sample ≤ 20 µs p99; cold launch → armed ≤ 400 ms; 0 dropped frames at 60 Hz | L5 | §6 | Not run |
-| 51 | Visual | Placement, sizing, distinctness table signed; `docs/design.md` pixel check within tolerance | L6 | §9 | Not run (blocked on design.md §7) |
+| 51 | Visual | Placement, sizing, distinctness table signed; `docs/design.md` pixel check within tolerance | L6 | §9 | Not run |
 | 52 | Clean-room | PR lists "Sources consulted"; no DockDoor code or strings | review | `docs/organization.md` | Not run |
 
 Rows added because `docs/plan.md` §4.1 puts them in M1 scope (beyond the brief's list):
@@ -494,7 +494,7 @@ Rows added because `docs/plan.md` §4.1 puts them in M1 scope (beyond the brief'
 | 53 | DD-1141 (beta) | Top edge: reveals below the menu bar, never over it; zone spans only the dock's length, excludes the notch and status items; with an auto-hiding menu bar only ⌥ reveals | L1, E2E | §3.2 top rows, x-18 | Not run |
 | 54 | DD-941 (partial) | Dock on the main display, falls back to the built-in display when it is disconnected | L2 | §4 "Display removed while shown" | Not run |
 | 55 | DD-991 / DD-992 (partial) | Native Dock prefs read only, never written; change picked up within 1 s; bottom dock sits above a visible native Dock with its span excluded | L1, L2, E2E | §3.2 bottom rows, REG-006, x-18 | Not run |
-| 56 | DD-978 (basic) | Basic appearance renders the `docs/design.md` style in light and dark, with its Reduce Transparency solid form | L6 | §9.3 | Not run (blocked on design.md §7) |
+| 56 | DD-978 (basic) | Basic appearance renders the `docs/design.md` style in light and dark, with its Reduce Transparency solid form | L6 | §9.3 | Not run |
 | 57 | DD-814 (subset) | Edge trace logs every transition with monotonic time, position, zone and inhibitors; no window titles | L2, E2E | LOG checks in §7 | Not run |
 
 M1 is done when rows 1–57 are Pass, Waived with user approval, or Deferred with a reason (the visual parts of rows 11, 51 and 56 wait for `docs/design.md` §7; row 36's E2E waits for a second display).
