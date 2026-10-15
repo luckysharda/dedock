@@ -8,6 +8,11 @@ updates:
     directory: /docker
     schedule: { interval: weekly }
     target-branch: develop
+    ignore:
+      # Swift stays pinned to the package's swift-tools-version (docs/ci-cd.md §3);
+      # move it on purpose, together with Package.swift.
+      - dependency-name: swift
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: swift
     directory: /
     schedule: { interval: weekly }
