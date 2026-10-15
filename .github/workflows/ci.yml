@@ -25,7 +25,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: filter
         uses: dorny/paths-filter@v3
         with:
@@ -47,7 +47,7 @@ jobs:
     name: guards
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: ci/guards.sh
 
   docs:
@@ -56,7 +56,7 @@ jobs:
     if: needs.changes.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Markdown lint (Docker)
         run: docker compose -f docker/compose.yml run --rm docs-lint
       - name: Relative link check
@@ -74,8 +74,9 @@ jobs:
     # (docs/ci-cd.md §4). Flip the repo variable LINUX_CORE_REQUIRED to "true" afterwards.
     continue-on-error: ${{ vars.LINUX_CORE_REQUIRED != 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Platform-neutral logic tests in swift:6.2 (Docker)
+        if: hashFiles('Package.swift') != ''
         run: docker compose -f docker/compose.yml run --rm linux-core
 
   macos:
@@ -88,20 +89,29 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Package present?
+        if: hashFiles('Package.swift') == ''
+        run: echo "::notice::No Package.swift on this ref yet; Swift steps skipped"
       - name: Toolchain
+        if: hashFiles('Package.swift') != ''
         # CI compiles with the runner's Swift 6.2 on purpose: anything that only builds with
         # the local 6.4 toolchain must fail here, loudly (docs/ci-cd.md §3).
         run: ci/macos-toolchain.sh
       - name: Build (debug)
+        if: hashFiles('Package.swift') != ''
         run: swift build --build-tests
       - name: Unit tests (swift-testing)
+        if: hashFiles('Package.swift') != ''
         run: swift test --skip-build --parallel
       - name: Build release
+        if: hashFiles('Package.swift') != ''
         run: swift build -c release
       - name: Assemble Dedock.app
+        if: hashFiles('Package.swift') != ''
         run: ci/build-app.sh release
       - uses: actions/upload-artifact@v4
+        if: hashFiles('Package.swift') != ''
         with:
           name: Dedock-${{ github.sha }}
           path: build/Dedock-*.zip

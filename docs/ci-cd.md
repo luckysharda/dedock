@@ -29,6 +29,8 @@ Files: `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.github/dep
 
 - CI compiles with the macOS 26 runner's **Swift 6.2**, which equals `swift-tools-version: 6.2`. Local development uses Swift 6.4 (Command Line Tools). Anything that needs a newer compiler fails in CI loudly; we do not pin a newer Xcode to hide it.
 - `ci/macos-toolchain.sh` fails if the compiler is older than the package's tools version.
+- The hosted `macos-26` image currently ships Xcode 26.6 / Swift 6.3.3 (first run, 2026-10-15), newer than the 6.2 floor; the floor check still guards older images.
+- Swift steps are skipped on refs without `Package.swift` (e.g. docs-only branches).
 - The Linux image is pinned to `swift:6.2-noble` for the same reason. Dependabot proposes image and action bumps weekly against `develop`.
 
 ## 4. Linux portability rule (needed for `linux-core`)
