@@ -23,7 +23,7 @@ acquire)
     printf 'owner=%s\nlane=%s\npurpose=%s\nstarted=%s\n' $owner $lane $purpose "$(now)" > $LOCK/info
     echo "acquired"
   else
-    echo "held:"; cat $LOCK/info 2>/dev/null; exit 1
+    echo "held:"; cat $LOCK/info $LOCK/owner 2>/dev/null; exit 1
   fi ;;
 touch)
   [[ -d $LOCK ]] || { echo "not held"; exit 1 }
@@ -31,15 +31,17 @@ touch)
 release)
   owner=${2:?owner}
   [[ -d $LOCK ]] || { echo "not held"; exit 0 }
-  if grep -qx "owner=$owner" $LOCK/info 2>/dev/null; then
+  if grep -qx "owner=$owner" $LOCK/info 2>/dev/null || grep -qx "$owner" $LOCK/owner 2>/dev/null; then
     rm -r $LOCK; echo "released"
   else
     echo "held by someone else:"; cat $LOCK/info; exit 1
   fi ;;
 status)
   if [[ -d $LOCK ]]; then
-    cat $LOCK/info
-    echo "age_s=$(( $(date +%s) - $(stat -f %m $LOCK/info) ))"
+    # Holders write `info` (this script) or `owner` (other sessions' tooling); show whichever exists.
+    f=$LOCK/info; [[ -f $f ]] || f=$LOCK/owner; [[ -f $f ]] || f=$LOCK
+    [[ -f $f ]] && { cat $f; echo } || echo "owner=unknown (no info/owner file)"
+    echo "age_s=$(( $(date +%s) - $(stat -f %m $f) ))"
   else
     echo "free"
   fi ;;

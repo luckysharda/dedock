@@ -9,7 +9,8 @@
 # x-05b reverse a reveal (launch with --set 'docks[0].reveal.hideDelayMs=0') ·
 # x-06 rapid crossings (launch with --frame-log) · perf-move (60 s circles + CPU).
 #
-# The caller must hold the desktop lock (Scripts/e2e/desktop-lock.sh): this moves
+# The caller must hold the desktop lock as $DEDOCK_LOCK_OWNER (default dedock-app-f1;
+# Scripts/e2e/desktop-lock.sh): this moves
 # the real cursor. A listener records every input event during the scenario; any
 # input the driver did not post fails the run as contaminated.
 # Output: build/e2e/runs/<run-id>/<scenario>-<edge>/ (driver.txt, listen.txt, report.txt)
@@ -29,8 +30,10 @@ R=$B/runs/$run
 source $R/run.env
 if (( ! dry )); then
   kill -0 $APP_PID 2>/dev/null || { echo "app (pid $APP_PID) is not running" >&2; exit 2 }
+  # The lock must be held by THIS session, not merely by someone.
+  me=${DEDOCK_LOCK_OWNER:-dedock-app-f1}
   lock_owner=$($HARNESS/Scripts/e2e/desktop-lock.sh status | sed -n 's/^owner=//p')
-  [[ -n $lock_owner ]] || { echo "take the desktop lock first (desktop-lock.sh acquire ...)" >&2; exit 2 }
+  [[ $lock_owner == $me ]] || { echo "desktop lock is held by '${lock_owner:-nobody}', not '$me': acquire it first (desktop-lock.sh acquire $me e2e ...)" >&2; exit 2 }
 fi
 
 for tool in pointer listen analyze; do

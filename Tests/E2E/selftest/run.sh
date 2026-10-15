@@ -14,6 +14,13 @@ T=$B/selftest
 mkdir -p $B $T
 rm -rf $T/* $B/runs/selftest-*
 fails=0
+# Never leak an app or a log stream, even if a check or a teardown fails midway.
+cleanup() {
+  for env in $B/runs/selftest-*/run.env(N); do
+    ( source $env; kill $APP_PID $LOG_PID 2>/dev/null )
+  done
+}
+trap cleanup EXIT
 check() { if eval "$2"; then echo "PASS $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi }
 
 echo "-- build"
@@ -80,6 +87,7 @@ check "teardown + REG-006" "Scripts/e2e/teardown.sh selftest-launch > $T/teardow
 check "processes stopped" "! pgrep -f 'fake-dock serve|runs/selftest-launch' >/dev/null"
 check "x-06 refuses a run without hideDelay 0" "Scripts/e2e/launch.sh selftest-x06 --bin $B/fake-dock >/dev/null && ! Scripts/e2e/scenario.sh selftest-x06 L x-06 dry=1 >/dev/null 2>&1; Scripts/e2e/teardown.sh selftest-x06 >/dev/null"
 check "x-06 accepts hideDelayMs 0 from the seed" "Scripts/e2e/launch.sh selftest-x06ok --bin $B/fake-dock --seed $T/seed.json --set 'docks[0].reveal.hideDelayMs=0' >/dev/null && Scripts/e2e/scenario.sh selftest-x06ok L x-06 dry=1 | grep -q 'hide=0'; Scripts/e2e/teardown.sh selftest-x06ok >/dev/null"
+check "scenario refuses a lock held by someone else" "Scripts/e2e/launch.sh selftest-lock --bin $B/fake-dock >/dev/null && DEDOCK_LOCKS=$T/locks Scripts/e2e/desktop-lock.sh acquire someone-else e2e test >/dev/null && DEDOCK_LOCKS=$T/locks DEDOCK_LOCK_OWNER=dedock-app-f1 Scripts/e2e/scenario.sh selftest-lock L x-01 n=1 2>&1 | grep -q \"held by 'someone-else'\"; DEDOCK_LOCKS=$T/locks Scripts/e2e/desktop-lock.sh release someone-else >/dev/null; Scripts/e2e/teardown.sh selftest-lock >/dev/null"
 check "scenario dry run" "Scripts/e2e/launch.sh selftest-dry --bin $B/fake-dock >/dev/null && Scripts/e2e/scenario.sh selftest-dry L x-01 n=2 dry=1 | grep -q 'edge left' ; Scripts/e2e/teardown.sh selftest-dry >/dev/null"
 
 echo
