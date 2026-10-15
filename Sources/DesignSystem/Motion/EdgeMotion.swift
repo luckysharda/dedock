@@ -1,6 +1,6 @@
 import QuartzCore
 
-/// Edge Dock motion constants (`dedock-inputs/animation-spec.md` §2.1, settled; not placeholders).
+/// Edge Dock motion constants (docs/architecture.md §6.5 motion table; settled values, not placeholders).
 public enum EdgeMotion {
     /// `motion.edge.reveal` as a CASpringAnimation: mass 1, stiffness 910, damping 60.3
     /// (critically damped, ω ≈ 30.17 rad/s, 99 % settled at 0.22 s, no overshoot).
