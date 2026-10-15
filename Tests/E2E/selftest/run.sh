@@ -30,6 +30,14 @@ if holder=$(Scripts/e2e/desktop-lock.sh real-holder); then
 fi
 export DEDOCK_LOCK_OWNER=selftest-owner   # no default owner anywhere (review of #12)
 export DEDOCK_SELFTEST=1                  # fake bundle ids and private locks only; never posts input
+# REG-055: regress.sh refuses while OS pointer sharing is on. Stub that one `defaults` read so the
+# self-test does not depend on this Mac's setting (DEDOCK_STUB_PSHARING=on|off); everything else
+# goes to the real defaults.
+mkdir -p $T/stubbin
+print -r -- '#!/bin/zsh
+if [[ "$*" == "-currentHost read com.apple.universalcontrol Disable" ]]; then [[ ${DEDOCK_STUB_PSHARING:-off} == off ]] && echo 1 || echo 0; exit 0; fi
+exec /usr/bin/defaults "$@"' > $T/stubbin/defaults; chmod +x $T/stubbin/defaults
+export PATH=${T:A}/stubbin:$PATH
 check() { if eval "$2"; then echo "PASS $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi }
 skipped=0
 skip() { echo "SKIP $1 ($2)"; skipped=$((skipped + 1)); }   # a skipped check is never a PASS
@@ -259,6 +267,16 @@ Scripts/e2e/regress.sh run $FA id=selftest-full edges= idle=0 > $T/full.txt 2>&1
 check "REG-052 exit code 1 (gate failed) is a healthy tool run" "grep -q '\"tool\":\"analyze X\",\"rc\":1,\"ok\":true' $B/runs/selftest-full/tools.jsonl && ! grep -q 'FAIL tool analyze' $T/full.txt"
 check "REG-055 self-test run lists the hand-off check and SKIPs it (no input posted)" "grep -qx 'REG-055 no pointer hand-off' $B/runs/selftest-full/expected.txt && grep -q '\"id\": \"REG-055 no pointer hand-off\", \"ok\": false, \"skip\": true' $B/runs/selftest-full/checks.jsonl"
 check "REG-050 a completed run leaves nothing running" "! kill -0 \$(sed -n 's/^APP_PID=//p' $B/runs/selftest-full-X/run.env) 2>/dev/null"
+# REG-055 (review of #22): pointer sharing ON → refuse before any input, no run dir; allow → runs, recorded
+rm -rf $B/runs/selftest-ps*
+$B/listen 6 > $T/ps-listen.txt & pl=$!
+sleep 0.3
+DEDOCK_STUB_PSHARING=on Scripts/e2e/regress.sh run $FA id=selftest-pson edges= idle=0 > $T/pson.txt 2>&1; echo $? > $T/pson.rc
+sleep 0.5; kill $pl 2>/dev/null; wait $pl 2>/dev/null
+check "REG-055 pointer sharing on: refuses (exit 2) before any input, no run" "[[ \$(cat $T/pson.rc) == 2 ]] && grep -q 'refusing: OS pointer sharing across devices is ON' $T/pson.txt && [[ ! -e $B/runs/selftest-pson && ! -e $B/runs/selftest-pson-X ]] && grep -q '^ready ' $T/ps-listen.txt && ! grep -q ' syn=1' $T/ps-listen.txt"
+DEDOCK_STUB_PSHARING=on Scripts/e2e/regress.sh run $FA id=selftest-psallow edges= idle=0 psharing=allow > $T/psallow.txt 2>&1
+check "REG-055 psharing=allow runs and is recorded in env.json and on the scorecard" "grep -q '\"pointer_sharing\": \"on (psharing=allow)\"' $B/runs/selftest-psallow/env.json && grep -q 'OS pointer sharing: on (psharing=allow)' $B/runs/selftest-psallow/scorecard.md"
+rm -rf $B/runs/selftest-ps*
 rm -rf $B/runs/selftest-full*
 check "REG-051 regress refuses a real build without the REAL lock" "grep -q 'does not hold the REAL desktop lock' $T/nolock.txt && [[ ! -e $B/runs/selftest-nolock ]]"
 Scripts/e2e/desktop-lock.sh release $DEDOCK_LOCK_OWNER > /dev/null; unset DEDOCK_LOCKS

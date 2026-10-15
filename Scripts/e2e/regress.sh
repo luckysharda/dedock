@@ -1,7 +1,7 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [dry=1]
 #       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
 #       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
 #       (never committed; no user window is ever in the frame).
@@ -56,8 +56,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing=
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -91,17 +91,26 @@ else
   $E/desktop-lock.sh require $me || exit 2
 fi
 
+# REG-055 preflight, before ANY input: OS pointer sharing across devices has edge zones, so the
+# harness's edge pushes can hand the pointer to another device, and everything it posts next (glides,
+# clicks, presses, drags) then lands there. Same class as REG-051: refuse. It is a user setting and is
+# never changed here; psharing=allow runs anyway (no other device nearby) and is shown on the card.
+psallow=0; [[ $psharing == allow ]] && psallow=1
+psharing=on
+[[ $(defaults -currentHost read com.apple.universalcontrol Disable 2>/dev/null) == 1 ]] && psharing=off
+if [[ $psharing == on ]]; then
+  if (( ! psallow )); then
+    echo "refusing: OS pointer sharing across devices is ON (REG-055): turn it off for this window, or pass psharing=allow if no other device is nearby" >&2
+    exit 2
+  fi
+  echo "WARN REG-055 OS pointer sharing across devices is ON; running anyway (psharing=allow): recorded on the scorecard"
+fi
+
 root=$B/runs/$id
 [[ -e $root ]] && { echo "run exists: $root" >&2; exit 2 }
 mkdir -p $root
 : > $root/index.txt; : > $root/checks.jsonl; : > $root/run-metrics.jsonl; : > $root/tools.jsonl
 run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-log query
-# REG-055 preflight: OS pointer sharing across devices has edge hot zones; the harness's edge pushes
-# can hand the pointer to another device, and its return reads as foreign input (a VOID). It is a
-# user setting (never changed here): warn loudly, and the post-run check below fails on a hand-off.
-psharing=on
-[[ $(defaults -currentHost read com.apple.universalcontrol Disable 2>/dev/null) == 1 ]] && psharing=off
-[[ $psharing == on ]] && echo "WARN REG-055 OS pointer sharing across devices is ON: edge pushes can hand the pointer to another device. Ask the user to turn it off for the window."
 
 # Fail closed (review of #12): every row this run must produce is listed up front; score.py FAILs
 # any that is missing, and every tool's exit code is recorded (tools.jsonl, "tool health").
@@ -162,6 +171,7 @@ json.dump({
   "display": "$($B/pointer screen | sed 's/x=[0-9.]* y=[0-9.]* //')",
   "native_dock": "$(defaults read com.apple.dock orientation 2>/dev/null), autohide=$(defaults read com.apple.dock autohide 2>/dev/null)",
   "refs_running": "$(pgrep -lf 'CoolDock|DockDoor' | wc -l | tr -d ' ')",
+  "pointer_sharing": "$psharing$( [[ $psharing == on ]] && print -n ' (psharing=allow)')",
   "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
 }, open(sys.argv[1], "w"), indent=1)
 EOF
@@ -465,7 +475,13 @@ elif /usr/bin/log show --start "$run_start" --style compact --predicate \
     > $root/pointer-sharing.log 2>/dev/null; then
   handoffs=$(grep -cE 'Move Pointer to IDS|Move Target to Local' $root/pointer-sharing.log || true)
   zones=$(grep -c 'Hot Zone: Activating' $root/pointer-sharing.log || true)
-  check "REG-055 no pointer hand-off" $(( handoffs == 0 )) "OS pointer sharing across devices: $psharing at start; hand-offs during the run: $handoffs; edge-zone activations: $zones"
+  if [[ $psharing == on ]] && (( handoffs == 0 && zones == 0 )); then
+    # With the feature on and edge pushes made, no message at all is suspicious (e.g. reworded by an
+    # OS update): unverifiable, never a PASS (review of #22).
+    check "REG-055 no pointer hand-off" 0 "unverifiable: OS pointer sharing is ON (psharing=allow) and the system log shows no zone or hand-off messages"
+  else
+    check "REG-055 no pointer hand-off" $(( handoffs == 0 )) "OS pointer sharing across devices: $psharing at start; hand-offs during the run: $handoffs; edge-zone activations: $zones"
+  fi
 else
   check "REG-055 no pointer hand-off" 0 "could not read the system log: hand-offs unknown"
 fi
