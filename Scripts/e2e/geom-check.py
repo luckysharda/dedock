@@ -88,7 +88,9 @@ for d in g["docks"]:
              f"{pos[0] - start} / {end - (pos[-1] + lens[-1])} (exp {PAD})")
         gate(pos == sorted(pos), f"{tag} flow order", "model order = visual order (top→bottom / leading→trailing)")
 
-    # Trigger zones: on the physical edge, thickness, span = content ± 40, corner exclusion.
+    # Trigger zones: at least one (an empty list means the dock can't be revealed from this edge,
+    # REG-065), on the physical edge, thickness, span = content ± 40, corner exclusion.
+    gate(bool(d.get("zones")), f"{tag} has a trigger zone", f"{len(d.get('zones', []))} zone(s)")
     for z in d.get("zones", []):
         zx, zy, zw, zh = tl(z["rect"])
         ztag = f"{tag} zone {z['id']} ({z['kind']})"
@@ -104,8 +106,30 @@ for d in g["docks"]:
             span_ok = near(zy, max(cy - SPAN, fy + CORNER)) and near(zy + zh, min(cy + ch + SPAN, fy + fh - CORNER))
             gate(span_ok, f"{ztag} span = capsule ± {SPAN}, clipped by {CORNER} pt corners", f"y {zy}..{zy + zh} vs capsule {cy}..{cy + ch}")
             gate(zy >= vy - 0.01, f"{ztag} below the menu bar", f"zone top {zy} ≥ visibleFrame top {vy}")
+        elif edge == "top":
+            # x-18: the content span ± 40 MINUS status items (and a notch): one or more strips, each inside it
+            lo, hi = max(cx - SPAN, fx + CORNER), min(cx + cw + SPAN, fx + fw - CORNER)
+            gate(zx >= lo - 0.51 and zx + zw <= hi + 0.51, f"{ztag} inside the content span ± {SPAN} (minus status items)", f"x {zx}..{zx + zw} within {lo}..{hi}")
         else:
-            span_ok = near(zx, max(cx - SPAN, fx + CORNER)) and near(zx + zw, min(cx + cw + SPAN, fx + fw - CORNER))
-            gate(span_ok, f"{ztag} span = capsule ± {SPAN}, clipped by {CORNER} pt corners", f"x {zx}..{zx + zw} vs capsule {cx}..{cx + cw}")
+            # bottom: content span ± 40; beside the native Dock (REG-065) the whole edge minus the Dock's
+            # footprint and the corners. Strips stay inside the corners and off the Dock's footprint.
+            nd = (d.get("nativeDock") or s.get("nativeDock") or {}).get("rect")
+            gate(zx >= fx + CORNER - 0.51 and zx + zw <= fx + fw - CORNER + 0.51, f"{ztag} inside the {CORNER} pt corners", f"x {zx}..{zx + zw}")
+            if nd:
+                nx, ny, nw, nh = tl(nd)
+                gate(zx + zw <= nx + 0.51 or zx >= nx + nw - 0.51, f"{ztag} off the native Dock's footprint", f"x {zx}..{zx + zw} vs Dock {nx}..{nx + nw}")
+            else:
+                span_ok = near(zx, max(cx - SPAN, fx + CORNER)) and near(zx + zw, min(cx + cw + SPAN, fx + fw - CORNER))
+                gate(span_ok, f"{ztag} span = capsule ± {SPAN}, clipped by {CORNER} pt corners", f"x {zx}..{zx + zw} vs capsule {cx}..{cx + cw}")
+    if edge == "bottom":
+        nd = (d.get("nativeDock") or s.get("nativeDock") or {}).get("rect")
+        if nd:
+            nx, ny, nw, nh = tl(nd)
+            zl = [tl(z["rect"]) for z in d.get("zones", [])]
+            left_ok, right_ok = any(r[0] + r[2] <= nx + 0.51 for r in zl), any(r[0] >= nx + nw - 0.51 for r in zl)
+            gate(left_ok and right_ok, f"{tag} zone reachable beside the native Dock (REG-065)",
+                 f"strips left of the Dock: {sum(r[0] + r[2] <= nx + 0.51 for r in zl)}, right: {sum(r[0] >= nx + nw - 0.51 for r in zl)}")
+        else:
+            print(f"INFO {tag}: GEOM has no nativeDock footprint; 'zone reachable beside the native Dock' needs it")
 
 sys.exit(1 if fails else 0)

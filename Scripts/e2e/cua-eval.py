@@ -92,7 +92,10 @@ if "style" not in d:
 else:
     chk("C9 dock style tokens", d.get("style") == "darkGlass" and d.get("material") in MATERIALS["darkGlass"],
         f"GEOM style {d.get('style')!r}, material {d.get('material')!r} (exp the default darkGlass / hudWindow)")
-if not os.path.exists(f"{C}/c9-switch.txt"):
+SETTINGS_SIDE = side == "L"   # C8 and the C9 live switch run once per run, on the left launch
+if not SETTINGS_SIDE:
+    pass
+elif not os.path.exists(f"{C}/c9-switch.txt"):
     res.append((f"cua C9 style switch in Settings reaches GEOM {side}", "skip", "pending: run with settings=1 on a build with the Style setting"))
 else:
     sw = first_line(f"{C}/c9-switch.txt")
@@ -107,7 +110,9 @@ C8 = ["C8 Settings window opens", "C8 settings controls labelled", "C8 dock held
 SETTINGS_TITLE = "Dedock Settings"
 CONTROLS = {"AXButton", "AXCheckBox", "AXRadioButton", "AXSlider", "AXPopUpButton", "AXMenuButton",
             "AXTextField", "AXComboBox", "AXIncrementor", "AXSwitch", "AXSegmentedControl"}
-if not os.path.exists(f"{C}/settings-tree.jsonl"):
+if not SETTINGS_SIDE:
+    pass
+elif not os.path.exists(f"{C}/settings-tree.jsonl"):
     for cid in C8: res.append((f"cua {cid} {side}", "skip", "pending: run with settings=1 on a build with the Settings window"))
 else:
     st = rows(f"{C}/settings-tree.jsonl")

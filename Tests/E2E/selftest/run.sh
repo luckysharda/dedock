@@ -375,6 +375,29 @@ check "a private lock dir never counts as the real lock" "! DEDOCK_LOCKS=$T/tloc
 check "touch is owner-checked" "! DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh touch owner-b > /dev/null && DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh touch owner-a > /dev/null"
 DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh release owner-a > /dev/null
 check "pointer release with nothing held" "$B/pointer release | grep -q 'label=released' && $B/pointer mods | grep -q '^mods=0'"
+# x-18 bottom/top: geom-check zone rules beside the native Dock (REG-065), empty zones FAIL
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+def geom(zones, nd=True):
+    return {"screens": [{"id": 1, "main": True, "scale": 1, "frame": {"topLeft": [0, 0, 1920, 1080]}, "visibleFrame": {"topLeft": [0, 30, 1920, 972]}}],
+            "docks": [{"id": "dock-0", "screen": 1, "edge": "bottom", "mode": "reveal", "state": "hidden", "showDwellMs": 120,
+                       "capsule": {"topLeft": [832, 916, 256, 78]}, "panel": {"topLeft": [808, 672, 304, 330]}, "tiles": [],
+                       "zones": [{"id": f"z{i}", "kind": "wall", "rect": {"topLeft": r}} for i, r in enumerate(zones)],
+                       "nativeDock": {"edge": "bottom", "autohide": False, "rect": {"topLeft": [540, 1074, 840, 6]}} if nd else None}]}
+json.dump(geom([[24, 1074, 516, 6], [1380, 1074, 516, 6]]), open(f"{T}/g-both.json", "w"))
+json.dump(geom([[24, 1074, 516, 6]]), open(f"{T}/g-left.json", "w"))
+json.dump(geom([]), open(f"{T}/g-none.json", "w"))
+json.dump(geom([[24, 1074, 600, 6]]), open(f"{T}/g-under.json", "w"))
+PY
+for f in both left none under; do python3 Scripts/e2e/geom-check.py $T/g-$f.json padding=8 gap=8 inset=8 zone=6 > $T/gc-$f.txt; done
+check "x-18 geom-check: zone strips on both sides of the native Dock PASS 'reachable'; one side, none, or under the Dock FAIL" "grep -q '^PASS dock-0 bottom zone reachable beside the native Dock' $T/gc-both.txt && grep -q '^FAIL dock-0 bottom zone reachable beside the native Dock' $T/gc-left.txt && grep -q '^FAIL dock-0 bottom has a trigger zone' $T/gc-none.txt && grep -q \"^FAIL dock-0 bottom zone z0 (wall) off the native Dock's footprint\" $T/gc-under.txt"
+# scenario: a GEOM with zones = [] is a FAIL report (no probe), not a skip or a broken run
+Scripts/e2e/launch.sh selftest-nozone --bin $B/fake-dock --set 'docks[0].edge="bottom"' > /dev/null 2>&1
+sleep 0.3; cp $T/g-none.json $B/runs/selftest-nozone/data/e2e/geometry.json
+Scripts/e2e/scenario.sh selftest-nozone B x-01 n=1 dry=1 > $T/nozone.txt 2>&1; echo $? > $T/nozone.rc
+Scripts/e2e/teardown.sh selftest-nozone > /dev/null 2>&1
+check "x-18 scenario: no trigger zone in GEOM gives a FAIL report (exit 1), never a probe" "[[ \$(cat $T/nozone.rc) == 1 ]] && grep -q 'FAIL trigger zone: GEOM has no zone on the bottom edge' $T/nozone.txt && grep -q 'VERDICT FAIL x-01 bottom' $T/nozone.txt"
 check "scenario dry run" "Scripts/e2e/launch.sh selftest-dry --bin $B/fake-dock >/dev/null && Scripts/e2e/scenario.sh selftest-dry L x-01 n=2 dry=1 | grep -q 'edge left' ; Scripts/e2e/teardown.sh selftest-dry >/dev/null"
 
 echo

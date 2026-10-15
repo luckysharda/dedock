@@ -129,7 +129,12 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
              "cua C1 panel window $t" "cua C1 REG-056 panel AX identity $t" "cua C2 cua-driver sees tiles $t" "cua C3 tiles in AX tree $t" "cua C3 REG-040 tiles are buttons $t" \
              "cua C3 REG-040 tiles pressable $t" "cua C4 status item $t" "cua C5 non-activating $t" "cua C6 click-through while hidden $t" \
              "cua C7 shown tile takes the hit $t" "cua C7 tile cell edge stays in the dock $t" "cua C7 4 pt outside passes through $t" \
-             "cua C8 Settings window opens $t" "cua C8 settings controls labelled $t" "cua C8 dock held shown while Settings is open $t" "cua C8 closing Settings releases the hold $t" "cua C9 dock style tokens $t" "cua C9 style switch in Settings reaches GEOM $t"
+             "cua C9 dock style tokens $t"
+    # Settings rows (C8, the C9 live switch) once per run, on the left launch (x-18 plan)
+    [[ $t == B ]] && print -l "B native Dock span never triggers"
+    [[ $t == T ]] && print -l "T status item area never triggers" "T menu draws above the top dock"
+    [[ $t == L ]] && print -l "cua C8 Settings window opens $t" "cua C8 settings controls labelled $t" "cua C8 dock held shown while Settings is open $t" \
+                              "cua C8 closing Settings releases the hold $t" "cua C9 style switch in Settings reaches GEOM $t"
     for scn in x-01 x-02 x-03 x-04 x-05a x-05b x-06; do print -r -- "$t.$scn-$t"; done
     for sd in $extra_seeds; do print -r -- "$t.x-06-$t-s$sd"; done
     (( shots )) && print -l "shot $t" "REG-006 S$t"
@@ -189,6 +194,7 @@ EOF
 cursor0=($($B/pointer pos | sed 's/[xy]=//g'))
 
 launched() { grep -q '^PASS launched' $1 }
+edge_of() { case $1 in L) print left ;; R) print right ;; B) print bottom ;; T) print top ;; esac }
 launch() {  # launch <sub-run> <launch.sh args…>: registers the sub-run for teardown whatever happens
   local sub=$1; shift; subs+=($sub)
   $E/launch.sh $sub "$@"
@@ -279,14 +285,20 @@ for t in g['docks'][0]['tiles']:
   while read -r name x y; do print -rn -- "{\"tile\":\"$name\",\"hit\":" >> $C/hit-hidden.jsonl; $B/axprobe at $x $y only=$pid | tr -d '\n' >> $C/hit-hidden.jsonl; print "}" >> $C/hit-hidden.jsonl; done < $C/tiles.txt
   $B/axprobe front > $C/front-launch.json
   # C7: reveal by dwell, pointer on a tile → Dedock gets the hit; 4 pt outside the capsule → other app.
-  local probe_y=$(python3 -c "import json;d=json.load(open('$R/data/e2e/geometry.json'))['docks'][0];x,y,w,h=d['capsule']['topLeft'];print(int(y+h/2))")
+  # Probe points per edge (top-left global): along = the capsule centre along the edge; for the
+  # first tile, "outside" = 4 pt past the capsule's inner side and "away" = 400 pt past it.
   local first=($(head -1 $C/tiles.txt))
-  local pts=($(python3 -c "import json;d=json.load(open('$R/data/e2e/geometry.json'))['docks'][0];x,y,w,h=d['capsule']['topLeft'];L=d['edge']=='left';print(x+w+4 if L else x-4, x+w+400 if L else x-400)"))
-  local outside=${pts[1]} away=${pts[2]}
-  local edge=left; [[ $side == R ]] && edge=right
+  local pts=($(python3 -c "
+import json, sys; d = json.load(open(sys.argv[1]))['docks'][0]; x, y, w, h = d['capsule']['topLeft']; e = d['edge']
+tx, ty = float(sys.argv[2]), float(sys.argv[3])
+al = int(y + h / 2) if e in ('left', 'right') else int(x + w / 2)
+o = {'left': (x + w + 4, ty), 'right': (x - 4, ty), 'bottom': (tx, y - 4), 'top': (tx, y + h + 4)}[e]
+a = {'left': (x + w + 400, ty), 'right': (x - 400, ty), 'bottom': (tx, y - 400), 'top': (tx, y + h + 400)}[e]
+print(e, al, *o, *a)" $R/data/e2e/geometry.json ${first[2]} ${first[3]}))
+  local edge=${pts[1]} along=${pts[2]} out=(${pts[3]} ${pts[4]}) awy=(${pts[5]} ${pts[6]})
   $E/desktop-lock.sh touch $me >/dev/null
   moved=1
-  print -l "edge $edge $probe_y" "wait 600" "glide ${first[2]} ${first[3]} 80" "wait 150" > $C/reveal.txt
+  print -l "edge $edge $along" "wait 600" "glide ${first[2]} ${first[3]} 80" "wait 150" > $C/reveal.txt
   $B/pointer -q script $C/reveal.txt
   $B/axprobe at ${first[2]} ${first[3]} only=$pid > $C/hit-shown-tile.json
   # C7 cell edge: inside the first tile's GEOM cell but outside its (smaller) icon/AX frame, 2 pt in
@@ -297,15 +309,15 @@ import json; d = json.load(open('$R/data/e2e/geometry.json'))['docks'][0]; x, y,
 print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (x + w / 2, y + 2), 'top': (x + w / 2, y + h - 2)}[d['edge']])"))
   $B/pointer -q move ${cell[1]} ${cell[2]}; sleep 0.15
   $B/axprobe at ${cell[1]} ${cell[2]} only=$pid > $C/hit-shown-cell.json
-  $B/pointer -q move $outside ${first[3]}; sleep 0.15
-  $B/axprobe at $outside ${first[3]} only=$pid > $C/hit-shown-outside.json
+  $B/pointer -q move ${out[1]} ${out[2]}; sleep 0.15
+  $B/axprobe at ${out[1]} ${out[2]} only=$pid > $C/hit-shown-outside.json
   $B/axprobe front > $C/front-shown.json
-  $B/pointer -q move $away ${first[3]}   # leave: the dock hides before the next step
+  $B/pointer -q move ${awy[1]} ${awy[2]}   # leave: the dock hides before the next step
   sleep 1
   # C8 (settings=1, a build with Settings): openSettings over the debug channel → a titled Settings
   # window from our pid, every control labelled, the dock held shown (editing) while it is open; its
   # own close button (AX press, our window only) releases the hold and the dock hides (pointer away).
-  if (( settings )); then
+  if (( settings )) && [[ $side == L ]]; then   # once per run (x-18 plan): Settings is not per edge
     local SP=$R/log.ndjson
     $B/notify $pid openSettings > /dev/null; tool "notify openSettings $side" $? 0
     sleep 1.5
@@ -322,13 +334,14 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
     $B/axpress press $pid "Dedock Settings" "Dark Glass" > /dev/null 2>&1; sleep 0.6
     # well away from the dock before the close (≥ 60 pt past the capsule + 16 pt hysteresis), so a
     # dock that stays shown can only be the app's doing (review of #27)
-    $B/pointer -q move $away ${first[3]}; sleep 0.2
+    $B/pointer -q move ${awy[1]} ${awy[2]}; sleep 0.2
     $B/axpress close $pid "Dedock Settings" > $C/c8-close-press.txt 2>&1; tool "axpress close Settings $side" $? 0
     sleep 1.2
     python3 $E/log-order.py $SP pid=$pid '^debug[.]command cmd=openSettings ok=true' '^inhibitor .*token=editing on=true' '^inhibitor .*token=editing on=false' '^reveal[.]transition .*to=hidden' > $C/c8-close.txt
     $B/axprobe windows $pid > $C/settings-windows-after.jsonl
   fi
   [[ $side == L ]] && reg062 $R $pid
+  [[ $side == B || $side == T ]] && edge_rows $R $pid $side
   cmp -s $C/geom-pair.json $G || print "relayout during step (GEOM changed after the snapshot; C1/C3 use the paired GEOM)" >> $C/pair.txt
   DEDOCK_REG061=$reg061 python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt 2> $C/cua-eval.err; tool "cua-eval $side" $? 0
   while IFS=$'\t' read -r cid ok detail; do check "$cid" $ok "$detail"; done < $C/results.txt
@@ -364,6 +377,68 @@ print(d.get('showDwellMs', -1), th)" $R/data/e2e/geometry.json $1 2>/dev/null &&
   local nd=$(defaults read com.apple.dock orientation 2>/dev/null || echo bottom) lt=3
   [[ $nd == left ]] && lt=6
   check "$cid" $(( t[1] == 300 && l[1] == 120 && l[2] == lt )) "top: showDwellMs ${t[1]}, zone ${t[2]} pt; left: showDwellMs ${l[1]}, zone ${l[2]} pt (exp 300 → 120, $lt pt with the native Dock at the $nd)"
+}
+
+# x-18 rows for the bottom and top edges. Absence checks count our pid's log lines in a window.
+log_count() {  # log_count <log.ndjson> <pid> <regex> [from-line]: matching lines of that pid after from-line
+  python3 -c "
+import json, re, sys
+rx, pid, start = re.compile(sys.argv[3]), int(sys.argv[2]), int(sys.argv[4]) if len(sys.argv) > 4 else 0
+n = 0
+for i, l in enumerate(open(sys.argv[1])):
+    if i < start or not l.startswith('{'): continue
+    r = json.loads(l)
+    if r.get('processID') == pid and rx.search(r.get('eventMessage', '')): n += 1
+print(n)" "$@" 2>/dev/null || echo -1
+}
+edge_rows() {  # edge_rows <run dir> <pid> <B|T>
+  local R=$1 pid=$2 side=$3 L=$1/log.ndjson G=$1/data/e2e/geometry.json n0 hits
+  if [[ $side == B ]]; then
+    # "native Dock span never triggers": a short dwell + push on the bottom edge at the native Dock's
+    # centre must give no zone entry. Brief: the native Dock may magnify (not ours to judge).
+    local cid="B native Dock span never triggers"
+    local nx=$(python3 -c "
+import json, sys; g = json.load(open(sys.argv[1])); d = g['docks'][0]
+nd = (d.get('nativeDock') or g['screens'][0].get('nativeDock') or {}).get('rect')
+print(int(nd['topLeft'][0] + nd['topLeft'][2] / 2) if nd else '')" $G 2>/dev/null)
+    if [[ -z $nx ]]; then check "$cid" skip "GEOM reports no native Dock footprint on this screen"; return; fi
+    n0=$(wc -l < $L)
+    print -l "edge bottom $nx" "wait 400" "push bottom $nx 6 5 60" "wait 300" "move $nx 400" "wait 300" > $R/ndock-probe.txt
+    $B/pointer -q script $R/ndock-probe.txt
+    hits=$(log_count $L $pid '^edge[.]zoneEnter' $n0)
+    check "$cid" $(( hits == 0 )) "zone entries while dwelling and pushing over the native Dock: $hits"
+  else
+    # "status item area never triggers": a dwell on the top edge over Dedock's OWN status item
+    local cid="T status item area never triggers"
+    local sx=$(python3 -c "
+import json, sys
+for l in open(sys.argv[1]):
+    e = json.loads(l)
+    if e.get('role') == 'AXMenuBarItem' and (e.get('label') or '').lower() == 'dedock' and 'x' in e: print(int(e['x'] + e['w'] / 2)); break" $R/cua/tree.jsonl 2>/dev/null)
+    if [[ -z $sx ]]; then check "$cid" 0 "Dedock's status item not found in the AX tree"
+    else
+      n0=$(wc -l < $L)
+      print -l "edge top $sx" "wait 700" "move $sx 400" "wait 300" > $R/status-probe.txt
+      $B/pointer -q script $R/status-probe.txt
+      hits=$(log_count $L $pid '^edge[.]zoneEnter' $n0)
+      check "$cid" $(( hits == 0 )) "zone entries while dwelling over Dedock's status item: $hits"
+    fi
+    # "menu draws above the top dock": dock shown (debug reveal), our status menu opened through AX;
+    # its window must sit above the dock's level 24. Closed again with AXCancel; dock hidden.
+    cid="T menu draws above the top dock"
+    $B/notify $pid reveal > /dev/null; sleep 0.6
+    $B/axpress menu $pid > $R/menu-open.txt 2>&1; local mrc=$?
+    sleep 0.4
+    $B/axprobe windows $pid > $R/menu-windows.jsonl
+    $B/axpress menu-cancel $pid > /dev/null 2>&1
+    $B/notify $pid hide > /dev/null; sleep 0.5
+    local lv=$(python3 -c "
+import json, sys
+ws = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+m = [w['layer'] for w in ws if w.get('onscreen') and w['layer'] not in (0, 24) and w['w'] > 20]
+print(max(m) if m else -1)" $R/menu-windows.jsonl 2>/dev/null || echo -1)
+    check "$cid" $(( mrc == 0 && lv > 24 )) "status menu opened: $( (( mrc == 0 )) && echo yes || echo no); its window layer: $lv (dock 24)"
+  fi
 }
 
 run_scn() {  # run_scn <sub-run> <L|R> <scenario> [args]; re-runs once if contaminated (VOID)
@@ -507,14 +582,16 @@ notice_run U --unreadable-layout "REG-057 unreadable layout: dock up read-only, 
   '^settings\.readFailed' '^launch\.edgeReady' '^settings\.notice .*kind=readOnly'
 
 for tag in $edge_list; do
-  side=$tag; [[ $tag == R ]] && set_edge=(--set 'docks[0].edge="right"') || set_edge=()
+  side=$tag; [[ $tag == L ]] && set_edge=() || set_edge=(--set "docks[0].edge=\"$(edge_of $tag)\"")
   echo "edge $tag"
   sub=$id-$tag
   if launch $sub --app $app --frame-log $set_edge --timeout 8 > $root/launch-$tag.txt 2>&1 && launched $root/launch-$tag.txt; then
     print -r -- "$tag $sub" >> $root/index.txt
     sleep 1
     rmetric launch.${tag}_ms $(edge_ready_ms $sub)
-    $E/geom-check.py $B/runs/$sub/data/e2e/geometry.json layout=$B/runs/$sub/data/layout.json padding=$padding gap=$gap > $B/runs/$sub/geom.txt 2>&1
+    # zone thickness 3 pt, 6 pt on the native Dock's edge (derived, REG-062)
+    local zt=3; [[ $(defaults read com.apple.dock orientation 2>/dev/null || echo bottom) == $(edge_of $tag) ]] && zt=6
+    $E/geom-check.py $B/runs/$sub/data/e2e/geometry.json layout=$B/runs/$sub/data/layout.json padding=$padding gap=$gap zone=$zt > $B/runs/$sub/geom.txt 2>&1
     tool "geom-check $tag" $?
     gf=$(grep -c '^FAIL' $B/runs/$sub/geom.txt); gp=$(grep -c '^PASS' $B/runs/$sub/geom.txt)
     # fail closed: a crashed or empty geom-check has no PASS lines
@@ -584,7 +661,7 @@ if (( shots )); then
   echo "shots"
   mkdir -p $root/shots
   for tag in $edge_list; do
-    [[ $tag == R ]] && set_edge=(--set 'docks[0].edge="right"') || set_edge=()
+    [[ $tag == L ]] && set_edge=() || set_edge=(--set "docks[0].edge=\"$(edge_of $tag)\"")
     sub=$id-S$tag
     if launch $sub --app $app $set_edge --set 'docks[0].mode="pinned"' --timeout 8 > $root/launch-S$tag.txt 2>&1 && launched $root/launch-S$tag.txt; then
       sleep 1
