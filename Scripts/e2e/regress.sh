@@ -1,7 +1,9 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [dry=1]
+#       reg061=1: gate REG-061 (the tile's AX element is the whole cell): C3 AX frame = GEOM cell ±1 pt,
+#       C7 cell edge = AXButton with the tile's label. Off until a build carries the fix.
 #       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
 #       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
 #       (never committed; no user window is ever in the frame).
@@ -56,8 +58,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing=
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -173,6 +175,7 @@ json.dump({
   "display": "$($B/pointer screen | sed 's/x=[0-9.]* y=[0-9.]* //')",
   "native_dock": "$(defaults read com.apple.dock orientation 2>/dev/null), autohide=$(defaults read com.apple.dock autohide 2>/dev/null)",
   "refs_running": "$(pgrep -lf 'CoolDock|DockDoor' | wc -l | tr -d ' ')",
+  "reg061_gates": "$reg061",
   "pointer_sharing": "$psharing$( [[ $psharing == on ]] && print -n ' (psharing=allow)')",
   "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
 }, open(sys.argv[1], "w"), indent=1)
@@ -236,8 +239,20 @@ cua() {  # cua <sub-run> <L|R>
   local sub=$1 side=$2 R=$B/runs/$1
   local pid=$(sed -n 's/^APP_PID=//p' $R/run.env)
   local C=$R/cua; mkdir -p $C
-  $B/axprobe windows $pid > $C/windows.jsonl; tool "axprobe windows $side" $? 0
-  $B/axprobe tree $pid 6 > $C/tree.jsonl; tool "axprobe tree $side" $? 0
+  # The window list and AX tree are compared with GEOM (C1, C3): snapshot them as a PAIR with GEOM.
+  # A relayout between the two (a display change mid-step, e.g. the visibleFrame moving) compared an
+  # old window frame with a new GEOM (a726ee1 R). Copy GEOM before and after the snapshot; if it
+  # changed in between, retake (up to 3 times) and say so.
+  local G=$R/data/e2e/geometry.json k
+  : > $C/pair.txt
+  for k in 1 2 3; do
+    cp $G $C/geom-before.json 2>/dev/null
+    $B/axprobe windows $pid > $C/windows.jsonl; tool "axprobe windows $side" $? 0
+    $B/axprobe tree $pid 6 > $C/tree.jsonl; tool "axprobe tree $side" $? 0
+    cp $G $C/geom-pair.json 2>/dev/null
+    cmp -s $C/geom-before.json $C/geom-pair.json && break
+    print "relayout during snapshot $k: retaken" >> $C/pair.txt
+  done
   local wid=$(python3 -c "import json,sys
 ws=[json.loads(l) for l in open(sys.argv[1])]; ws=[w for w in ws if w['w']>50 and w['h']>50]
 print(ws[0]['id'] if ws else '')" $C/windows.jsonl)
@@ -278,7 +293,8 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   $B/axprobe front > $C/front-shown.json
   $B/pointer -q move $away ${first[3]}   # leave: the dock hides before the next step
   sleep 1
-  python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt 2> $C/cua-eval.err; tool "cua-eval $side" $? 0
+  cmp -s $C/geom-pair.json $G || print "relayout during step (GEOM changed after the snapshot; C1/C3 use the paired GEOM)" >> $C/pair.txt
+  DEDOCK_REG061=$reg061 python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt 2> $C/cua-eval.err; tool "cua-eval $side" $? 0
   while IFS=$'\t' read -r cid ok detail; do check "$cid" $ok "$detail"; done < $C/results.txt
   check "cua C8 settings labelled $side" skip "pending: needs the debug command openSettings"
 }

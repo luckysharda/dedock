@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-061.**
+Ask the E2E lane for the next free id. **Next free: REG-062.**
 
 ## How the suite runs
 
@@ -79,6 +79,7 @@ Ask the E2E lane for the next free id. **Next free: REG-061.**
 | REG-058 | REG-046 full-display re-holds had no limit: a flapping full-display window turned the probe into a 120 ms poller (#20 review) | unit guard: at most 3 re-holds, then `display.fullscreenUnsettled reholds=3` and wait for the next notification | unit | app |
 | REG-059 | On first launch with folder bookmarks to fill, the first `docks.sync` logged `reason=settings`, never `reason=launch` (re-entrant sync, #20 review) | unit guard; E2E row "REG-059" per launch: the first `docks.sync` after launch is `reason=launch` | regress.sh (log contract) + unit | app |
 | REG-060 | `Scripts/check-deps.sh` failed open when a checked directory (e.g. `Sources/EdgeDock/Logic`) was missing, and misparsed `import struct Foundation.URL` (#21 review) | check-deps self-test (missing dir fails; qualified imports parsed) | script self-test | app tooling |
+| REG-061 | A tile's AX element is its icon (52 pt), not the whole cell that takes the click (`tileFrames`, 62×54), so at the cell edge point-based assistive tech (mouse-follow) finds the dock's content group, not the tile (seen as the C7 cell-edge role on 82d2d69…a726ee1; M1 per the planner) | cua checks with `reg061=1`: C3 AX frame = GEOM cell ±1 pt; C7 cell edge = `AXButton` with the tile's label (reported, not gated, until a build carries the fix) | regress.sh (cua checks) + unit | app |
 
 ## Adding an entry
 

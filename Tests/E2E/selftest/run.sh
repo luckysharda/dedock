@@ -161,6 +161,22 @@ for r in rows:
 open(sys.argv[1], 'w').write(''.join(json.dumps(r) + '\\n' for r in rows))" $T/cua-tiny/tree.jsonl
 python3 Scripts/e2e/cua-eval.py $T/cua-tiny Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-tiny.txt
 check "cua-eval: C3 fails on a degenerate (2x2) AX tile frame" "grep -q \$'^cua C3 tiles in AX tree L\t0' $T/cua-tiny.txt"
+# C1/C3 paired snapshot: GEOM copied with the window list wins over a later (relayouted) GEOM file
+rm -rf $T/cua-pair; cp -R Tests/E2E/selftest/cua-fixture $T/cua-pair
+python3 -c "
+import json, sys
+g = json.load(open(sys.argv[1])); g['docks'][0]['panel']['topLeft'][1] -= 1; json.dump(g, open(sys.argv[2], 'w'))" Tests/E2E/selftest/cua-geom.json $T/cua-geom-moved.json
+python3 Scripts/e2e/cua-eval.py $T/cua-pair $T/cua-geom-moved.json 99 L > $T/cua-race.txt
+cp Tests/E2E/selftest/cua-geom.json $T/cua-pair/geom-pair.json; print 'relayout during step (GEOM changed after the snapshot; C1/C3 use the paired GEOM)' > $T/cua-pair/pair.txt
+python3 Scripts/e2e/cua-eval.py $T/cua-pair $T/cua-geom-moved.json 99 L > $T/cua-paired.txt
+check "cua-eval: C1 unpaired race fails, paired snapshot passes and says so" "grep -q \$'^cua C1 panel window L\t0' $T/cua-race.txt && grep -q \$'^cua C1 panel window L\t1.*paired snapshot.*relayout during step' $T/cua-paired.txt"
+# REG-061 gates (DEDOCK_REG061=1): C3 = whole cell; C7 cell edge = AXButton with the tile label
+DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py Tests/E2E/selftest/cua-fixture Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061.txt
+DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py $T/cua-tiny Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061-tiny.txt
+rm -rf $T/cua-061b; cp -R Tests/E2E/selftest/cua-fixture $T/cua-061b
+print -r -- '{"pid":99,"role":"AXButton","label":"Calculator","other_app":false}' > $T/cua-061b/hit-shown-cell.json
+DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py $T/cua-061b Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061b.txt
+check "cua-eval: REG-061 gates (C3 whole cell; C7 cell edge needs the tile's AXButton)" "grep -q \$'^cua C3 tiles in AX tree L\t1.*REG-061' $T/cua-061.txt && grep -q \$'^cua C3 tiles in AX tree L\t0' $T/cua-061-tiny.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t0' $T/cua-061.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t1' $T/cua-061b.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t1.*REG-061 pending' $T/cua.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id

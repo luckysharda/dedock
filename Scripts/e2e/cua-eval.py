@@ -9,7 +9,11 @@ cua-state.json from cua-driver get_window_state.
 """
 import json, sys, os
 C, geom, pid, side = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
-g = json.load(open(geom)); d = g["docks"][0]
+# GEOM taken as a pair with the window list / AX tree (regress.sh cua step); else the given file.
+paired = os.path.exists(f"{C}/geom-pair.json")
+g = json.load(open(f"{C}/geom-pair.json" if paired else geom)); d = g["docks"][0]
+notes = [l.strip() for l in open(f"{C}/pair.txt")] if os.path.exists(f"{C}/pair.txt") else []
+pair_note = (" [" + "; ".join(notes) + "]") if notes else ""
 tiles = {t["name"]: t["frame"]["topLeft"] for t in d["tiles"]}
 def rows(f): return [json.loads(l) for l in open(f) if l.strip()]
 res = []
@@ -23,7 +27,7 @@ tree = rows(f"{C}/tree.jsonl")
 PANEL_SUBROLE, PANEL_LABEL = "AXFloatingWindow", "Edge Dock"
 wins = [e for e in tree if e.get("depth") == 0 and e.get("role") == "AXWindow"]
 wsub = sorted({f"{e.get('subrole') or '-'} '{e.get('label', '')}'" for e in wins})
-chk("C1 panel window", ok, f"{len(ws)} window(s); layer {ws[0]['layer'] if ws else '-'} (exp 24); frame {[ws[0][k] for k in ('x','y','w','h')] if ws else '-'} vs GEOM {[px,py,pw,ph]}")
+chk("C1 panel window", ok, f"{len(ws)} window(s); layer {ws[0]['layer'] if ws else '-'} (exp 24); frame {[ws[0][k] for k in ('x','y','w','h')] if ws else '-'} vs GEOM {[px,py,pw,ph]}{' (paired snapshot)' if paired else ''}{pair_note}")
 chk("C1 REG-056 panel AX identity", len(wins) == 1 and wins[0].get("subrole") == PANEL_SUBROLE and wins[0].get("label") == PANEL_LABEL,
     f"AX window subrole/label: {', '.join(wsub) or 'no AXWindow'} (exp AXWindow {PANEL_SUBROLE} '{PANEL_LABEL}')")
 tl = [e for e in tree if e.get("label") in tiles and e.get("depth", 0) >= 1]
@@ -37,9 +41,16 @@ def inside_centred(e, f):
     return ex >= x - 1 and ey >= y - 1 and ex + ew <= x + w + 1 and ey + eh <= y + h + 1 \
         and abs((ex + ew / 2) - (x + w / 2)) <= 2 and abs((ey + eh / 2) - (y + h / 2)) <= 2 \
         and ew >= MIN_FRAC * w and eh >= MIN_FRAC * h
-frames_ok = all(any(inside_centred(e, tiles[n]) for e in tl if e["label"] == n) for n in tiles)
+# REG-061 (DEDOCK_REG061=1, once the fix is in the build): the tile's AX element IS the whole cell
+# (the click target), so its frame must equal the GEOM tile frame within 1 pt.
+REG061 = os.environ.get("DEDOCK_REG061") == "1"
+def whole_cell(e, f):
+    return all(abs(a - b) <= 1 for a, b in zip((e.get(k, -999) for k in ("x", "y", "w", "h")), f))
+fit = whole_cell if REG061 else inside_centred
+frames_ok = all(any(fit(e, tiles[n]) for e in tl if e["label"] == n) for n in tiles)
+fit_text = "AX frame = GEOM cell ±1 pt (REG-061)" if REG061 else f"AX frame inside, centred and >= {MIN_FRAC:.0%} of the GEOM tile"
 sizes = sorted({f"{e.get('w')}x{e.get('h')} in {tiles[e['label']][2]}x{tiles[e['label']][3]}" for e in tl})
-chk("C3 tiles in AX tree", len({e["label"] for e in tl}) == len(tiles) and frames_ok, f"{len({e['label'] for e in tl})}/{len(tiles)} tiles labelled with their app name; AX frame inside, centred and >= {MIN_FRAC:.0%} of the GEOM tile: {frames_ok} (AX vs tile size: {', '.join(sizes)})")
+chk("C3 tiles in AX tree", len({e["label"] for e in tl}) == len(tiles) and frames_ok, f"{len({e['label'] for e in tl})}/{len(tiles)} tiles labelled with their app name; {fit_text}: {frames_ok} (AX vs tile size: {', '.join(sizes)})")
 roles = sorted({e.get("role") for e in tl})
 chk("C3 REG-040 tiles are buttons", tl and all(e.get("role") == "AXButton" for e in tl), f"tile roles: {roles} (exp AXButton)")
 acts = sorted({a for e in tl for a in e.get("actions", [])})
@@ -61,8 +72,12 @@ first = next(iter(tiles))
 chk("C7 shown tile takes the hit", t.get("pid") == pid and t.get("label") == first, f"pointer on '{first}': hit {'Dedock' if t.get('pid') == pid else 'other app'}, label '{t.get('label', '')}'")
 try:
     ce = json.load(open(f"{C}/hit-shown-cell.json"))
-    chk("C7 tile cell edge stays in the dock", ce.get("pid") == pid,
-        f"2 pt inside the '{first}' cell, outside its icon: hit {'Dedock' if ce.get('pid') == pid else 'other app'} ({ce.get('role') or '-'} '{ce.get('label', '')}')")
+    # REG-061: once the tile's AX element is the whole cell, the cell edge must find the tile itself
+    # (AXButton with its label), not just "somewhere in the dock" (the content AXGroup today).
+    ok = ce.get("pid") == pid and (not REG061 or (ce.get("role") == "AXButton" and ce.get("label") == first))
+    chk("C7 tile cell edge stays in the dock", ok,
+        f"2 pt inside the '{first}' cell, outside its icon: hit {'Dedock' if ce.get('pid') == pid else 'other app'} ({ce.get('role') or '-'} '{ce.get('label', '')}')"
+        + (" (REG-061: exp AXButton '" + first + "')" if REG061 else " (REG-061 pending: role reported, not gated)"))
 except Exception as ex:
     chk("C7 tile cell edge stays in the dock", False, f"not probed or unreadable: {type(ex).__name__}")
 chk("C7 4 pt outside passes through", o.get("pid") != pid, f"4 pt outside the capsule: hit {'Dedock' if o.get('pid') == pid else 'other app'}")

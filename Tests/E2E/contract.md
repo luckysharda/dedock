@@ -53,13 +53,13 @@ Every message starts with the **event name**, then space-separated `key=value` p
 | `tiles` | `tile.indicator` | `bundle`, `state` (none/running/frontmost/hidden) | indicator re-rendered |
 | `tiles` | `tile.reorder` | `id`, `from`, `to` | drop that changes the order |
 | `tiles` | `tile.reorderCancelled` | `id`, `reason` (relayout) | a reorder drag in progress was cancelled because the tile layout changed under it |
-| `settings` | `settings.changed` | `key`, `value`, `scenario` | any settings write |
+| `settings` | `settings.changed` | `key`, `value`, `scenario` | a settings write; logged before the resulting `docks.sync reason=settings`. **Emitted today only for `key=dd.dock.style`** (value darkGlass/black/lightGlass, once per dock whose style changed; Settings branch). Other keys don't log it yet |
 | `settings` | `settings.recovered` | `source` (backup/default), `moved` (file name) | a corrupt `layout.json` was moved aside (REG-036) |
 | `settings` | `settings.notice` | `kind` (recovered/readOnly) | a launch notice is posted, always AFTER `launch.edgeReady` (REG-036, REG-057) |
 | `settings` | `settings.readFailed` | `readOnly` (true) | `layout.json` unreadable (I/O error); left in place, not treated as corrupt; the app runs read-only (REG-036, REG-057) |
 | `display` | `display.fullscreenUnsettled` | `reholds` (3) | the full-display probe gave up re-holding a flapping window; waits for the next notification (REG-058) |
 | `pointer` | `pointer.mode` | `mode` (monitors/menuTimer) | swap to or from the 30 Hz menu-tracking timer |
-| `app` | `docks.sync` | `reason` (launch/displays/dockPrefs/settings/statusItems/reduceMotion), `docks` (count) | the set of Edge Docks is re-synced |
+| `app` | `docks.sync` | `reason` (launch/displays/dockPrefs/settings/statusItems/reduceMotion/appearance), `docks` (count); `appearance` = a Light/Dark switch (label colours follow the system; the style is unchanged) | the set of Edge Docks is re-synced |
 
 The harness matches on the event name at the start of `eventMessage`; extra keys may be added freely, but renaming or removing one is a contract change.
 
