@@ -32,6 +32,9 @@ import SwiftUI
     public let container: NSView
     let model: DockViewModel
     private let hosting: NSHostingView<DockContentView>
+    /// Where point-based accessibility hit tests go: the SwiftUI content, which owns the tile
+    /// elements. A seam for the REG-054 guard.
+    var accessibilityContent: NSView
     /// Screen-space hit test, supplied by the gate.
     var accepts: ((CGPoint) -> Bool)?
     var onTileClick: ((TileID) -> Void)?
@@ -41,6 +44,7 @@ import SwiftUI
         self.model = model
         container = NSView(frame: CGRect(origin: .zero, size: frame.size))
         hosting = NSHostingView(rootView: DockContentView(model: model))
+        accessibilityContent = hosting
         super.init(frame: frame)
         wantsLayer = true
         layer?.masksToBounds = true
@@ -60,6 +64,13 @@ import SwiftUI
         guard let window else { return nil }
         let screen = window.convertPoint(toScreen: convert(point, to: nil))
         return (accepts?(screen) ?? false) ? self : nil
+    }
+
+    /// `hitTest` returns this view so it can route clicks, and AppKit's default accessibility hit
+    /// test follows it, so VoiceOver mouse-follow and hover speech found the window instead of
+    /// the tile buttons (REG-054). Point-based assistive hit tests go to the SwiftUI content.
+    override public func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        accessibilityContent.accessibilityHitTest(point) ?? super.accessibilityHitTest(point)
     }
 
     override public func mouseDown(with event: NSEvent) {

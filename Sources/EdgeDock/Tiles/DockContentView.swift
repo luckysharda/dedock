@@ -99,8 +99,7 @@ struct TileView: View {
             }
         }
         .frame(width: size.width, height: size.height)
-        .accessibilityElement()
-        .accessibilityLabel(tile.name)
+        .dockTileAccessibility(tile, model: model)
     }
 
     /// Indicators sit on the inner side, toward the screen centre (DD-903 item 4).
