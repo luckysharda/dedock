@@ -4,6 +4,45 @@ Newest entry first. Each entry: done, in progress, next, blockers and notes, the
 
 ---
 
+## 2026-10-16
+
+### Done: M1 candidate stack merged
+
+| PR | Content | Merged |
+|---|---|---|
+| #16 | No `<private>` suffix on debug lines (REG-043) | `d499bc8` |
+| #15 | Tile accessibility: tiles are AX buttons (REG-040); point AX hit tests reach the tile buttons, not the window (REG-054) | `4786791` |
+| #11 | E1 Capsule in Dark Glass | `4344b90` |
+| #13 | Edge Dock behaviour (full-screen dwell, top-edge exclusions, reorder, drop to pin) | `a0d0c8d` |
+| #18 | E2E harness follow-ups: tool-health ok-codes and `--retool` (REG-052), self-test isolation (REG-053), C3 inside-and-centred, x-00 new prompts only, `axprobe at` parent chain | `b67818a` |
+
+`develop` = `b67818a`. After #13 the tree equals the audited candidate `82d2d69` plus #12.
+
+### M1 candidate result (`82d2d69`, both side edges)
+
+| Result | Detail |
+|---|---|
+| Scenarios | 21/21 PASS, 0 VOID |
+| Checks | 52/52; 2 SKIP (cua C8, needs the `openSettings` debug command) |
+| Tool health | OK |
+| Baseline | the owner approved re-baselining from this run (E2E lane's follow-up branch) |
+
+The earlier `db65db3` run's single VOID (a pointer move during x-06) was traced to the system's pointer-sharing feature answering the harness's synthetic edge pushes (harness REG-055). The product question it raises is open as DD-934 (#19).
+
+### Open before M1 sign-off
+
+| Item | Owner |
+|---|---|
+| x-00 counts a permission prompt as new by window id (snapshot before launch), not by the start time of its host process: the start-time rule can fail open (#18 review) | E2E lane, **required** |
+| REG-051 self-test listener check also requires the listener's `ready` line | E2E lane |
+| C3: lower bound on the AX frame size (≥ icon size − 2 pt); C7: one more probe point at the tile cell edge | E2E lane |
+| `tile.reorderCancelled` (contract) has no emitter yet: lands with the #13 follow-up "cancel reorder on relayout" | implementer |
+| `openSettings` debug command (cua C8 SKIP) | implementer |
+| AX hit test honours the click-through gate outside the capsule (#15 review) | implementer |
+| DD-934 pointer-sharing edges: (a) leave, (b) per-edge setting (proposed), (c) detect; owner decides (#19) | owner |
+
+---
+
 ## 2026-10-15
 
 ### Done
@@ -27,13 +66,28 @@ Newest entry first. Each entry: done, in progress, next, blockers and notes, the
 
 | PR | Content | State |
 |---|---|---|
-| #7 | M1 Edge Dock reveal (placeholder visuals); REG-027/028/029/039 fixed | merged `7a160cc`; `regress.sh` 21/21 |
+| #7 | M1 Edge Dock reveal (placeholder visuals); REG-027/028/029/039 | merged `7a160cc`; `regress.sh` 21/21 |
 | #9 | Regression policy + CI regression step (macOS + Linux) | merged `52930e6`; both steps ran the REG suites |
-| #10 | `fix/release-log-privacy` (REG-030) | planner: approve once CI green |
-| #11 | `feature/edge-dock-design`: E1 Capsule in Dark Glass (design.md §7.1) | planner: approve once CI green; follow-ups: style setting, appearance re-apply, edit badges, pixel check |
-| #12 | `test/e2e-harness` (harness + `regress.sh`) | review queued |
-| #13 | `feature/edge-dock-behaviour` (full-screen dwell, top-edge status-item exclusion, ⌘-drag reorder, drop to pin, REG-013…026) | review queued |
-| this PR | architecture reconcile, check-deps.sh, branch kinds | open |
+| #10 | Release log privacy (REG-030) | merged `ced2536` |
+| #14 | Architecture reconcile, check-deps.sh, branch kinds | merged `f407038` |
+| #11 | E1 Capsule in Dark Glass (`design.md` §7.1) | merged `4344b90` (2026-10-16); shown to the owner live on 2026-10-15 (no feedback) |
+| #12 | `test/e2e-harness` (harness + `regress.sh`); fail-closed REG-049, teardown REG-050, real-lock rule REG-051 | merged `f6f1d02` |
+| #13 | Edge Dock behaviour (full-screen dwell, top-edge status-item exclusion, ⌘-drag reorder, drop to pin, REG-013…026) | merged `a0d0c8d` (2026-10-16); follow-ups below |
+| #15 | Tile accessibility (REG-040; REG-054 hit test added 2026-10-16) | merged `4786791` (2026-10-16); live cua C2/C3/C7 pass |
+| #16 | No `<private>` suffix on debug lines (REG-043) | merged `d499bc8` (2026-10-16) |
+
+Merge order for the candidate stack: #16 → #15 → #11 → #13 (then #12). Done; see 2026-10-16.
+
+### Deferred or routed (2026-10-15)
+
+| Item | Decision |
+|---|---|
+| Edit-mode badges (`design.md` §7.1) | deferred to M9 (DD-976) |
+| `dd.dock.style` setting; label colours re-applied on appearance change | implementer's review-followups PR |
+| `openSettings` debug command (unblocks cua C8, now SKIP) | implementer's review-followups PR |
+| Drag-out-to-remove (plan T15(3)) | deferred; #13 cancels instead |
+| #13 follow-ups: REG-021 and REG-023 rewritten to fail with the fix reverted; status-item exclusion refresh; full-screen flag on display change; probe re-check; stricter drop filter; cancel reorder on relayout | implementer's follow-ups |
+| Mid-slide relayout continues smoothly instead of snapping (DD-928) | implementer's follow-ups |
 
 ### Decisions taken today (cross-session)
 
