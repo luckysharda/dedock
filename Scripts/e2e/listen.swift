@@ -33,7 +33,11 @@ _ = NSEvent.addGlobalMonitorForEvents(matching: mask) { e in
     }
     line += " mods=\(e.modifierFlags.intersection(.deviceIndependentFlagsMask).rawValue)"
     // syn=1: posted by Scripts/e2e/pointer (tag 0xDED0C); syn=0: real hardware or another process
-    line += " syn=\(e.cgEvent?.getIntegerValueField(.eventSourceUserData) == 0xDED0C ? 1 : 0)"
+    let syn = e.cgEvent?.getIntegerValueField(.eventSourceUserData) == 0xDED0C
+    line += " syn=\(syn ? 1 : 0)"
+    // REG-055: who posted a foreign event (pid only; the name is resolved locally by scenario.sh,
+    // never written into a scorecard). 0 = the HID system (a real device).
+    if !syn { line += " src=\(e.cgEvent?.getIntegerValueField(.eventSourceUnixProcessID) ?? -1)" }
     print(line)
 }
 

@@ -92,6 +92,9 @@ check "contamination: pointer run with no input fails" "! $B/analyze contaminati
 $B/analyze contamination $T/noready.txt idle=1 > $T/noready-out.txt   # exits 1; read the file (pipefail)
 check "contamination: listener that never started fails, idle too" "! $B/analyze contamination $T/noready.txt idle=1 >/dev/null && ! $B/analyze contamination $T/noready-move.txt >/dev/null && grep -q 'listener never started' $T/noready-out.txt"
 check "contamination: untagged fails" "! $B/analyze contamination $T/untagged.txt >/dev/null"
+printf 'ready mach=0\nmach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1\nmach=2 ev=move x=3 y=1 dx=2 dy=0 mods=0 syn=0 src=945\nmach=3 ev=move x=4 y=1 dx=1 dy=0 mods=0 syn=0 src=945\n' > $T/srcs.txt
+$B/analyze contamination $T/srcs.txt > $T/srcs-out.txt   # exits 1 (foreign input)
+check "REG-055 contamination names the foreign source pid" "grep -q 'foreign sources: pid 945 x2' $T/srcs-out.txt"
 
 echo "-- score.py (verdicts, drift with noise floors, baseline, repo-relative paths)"
 SR=$B/runs
@@ -247,6 +250,7 @@ DEDOCK_SELFTEST=0 Scripts/e2e/regress.sh run ../e2e-target id=selftest-nolock ed
 rm -rf $B/runs/selftest-full*
 Scripts/e2e/regress.sh run $FA id=selftest-full edges= idle=0 > $T/full.txt 2>&1
 check "REG-052 exit code 1 (gate failed) is a healthy tool run" "grep -q '\"tool\":\"analyze X\",\"rc\":1,\"ok\":true' $B/runs/selftest-full/tools.jsonl && ! grep -q 'FAIL tool analyze' $T/full.txt"
+check "REG-055 self-test run lists the hand-off check and SKIPs it (no input posted)" "grep -qx 'REG-055 no pointer hand-off' $B/runs/selftest-full/expected.txt && grep -q '\"id\": \"REG-055 no pointer hand-off\", \"ok\": false, \"skip\": true' $B/runs/selftest-full/checks.jsonl"
 check "REG-050 a completed run leaves nothing running" "! kill -0 \$(sed -n 's/^APP_PID=//p' $B/runs/selftest-full-X/run.env) 2>/dev/null"
 rm -rf $B/runs/selftest-full*
 check "REG-051 regress refuses a real build without the REAL lock" "grep -q 'does not hold the REAL desktop lock' $T/nolock.txt && [[ ! -e $B/runs/selftest-nolock ]]"

@@ -382,11 +382,16 @@ func cmdContamination(_ path: String, idle: Bool) {
     let lines = all.filter { $0.hasPrefix("mach=") }
     let foreign = lines.filter { $0.contains(" syn=0") }
     let untagged = lines.filter { !$0.contains(" syn=") } // listener built before tagging: cannot tell
+    // REG-055: the listener records each foreign event's source pid (src=; 0 = a real device).
+    var counts: [String: Int] = [:]
+    for l in foreign { if let r = l.range(of: " src=") { counts[String(l[r.upperBound...].prefix { $0 != " " }), default: 0] += 1 } }
+    let sources = counts.sorted { $0.key < $1.key }
     metric("foreign_events", Double(foreign.count + untagged.count))
     gate(ready && (idle || !lines.isEmpty) && foreign.isEmpty && untagged.isEmpty, "input contamination\(idle ? " (idle: expect none)" : "")",
          (ready ? "" : "listener never started (no ready line); ")
          + "\(lines.count) events seen, \(foreign.count) not from the driver, \(untagged.count) unverifiable (no syn= field)"
-         + (foreign.first.map { " (first: \($0))" } ?? ""))
+         + (foreign.first.map { " (first: \($0))" } ?? "")
+         + (sources.isEmpty ? "" : "; foreign sources: " + sources.map { "pid \($0.key) x\($0.value)" }.joined(separator: ", ")))
 }
 
 // MARK: - Main

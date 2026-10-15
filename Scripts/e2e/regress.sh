@@ -94,6 +94,13 @@ root=$B/runs/$id
 [[ -e $root ]] && { echo "run exists: $root" >&2; exit 2 }
 mkdir -p $root
 : > $root/index.txt; : > $root/checks.jsonl; : > $root/run-metrics.jsonl; : > $root/tools.jsonl
+run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-log query
+# REG-055 preflight: OS pointer sharing across devices has edge hot zones; the harness's edge pushes
+# can hand the pointer to another device, and its return reads as foreign input (a VOID). It is a
+# user setting (never changed here): warn loudly, and the post-run check below fails on a hand-off.
+psharing=on
+[[ $(defaults -currentHost read com.apple.universalcontrol Disable 2>/dev/null) == 1 ]] && psharing=off
+[[ $psharing == on ]] && echo "WARN REG-055 OS pointer sharing across devices is ON: edge pushes can hand the pointer to another device. Ask the user to turn it off for the window."
 
 # Fail closed (review of #12): every row this run must produce is listed up front; score.py FAILs
 # any that is missing, and every tool's exit code is recorded (tools.jsonl, "tool health").
@@ -110,7 +117,7 @@ mkdir -p $root
     (( shots )) && print -l "shot $t" "REG-006 S$t"
   done
   (( idle )) && print -l "I.idle-L" "REG-006 I"
-  print -l "REG-016 cursor restored" "REG-017 no modifier held" "REG-015 no Dedock left running"
+  print -l "REG-016 cursor restored" "REG-017 no modifier held" "REG-015 no Dedock left running" "REG-055 no pointer hand-off"
 } > $root/expected.txt
 
 tool() {  # tool <name> <rc> [ok-rcs…]: record a tool's exit code (default ok: 0 and 1 = "ran, gate failed")
@@ -443,6 +450,19 @@ mods=$($B/pointer mods)
 check "REG-017 no modifier held" $([[ $mods == mods=0* ]] && echo 1 || echo 0) "$mods"
 left=$(pgrep -x Dedock | tr '\n' ' ')
 check "REG-015 no Dedock left running" $([[ -z $left ]] && echo 1 || echo 0) "${left:-none}"
+# REG-055: did the pointer leave this Mac through OS pointer sharing during the run? Read from the
+# system log (the feature's process logs each hand-off). Fails closed if the log cannot be read.
+if (( selftest )); then
+  check "REG-055 no pointer hand-off" skip "self-test mode posts no input"
+elif /usr/bin/log show --start "$run_start" --style compact --predicate \
+    'process == "UniversalControl" AND (eventMessage CONTAINS "Move Pointer to IDS" OR eventMessage CONTAINS "Move Target to Local" OR eventMessage CONTAINS "Hot Zone: Activating")' \
+    > $root/pointer-sharing.log 2>/dev/null; then
+  handoffs=$(grep -cE 'Move Pointer to IDS|Move Target to Local' $root/pointer-sharing.log || true)
+  zones=$(grep -c 'Hot Zone: Activating' $root/pointer-sharing.log || true)
+  check "REG-055 no pointer hand-off" $(( handoffs == 0 )) "OS pointer sharing across devices: $psharing at start; hand-offs during the run: $handoffs; edge-zone activations: $zones"
+else
+  check "REG-055 no pointer hand-off" 0 "could not read the system log: hand-offs unknown"
+fi
 
 echo
 score $root
