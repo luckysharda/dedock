@@ -238,9 +238,9 @@ A side dock is centred on its display's `visibleFrame`, which moves by a point o
 
 | Item | Behaviour |
 |---|---|
-| Status item | template image (a dock on an edge); click opens a standard `NSMenu` |
+| Status item | template image (a dock on an edge); in M1 a click opens a standard `NSMenu`; from M2 a click opens the **M3 Control panel** (§7.2a), which replaces the menu |
 | Menu (M1, `docs/plan.md` T18) | Show/Hide Edge Dock, Edge ▸ Left / Right / Bottom / Top, Mode ▸ Reveal / Pinned, Keep Dock Open (`pinnedByUser`), Settings… (⌘,), Quit dedock (⌘Q). Later: the ⌃⌥⌘E shortcut (DD-930, M8), Layout menu and Reset Layout (M8), Edit Dock… (DD-976, M9) |
-| Look | system `NSMenu` in every direction (native). The direction may only change the status-item glyph. |
+| Look | M1: system `NSMenu` in every direction (native). M2 and later: the M3 Control panel carries the same items; the direction may only change the status-item glyph and the panel's material (Window material, §7.2). |
 
 ### 5.3 Settings window
 
@@ -315,7 +315,7 @@ The user picked from the reference-based design board: **A2 Frosted** (whole app
 | `dd.dock.divider` | 1 px, 60 % of `t`, `white @ 0.18` | CoolDock thin divider |
 | `dd.dock.indicator` | 4 pt circle, `white @ 0.9`, on the **inner** side, 1 pt outside the tile edge; hidden app = `white @ 0.45` | CoolDock running dot; DD-903 AC4 |
 | Hover | **none on tiles** (CoolDock has no hover indicator); label only | CoolDock |
-| `dd.dock.label` | native-Dock-style tooltip: fill `#202022 @ 0.92` (light: `#F6F6F6 @ 0.95`), text white 12 pt SF Pro Medium (light: `#111`), radius 6 pt, padding 4 × 9 pt, 1 px inner edge `white @ 0.08`, 10 pt from the capsule toward the screen centre; instant, one at a time | macOS Dock tooltip; CoolDock "labels appear instantly" |
+| `dd.dock.label` | **H4 Name and state** (pick, §7.2a): two lines, name 13 pt semibold and state 11 pt `#A0A0A5` (running dot `systemGreen`), fill `#202022 @ 0.94` (light: `#F6F6F6 @ 0.95`, text `#111`), radius 10 pt, padding 8 × 12 pt, 1 px inner edge `white @ 0.08`, 10 pt from the capsule toward the screen centre; instant, one at a time | owner pick 2026-10-16 (was the native-Dock-style tooltip) |
 | Edit mode | red delete badge `#D85058`, 16 pt circle, "–" glyph, top-leading corner of each tile; dashed 1.5 pt `white @ 0.35` outline 3 pt outside the capsule; no jiggle, one frame | CoolDock edit badge |
 
 **Materials (CoolDock's own style options; `dd.dock.style`, default Dark Glass):**
@@ -325,7 +325,9 @@ The user picked from the reference-based design board: **A2 Frosted** (whole app
 | **Dark Glass** (default, A2) | behind-window blur, `.hudWindow`-class material forced `.active`, tint `#121214 @ 0.55`, saturation from the system material (the ≈ 1.6 seen in the reference cannot be set on `NSVisualEffectView`); 1 px inner edge `white @ 0.10`; shadow `0 8 24 black @ 0.25` | `white @ 0.09` + 1 px inner `white @ 0.08` | primary `#FFFFFF`, secondary `#A0A0A5` | wallpaper hue tints through |
 | Black | `#0A0A0A @ 0.92`, blur 10 | `white @ 0.07` + 1 px inner `white @ 0.06` | `#FFFFFF` / `#878787` | CoolDock default in marketing |
 | Light Glass | blur, tint `#EAEDF2 @ 0.55`, 1 px inner `white @ 0.68` | `white @ 0.45` + 1 px inner `white @ 0.55` | `#111111` / `#555555`; dot `black @ 0.7` | |
-| Reduce Transparency | solid `#1C1C1E` (Dark Glass, Black) / `#EAEDF2` (Light Glass) | `#2A2A2C` / `#FFFFFF` | same | forced when the macOS setting is on |
+| **Dark** (owner, 2026-10-16) | solid, no blur: `#1C1C1E`; 1 px inner edge `white @ 0.08`; shadow as Dark Glass | `#2A2A2C` | `#FFFFFF` / `#98989D` | the matte option; also what every dark style becomes under Reduce Transparency |
+| **Liquid Glass** (owner, 2026-10-16) | macOS 26 and later: the system glass material (`NSGlassEffectView`), treated as **LG4 Adaptive** (§7.2a): a dark or a light tint chosen from what is behind the capsule; macOS 14–15: Dark Glass with a specular top rim (`white @ 0.22` → 0 over 40 % of the height) as the stand-in, switching to the Light Glass tint by the same LG4 rule, labelled "Liquid Glass needs macOS 26" in the picker | tiles bare on the glass | follows the tint: Dark Glass text on the dark tint, Light Glass text and `black @ 0.7` running dots on the light tint | forced `.active` in a non-activating panel (R8) |
+| Reduce Transparency | solid `#1C1C1E` (Dark Glass, Black, Dark, Liquid Glass) / `#EAEDF2` (Light Glass) | `#2A2A2C` / `#FFFFFF` | same | forced when the macOS setting is on |
 
 Widget content follows CoolDock: one hero value per tile (SF Pro Semibold 20 pt, tabular digits, tracking −0.02 em), secondary caption 9 pt Medium `#A0A0A5`, data colours from system colours (`systemGreen` for the CPU ring, 4 pt stroke, round caps, track `white @ 0.15`).
 
@@ -348,6 +350,59 @@ Widget content follows CoolDock: one hero value per tile (SF Pro Semibold 20 pt,
 | Settings | DockDoor layout: full-height sidebar (~270 pt) with group labels (Features / Customization / System), accent selection row, content column with UPPERCASE 11 pt section headers and grouped cards (radius 10, dark `#1C1C1C` on `#252421`; light: white cards with a hairline), segmented controls and sliders with value fields; an **Edge Dock** pane under Features | DockDoor settings shell |
 
 Light / Dark / System appearance applies to panels (DD-704); the dock style is chosen separately (CoolDock behaviour).
+
+**Appearance options (owner, 2026-10-16).** Two independent settings:
+
+| Setting | Values | Default | Applies to |
+|---|---|---|---|
+| Dock style (`dd.dock.style`) | Dark Glass, Black, Dark, Light Glass, Liquid Glass | Dark Glass | the Edge Dock capsule, its labels and its panels that grow out of it (P2) |
+| Window appearance | System, Light, Dark | System | Settings, onboarding, notices, permission screens |
+| Window material | Frosted (A2), Liquid Glass (macOS 26 and later; shown with "Needs macOS 26" before that), Solid | Frosted | the same windows; Reduce Transparency forces Solid |
+
+
+### 7.2a App UI picks (owner, 2026-10-16; senses in `docs/design/app-ui/`)
+
+| Surface | Pick | What it fixes |
+|---|---|---|
+| Settings window (T33) | **S1 Sidebar** | full-height sidebar (230 pt; Features, Customization, System), content column of grouped cards, the dock held shown while Settings is open so changes play on the real dock; selection row slides with the snappy spring, panes cross-fade 0.15 s |
+| Notice and confirm panels (REG-057 notice, T25 drag-out confirm) | **P2 Capsule toast** | a 52 pt Dark Glass pill (radius 26) that unrolls from the dock's inner edge beside the tile's slot (confirm), or drops from the menu bar beside Dedock's icon (notice), with the reveal curve 0.22 s; fades out 0.30 s; one line of text; never key, never modal |
+| Hover label (T25, DD-903) | **H4 Name and state** | two lines: name 13 pt semibold, state 11 pt (`● Running · N windows`, `Hidden · N windows`, `Not running`), 10 pt radius, fill `#202022 @ 0.94`; instant, one at a time, toward the screen centre; the state line updates live |
+| Dock size (T25, DD-926) | **Z1 Slider with stops** | slider with S, M, L, XL stops (tiles 48, 62, 76, 92 pt), free while dragging, snaps to the nearest stop on release with the snappy spring; the dock follows on every frame |
+| Separators and spacers (T26, DD-966) | **SP3 Islands** | a separator splits the dock into separate capsules with 8 pt between them, each keeping the 23 pt radius; a spacer is a half-cell (27 pt) of empty glass; in edit mode the gap shows a dashed bridge. The islands are one dock: one trigger zone, one reveal, one click-through region; separators and spacers are hidden from accessibility |
+| Pointer-sharing edge (T40, DD-934) | **PS1 Toggle with help** | one switch per edge in the Edge Dock pane, under the edge picker: "Another Mac or iPad is on this side", with one line of help ("Pushing past this edge moves the pointer to it, so the dock opens only when the pointer rests at the edge") and the small before/after behaviour strip |
+| Welcome (T29, DD-806) | **O1 Three-step window** | a 560 pt Frosted window (22 pt radius) with step dots: (1) choose how the dock appears (scenario cards, Recommended for the native Dock's position), (2) try it now (watches for the first reveal and confirms it), (3) the optional Accessibility note with Open System Settings; steps cross-fade 0.15 s; shown after `launch.edgeReady`, non-modal, never key on its own; replayable |
+| Accessibility request (T28, DD-805) | **A1 Permissions pane** | Settings ▸ Permissions: one row per permission with a status chip (Not granted / Waiting / Granted) and Open System Settings; the chip flips by itself within 2 s of the grant (hot start), and back on a revoke; Screen Recording shown as "Not needed" until M3 |
+
+| Menu-bar item (T34, DD-801) | **M3 Control panel** | a 330 pt panel in the Window material (Frosted by default), 20 pt radius, 14 pt modules: edge picker (Left, Right, Bottom, Top), mode (Reveal, Pinned), Keep Open, Show/Hide Edge Dock, and Settings… and Quit Dedock at the bottom; opens under the status item with the panel nudge (0.175 s); every change applies at once and the panel stays open. Rules below |
+| Display fallback (T38, DD-941) | **D2 Hello reveal** | when the dock's display goes away and the dock moves to the built-in display, and again when it moves back, the dock plays one real reveal (0.22 s) on its new display, holds 1.0 s and hides (0.18 s), so you see where it went. Rules below |
+| Liquid Glass treatment (T37, `dd.dock.style` = Liquid Glass, §7.1) | **LG4 Adaptive** | two tints on the system glass, dark `@ 0.30` and light `@ 0.42`, chosen from the average brightness behind the capsule when the dock reveals; the running dots and text flip with the tint; the change cross-fades 0.3 s. Rules below |
+
+All 11 app UI surfaces are picked.
+
+**M3 Control panel rules.**
+
+- *Non-modal (§2.3a).* The panel is a non-activating `NSPanel`, not an `NSMenu`: no menu-tracking loop runs, so the pointer monitors, reveal timers and the dock keep working while it is open. It never starts a modal session; Quit asks nothing.
+- *Key focus.* A click on the status item opens it and makes it key without activating Dedock (`.nonactivatingPanel`), so the keyboard works in it while the frontmost app stays frontmost. On close, key focus returns to that app.
+- *Closing.* A click elsewhere, Esc, a second click on the status item, Settings… (opens Settings) or Quit. Changing a control does not close it.
+- *Dock hold.* While the panel is open the dock does not hide and the pointer timer fallback runs, as for the M1 menu (`docs/plan.md` T18 (2)).
+- *Keyboard.* Initial focus is the selected edge. Tab / Shift-Tab move between modules; the arrow keys move within the edge picker and the mode control and select as they move; Space toggles Keep Open and Show/Hide; Return activates the focused button; ⌘, opens Settings and ⌘Q quits while the panel is key. Full Keyboard Access shows the system focus ring on every control.
+- *VoiceOver.* The status item reads "Dedock" with the current state as its value (for example "Left edge, Reveal, Keep Open off"); VO-Space opens the panel and VoiceOver moves into it. The panel is announced as "Dedock controls"; the edge picker is a radio group named "Edge" with radios named "Left", "Right", "Bottom", "Top"; the mode is a radio group named "Mode"; Keep Open and Show Edge Dock are switches with their names; Settings… and Quit Dedock are buttons. Each change is announced ("Right edge selected"). Every control has a name (REG-063 rule); an E2E check walks the panel's AX tree.
+- *Reduce Motion.* The nudge becomes a 0.15 s fade.
+
+**D2 Hello reveal rules.**
+
+- It plays once per move, after the display set has been stable for 1 s (a dock connect can add and remove displays several times), and at most once every 10 s.
+- It does not play at launch, while the screen is locked or asleep, when the new display shows a full-screen Space, or when the dock is already shown (Keep Open, Pinned).
+- It is a normal reveal: never key, click-through as usual; if the pointer enters the dock during the 1.0 s hold, the ordinary hide rules take over.
+- Reduce Motion: the reduced reveal and hide (§3.4).
+
+**LG4 Adaptive rules.**
+
+- *Until Screen Recording (M3).* The tint follows the average brightness of the wallpaper under the dock's edge on that display, read from the desktop picture file (no permission needed). It is recomputed when the wallpaper, the Space or the display changes, not on every reveal.
+- *From M3, with Screen Recording granted* (the grant previews use; the owner decides whether LG4 uses it): one downsampled frame of the area behind the capsule, Dedock's own windows excluded, sampled at reveal; it is never stored and never leaves the Mac. Without the grant, the wallpaper average stays.
+- *Hysteresis.* Switch to the light tint above 0.60 relative luminance and back to dark below 0.50, so the tint does not flicker over mid-grey content. The tint never changes while the dock is shown; a change found at reveal cross-fades 0.3 s.
+- *Reduce Transparency.* Liquid Glass becomes the solid **Dark** style (`#1C1C1E`), not adaptive.
+- *Windows.* When the Window material is Liquid Glass, Settings and the other windows follow the Window appearance (System, Light, Dark), not LG4 sampling.
 
 ### 7.3 Rules that stay
 
