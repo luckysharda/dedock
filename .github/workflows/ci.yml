@@ -78,6 +78,9 @@ jobs:
       - name: Platform-neutral logic tests in swift:6.2 (Docker)
         if: hashFiles('Package.swift') != ''
         run: docker compose -f docker/compose.yml run --rm linux-core
+      - name: Regression tests on Linux (REG ids)
+        if: hashFiles('Package.swift') != ''
+        run: docker compose -f docker/compose.yml run --rm -e REGRESSION_REQUIRED=${{ vars.REGRESSION_REQUIRED }} --entrypoint ci/regression.sh linux-core --skip-build --scratch-path /build
 
   macos:
     name: macos
@@ -104,6 +107,12 @@ jobs:
       - name: Unit tests (swift-testing)
         if: hashFiles('Package.swift') != ''
         run: swift test --skip-build --parallel
+      - name: Regression tests (REG ids)
+        if: hashFiles('Package.swift') != ''
+        # Blocking; an empty layer is allowed until vars.REGRESSION_REQUIRED is "true" (docs/evaluation.md §5.1).
+        env:
+          REGRESSION_REQUIRED: ${{ vars.REGRESSION_REQUIRED }}
+        run: ci/regression.sh --skip-build
       - name: Build release
         if: hashFiles('Package.swift') != ''
         run: swift build -c release

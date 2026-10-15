@@ -22,7 +22,7 @@ Files: `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `.github/dep
 | `guards` | No Notchy files or references; no `.worktrees/`, `.build/`, `build/` tracked; no file > 5 MB; `Scripts/check-deps.sh` (module rules D4/D5/D8 in `architecture.md`) once it exists; clean-room string guard against `ci/clean-room-strings.txt` once that list is added (`plan.md` R9). | `ci/guards.sh` |
 | `docs` | markdownlint in Docker (rules relaxed for dense tables, see `.markdownlint-cli2.jsonc`); offline relative-link and anchor check with lychee. | `docker compose … docs-lint`, `lycheeverse/lychee-action@v2` |
 | `linux-core` | `swift build` + `swift test` in `swift:6.2-noble` for the platform-neutral modules. Cheap feedback on every push. | `ci/linux-test.sh` via `docker compose … linux-core` |
-| `macos` | Toolchain check, `swift build --build-tests`, `swift test --parallel`, release build, `Dedock.app` assembly, zip uploaded as an artifact (14 days). | `ci/macos-toolchain.sh`, `ci/build-app.sh` |
+| `macos` | Toolchain check, `swift build --build-tests`, `swift test --parallel`, a separate **Regression tests (REG ids)** step (`swift test --filter Regression`), release build, `Dedock.app` assembly, zip uploaded as an artifact (14 days). | `ci/macos-toolchain.sh`, `ci/regression.sh`, `ci/build-app.sh` |
 | `Release / package` | Tag must be on `main`; tests; universal build; Developer ID sign → DMG → notarize → staple → Gatekeeper check; draft release with generated notes. Without secrets it ships an ad-hoc signed zip and warns. | `ci/build-app.sh release universal`, `ci/sign-notarize.sh` |
 
 ## 3. Toolchain policy
@@ -60,6 +60,7 @@ Release flow: `develop` → PR → `staging` (RC artifact, then manual QA with t
 | `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `DEVELOPER_ID_IDENTITY` | Developer ID signing | **missing**: needs an Apple Developer Program account |
 | `NOTARY_APPLE_ID`, `NOTARY_TEAM_ID`, `NOTARY_APP_PASSWORD` | notarization | **missing** |
 | variable `LINUX_CORE_REQUIRED` | makes `linux-core` blocking | unset (§4) |
+| variable `REGRESSION_REQUIRED` | makes an empty regression layer fail (`evaluation.md` §5.1) | unset until the first `.regression` tests land |
 
 ## 5a. Public-repo hardening
 

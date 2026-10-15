@@ -203,6 +203,26 @@ Run the whole list before merging `develop` into `staging`. Each PR runs the ite
 | REG-010 | Dedock idles with no Accessibility or Screen Recording grant, and asks for neither in M1 | E2E-x-00 | M1 (`system-design.md` §5.3) |
 | REG-011 | Native-Dock 9-cell matrix (DD-991) | E2E | later (bottom edge) |
 | REG-012 | DockDoor regression set: #472, #297, #1222, #277, #1001 (`adoption-plan.md` §10.1 exit item 2) | E2E | later (previews) |
+| REG-013 | Capsule origin lands on whole points (no half-point origin, no blurred edge) | L1 + E2E GEOM | M1 bug (`Tests/E2E/regressions.md`) |
+| REG-014 | `tile.indicator` is logged only for apps that have a dock tile | E2E LOG | M1 bug |
+| REG-015 | Only one Dedock instance runs at a time | E2E | M1 bug |
+| REG-016 | Harness: the cursor is restored to its start position after every run | harness | M1 harness bug |
+| REG-017 | Harness: no modifier (⌘) stays pressed after a synthetic drag | harness | M1 harness bug |
+| REG-018 | `launch.edgeReady` keeps its defined meaning (first dock armed, ms since process start) | E2E LOG | M1 bug |
+| REG-019 | Reveal and hide timers fire within 16 ms of their delay (`tolerance: .zero`) | L1 + E2E LOG | M1 bug |
+| REG-020 | A single fast jump into the edge does not count as push-through | L1 + E2E SYN | M1 bug |
+
+### 5.1 Regression policy
+
+| Rule | Detail |
+|---|---|
+| **REG id first** | `Tests/E2E/regressions.md` (owned by the E2E lane) is the **only allocator** and holds the detection detail (detector, scenario, gate) for every id, REG-001 onward. Every bug gets the next id there **before** its fix is written; the table above mirrors ids and one-line checks at the planner's next pass. The id names the symptom, the scenario that exposed it and the build it was seen on. Features add REG rows here when they merge (table above). |
+| **Layer 1: unit, in CI** | The fix ships with a `.regression` unit test **in the same commit**. Each test lives in a suite whose type name ends in `Regression` (for example `@Suite("Regression", .tags(.regression)) struct EdgeDockRegression`), with one `@Test("REG-nnn …")` per id. `ci/regression.sh` runs `swift test --filter Regression` as its own step on macOS and Linux, so a failure is reported under its REG id. Owner: implementer. |
+| **Layer 2: E2E, local** | `Scripts/e2e/regress.sh` replays every REG scenario that needs a real desktop against the build under test, inside the desktop lock, and writes a scorecard. The baseline (timings, CPU, RSS) is `Tests/E2E/baseline/m1.json`. Owner: E2E lane. Hosted CI cannot run it (no TCC grants, no real desktop). |
+| **Merge gates** | PR → `develop`: CI green, including the `Regression tests` step; app-code PRs attach the `regress.sh` scorecard (PR template). `develop` → `staging`: a full `regress.sh` run on the candidate build with 0 failures. `staging` → `main`: the same run on the release build. |
+| **Baseline drift** | `regress.sh` warns when a measured value drifts more than **20 %** from the baseline (worse direction), even if it is still under its budget. A drift warning blocks promotion to `staging` until it is explained in the PR or the baseline is updated on purpose (with the reason in `docs/status.md`). |
+| **Empty layer** | Until the first `.regression` tests land, an empty layer 1 passes with a notice. Setting the repository variable `REGRESSION_REQUIRED=true` makes an empty layer fail. |
+| **Never delete** | REG tests and scenarios are only retired with a written reason (feature removed), recorded in `Tests/E2E/regressions.md`. |
 
 ---
 
