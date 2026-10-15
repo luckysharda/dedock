@@ -13,17 +13,33 @@ import Testing
 
     /// REG-027: a relayout during a slide removed the animation without completing it, and the
     /// machine waited forever in revealing/hiding.
-    @Test("REG-027: a relayout mid-slide completes the in-flight generation")
-    func reg027() {
+    @Test("REG-027: a relayout mid-slide still completes the in-flight generation")
+    func reg027() throws {
         let a = makeAnimator()
         var finished: [UInt64] = []
         a.run(AnimationRequest(target: .shown, curve: .revealSpring, duration: .milliseconds(220), generation: 7)) { finished.append($0) }
         a.update(edge: .right, hiddenOffset: CGVector(dx: 90, dy: 0), reduceMotion: false)
+        // The re-issued slide carries the same generation and completes it.
+        let anim = try #require(a.inFlightAnimation)
+        a.animationDidStop(anim, finished: true)
         #expect(finished == [7])
-        #expect(a.presentationProgress == 1)
         // At rest an update keeps the progress and reports nothing.
         a.update(edge: .left, hiddenOffset: CGVector(dx: -90, dy: 0), reduceMotion: false)
         #expect(finished == [7])
+    }
+
+    /// REG-038: a relayout mid-slide snapped the dock to its target (a one-frame jump) instead of
+    /// continuing the slide from where it was (DD-928).
+    @Test("REG-038: a relayout mid-slide re-issues the slide, not a snap")
+    func reg038() throws {
+        let a = makeAnimator()
+        var finished: [UInt64] = []
+        a.run(AnimationRequest(target: .hidden, curve: .hideEaseIn, duration: .milliseconds(180), generation: 3)) { finished.append($0) }
+        a.update(edge: .left, hiddenOffset: CGVector(dx: -110, dy: 0), reduceMotion: false)
+        #expect(finished.isEmpty)                          // not completed by a snap
+        let anim = try #require(a.inFlightAnimation)
+        #expect(anim.duration > 0 && anim.duration <= 0.18 + 1e-9)
+        #expect((anim.value(forKey: "dedock.generation") as? NSNumber)?.uint64Value == 3)
     }
 
     /// Same review: a late `finished` from a replaced animation must not complete the new one.
