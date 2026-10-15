@@ -23,6 +23,18 @@ Newest entry first. Each entry: done, in progress, next, blockers and notes, the
 | Passed | x-00, x-01, x-02, x-03, x-04, x-05a, x-06 (20 rapid crossings, non-vacuous), REG-006; idle CPU 0.017 %, RSS 34 MB (budget 0.5 %) |
 | Open | x-05b; x-07 / x-08 (need the owner present to approve computer use); every right-edge scenario; E1 Capsule visuals after the implementer's capsule fix |
 
+### Merged and in review (2026-10-15, late)
+
+| PR | Content | State |
+|---|---|---|
+| #7 | M1 Edge Dock reveal (placeholder visuals); REG-027/028/029/039 fixed | merged `7a160cc`; `regress.sh` 21/21 |
+| #9 | Regression policy + CI regression step (macOS + Linux) | merged `52930e6`; both steps ran the REG suites |
+| #10 | `fix/release-log-privacy` (REG-030) | planner: approve once CI green |
+| #11 | `feature/edge-dock-design`: E1 Capsule in Dark Glass (design.md §7.1) | planner: approve once CI green; follow-ups: style setting, appearance re-apply, edit badges, pixel check |
+| #12 | `test/e2e-harness` (harness + `regress.sh`) | review queued |
+| #13 | `feature/edge-dock-behaviour` (full-screen dwell, top-edge status-item exclusion, ⌘-drag reorder, drop to pin, REG-013…026) | review queued |
+| this PR | architecture reconcile, check-deps.sh, branch kinds | open |
+
 ### Decisions taken today (cross-session)
 
 | # | Decision | By |
