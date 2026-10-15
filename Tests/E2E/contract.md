@@ -52,7 +52,7 @@ Every message starts with the **event name**, then space-separated `key=value` p
 | `tiles` | `tile.activate` | `id`, `bundle`, `result` (launched/activated/opened/missing) | tile click handled |
 | `tiles` | `tile.indicator` | `bundle`, `state` (none/running/frontmost/hidden) | indicator re-rendered |
 | `tiles` | `tile.reorder` | `id`, `from`, `to` | drop that changes the order |
-| `tiles` | `tile.reorderCancelled` | `id`, `reason` (relayout) | a reorder drag in progress was cancelled because the tile layout changed under it |
+| `tiles` | `tile.reorderCancelled` | `id`, `reason` (relayout) | a reorder drag in progress was cancelled because the tile layout changed under it. **Pending:** not emitted on develop yet (it lands with the behaviour follow-ups); no harness check depends on it |
 | `settings` | `settings.changed` | `key`, `value`, `scenario` | any settings write |
 | `settings` | `settings.recovered` | `source` (backup/default), `moved` (file name) | a corrupt `layout.json` was moved aside (REG-036) |
 | `settings` | `settings.notice` | `kind` (recovered) | the one-time recovery notice is shown (REG-036) |

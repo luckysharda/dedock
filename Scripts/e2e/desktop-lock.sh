@@ -9,13 +9,15 @@
 #                                                      default path; a DEDOCK_LOCKS override never counts).
 #                                                      Every step that can post input, move the cursor,
 #                                                      run tccutil or launch a real-bundle-id app calls it.
+#   desktop-lock.sh real-holder                        exit 0 and print the owner if anyone holds the REAL lock
 #   desktop-lock.sh status
 #
 # Messaging the other sessions before taking and after releasing is still required;
 # this script only guards the lock itself.
 set -euo pipefail
 
-LOCKS=${DEDOCK_LOCKS:-$HOME/dedock/.locks}  # shared by every checkout of the repo
+REAL_LOCKS=$HOME/dedock/.locks           # the one real lock dir, shared by every checkout of the repo
+LOCKS=${DEDOCK_LOCKS:-$REAL_LOCKS}        # DEDOCK_LOCKS: a private dir (self-tests); never counts as real
 LOCK=$LOCKS/desktop.lock
 now() { date -u +%Y-%m-%dT%H:%M:%SZ }
 
@@ -44,10 +46,16 @@ release)
   fi ;;
 require)
   owner=${2:?owner}
-  REAL=$HOME/dedock/.locks/desktop.lock
+  REAL=$REAL_LOCKS/desktop.lock
   if [[ -d $REAL ]] && grep -qx "owner=$owner" $REAL/info 2>/dev/null; then exit 0; fi
   echo "refusing: '$owner' does not hold the REAL desktop lock ($([[ -d $REAL ]] && sed -n 's/^owner=//p' $REAL/info 2>/dev/null || echo free))" >&2
   exit 1 ;;
+real-holder)
+  # Exit 0 and print the holder if ANYONE holds the REAL lock (whatever DEDOCK_LOCKS says); 1 if free.
+  REAL=$REAL_LOCKS/desktop.lock
+  [[ -d $REAL ]] || exit 1
+  { sed -n 's/^owner=//p' $REAL/info 2>/dev/null; cat $REAL/owner 2>/dev/null; } | head -1 | grep . || echo unknown
+  exit 0 ;;
 status)
   if [[ -d $LOCK ]]; then
     # Holders write `info` (this script) or `owner` (other sessions' tooling); show whichever exists.
@@ -57,5 +65,5 @@ status)
   else
     echo "free"
   fi ;;
-*) echo "usage: $0 acquire|touch|release|status"; exit 2 ;;
+*) echo "usage: $0 acquire|touch|release|require|real-holder|status"; exit 2 ;;
 esac

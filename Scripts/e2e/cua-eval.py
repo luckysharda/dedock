@@ -21,14 +21,18 @@ chk("C1 panel window", ok, f"{len(ws)} window(s); layer {ws[0]['layer'] if ws el
 tree = rows(f"{C}/tree.jsonl")
 tl = [e for e in tree if e.get("label") in tiles and e.get("depth", 0) >= 1]
 # The AX element may be the icon inside the tile cell (E1: 52 pt icon in a 62x54 cell): require it to
-# lie inside the GEOM tile frame and be centred on it (±2 pt), and report the size difference.
+# lie inside the GEOM tile frame and be centred on it (±2 pt), and report the size difference. Lower
+# bound: at least MIN_FRAC of the cell in each dimension, so a degenerate (e.g. 1x1 or 0x0) AX frame
+# at the centre does not pass.
+MIN_FRAC = 0.6
 def inside_centred(e, f):
     x, y, w, h = f; ex, ey, ew, eh = (e.get(k, -999) for k in ("x", "y", "w", "h"))
     return ex >= x - 1 and ey >= y - 1 and ex + ew <= x + w + 1 and ey + eh <= y + h + 1 \
-        and abs((ex + ew / 2) - (x + w / 2)) <= 2 and abs((ey + eh / 2) - (y + h / 2)) <= 2
+        and abs((ex + ew / 2) - (x + w / 2)) <= 2 and abs((ey + eh / 2) - (y + h / 2)) <= 2 \
+        and ew >= MIN_FRAC * w and eh >= MIN_FRAC * h
 frames_ok = all(any(inside_centred(e, tiles[n]) for e in tl if e["label"] == n) for n in tiles)
 sizes = sorted({f"{e.get('w')}x{e.get('h')} in {tiles[e['label']][2]}x{tiles[e['label']][3]}" for e in tl})
-chk("C3 tiles in AX tree", len({e["label"] for e in tl}) == len(tiles) and frames_ok, f"{len({e['label'] for e in tl})}/{len(tiles)} tiles labelled with their app name; AX frame inside and centred on the GEOM tile: {frames_ok} (AX vs tile size: {', '.join(sizes)})")
+chk("C3 tiles in AX tree", len({e["label"] for e in tl}) == len(tiles) and frames_ok, f"{len({e['label'] for e in tl})}/{len(tiles)} tiles labelled with their app name; AX frame inside, centred and >= {MIN_FRAC:.0%} of the GEOM tile: {frames_ok} (AX vs tile size: {', '.join(sizes)})")
 roles = sorted({e.get("role") for e in tl})
 chk("C3 REG-040 tiles are buttons", tl and all(e.get("role") == "AXButton" for e in tl), f"tile roles: {roles} (exp AXButton)")
 acts = sorted({a for e in tl for a in e.get("actions", [])})
