@@ -4,6 +4,7 @@
 #
 #   Tests/E2E/selftest/run.sh
 set -uo pipefail
+export PYTHONDONTWRITEBYTECODE=1   # never leave __pycache__ / *.pyc in the tree
 
 # Run from the harness root with relative paths: `check` re-parses commands with eval,
 # and the absolute path contains a space ("Dedock app").
@@ -24,7 +25,7 @@ trap cleanup EXIT
 check() { if eval "$2"; then echo "PASS $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi }
 
 echo "-- build"
-for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
+for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
   out=$B/${${src:t}%.swift}
   check "compile ${src:t}" "swiftc -O $src -o $out 2>$T/${src:t}.err"
 done
@@ -113,6 +114,13 @@ python3 Scripts/e2e/score.py --write-baseline $SR/selftest-sfail $T/m1-bad.json 
 check "score: refuses a baseline from an unclean run" "grep -q refusing $T/s-refuse.txt && [[ ! -e $T/m1-bad.json ]]"
 check "score: scorecards hold no absolute paths" "! grep -lE '/U[s]ers/' $SR/selftest-s*/scorecard.md"
 rm -rf $SR/selftest-s*
+
+echo "-- cua checks (fixture shaped like the real c7fb642 inspection)"
+python3 Scripts/e2e/cua-eval.py Tests/E2E/selftest/cua-fixture Tests/E2E/selftest/cua-geom.json 99 L > $T/cua.txt
+check "cua-eval: REG-040 fails on AXUnknown tiles" "grep -q \$'^cua C3 REG-040 tiles are buttons L\t0' $T/cua.txt"
+check "cua-eval: C1 C3 C4 C5 C6 C7 pass on the fixture" "[[ \$(grep -cE \$'^cua C(1|3 tiles|4|5|6|7)[^\t]*\t1' $T/cua.txt) == 7 ]]"
+$B/axprobe at 960 540 only=1 > $T/axp.json 2>&1
+check "REG-041 axprobe never records another app's AX text" "python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not (d.get('other_app') is True and d.get('label')=='' and d.get('role')=='' and 'app' not in d))\" $T/axp.json"
 
 echo "-- launch / teardown (fake-dock serve)"
 echo '{"schemaVersion":1,"docks":[{"id":"dock-0","edge":"left","reveal":{"showDwellMs":120,"hideDelayMs":400}}]}' > $T/seed.json

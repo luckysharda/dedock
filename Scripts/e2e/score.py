@@ -23,7 +23,7 @@ DRIFT = 0.20
 DEFAULT_FLOORS = {"_ms": 2.0, "_pt": 1.0, "cpu_pct": 0.05, "wakeups_per_s": 0.2, "_mb": 5.0}
 # Counts describe the run, not the app's quality: never drift-checked.
 # Harness checks (Tests/E2E/regressions.md "gates: harness") never decide an app PR's verdict.
-HARNESS_IDS = ("REG-015", "REG-016", "REG-017")
+HARNESS_IDS = ("REG-015", "REG-016", "REG-017", "REG-041")
 COUNTS = ("_trials", "reversals", "foreign_events", "leave_before_dwell", "hide_cancelled", "_n")
 
 
@@ -110,7 +110,8 @@ def write_scorecard(root, baseline_path):
 
     is_harness = lambda c: c["id"].startswith(HARNESS_IDS)
     harness_failed = [c for c in checks if not c["ok"] and is_harness(c)]
-    failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in checks if not c["ok"] and not is_harness(c)]
+    live = [c for c in checks if not c.get("skip")]
+    failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in live if not c["ok"] and not is_harness(c)]
     void = [s for s in scenarios if s["verdict"] == "VOID"]
     verdict = "FAIL" if failed else ("VOID" if void else "PASS")
     if not scenarios and not checks:
@@ -133,7 +134,7 @@ def write_scorecard(root, baseline_path):
     L.append("")
     L.append(f"**{verdict}** — scenarios: {sum(s['verdict'] == 'PASS' for s in scenarios)} pass, "
              f"{len([s for s in scenarios if s['verdict'] == 'FAIL'])} fail, {len(void)} void (contaminated, rerun); "
-             f"run checks: {sum(c['ok'] for c in checks)}/{len(checks)} pass; drift warnings: {len(warns)}"
+             f"run checks: {sum(c['ok'] for c in live)}/{len(live)} pass ({len(checks) - len(live)} skipped); drift warnings: {len(warns)}"
              + (f"; HARNESS checks failing: {', '.join(c['id'] for c in harness_failed)} (harness bug, not an app result)" if harness_failed else ""))
     L.append("")
     L.append("| Scenario | Verdict | Failed gates | Report |")
@@ -141,11 +142,16 @@ def write_scorecard(root, baseline_path):
     for s in scenarios:
         L.append(f"| {s['key']} | {s['verdict']} | {'; '.join(s['fails'])[:200] or '—'} | `{s['report']}` |")
     L.append("")
-    L.append("| Check | Result | Detail |")
-    L.append("|---|---|---|")
-    for c in checks:
-        L.append(f"| {c['id']}{' (harness)' if is_harness(c) else ''} | {'PASS' if c['ok'] else 'FAIL'} | {c['detail']} |")
-    L.append("")
+    res = lambda c: "SKIP" if c.get("skip") else ("PASS" if c["ok"] else "FAIL")
+    for title, group in (("Check", [c for c in checks if not c["id"].startswith("cua ")]),
+                         ("cua check (window list, AX tree, hit tests)", [c for c in checks if c["id"].startswith("cua ")])):
+        if not group:
+            continue
+        L.append(f"| {title} | Result | Detail |")
+        L.append("|---|---|---|")
+        for c in group:
+            L.append(f"| {c['id']}{' (harness)' if is_harness(c) else ''} | {res(c)} | {c['detail']} |")
+        L.append("")
     if warns:
         L.append("Drift > 20 % from baseline (and above the noise floor) — inside the gate, but look:")
         L.append("")
@@ -177,7 +183,7 @@ def write_scorecard(root, baseline_path):
 def write_baseline(root, out_path):
     scenarios, metrics, checks = collect(root)
     env = json.load(open(os.path.join(root, "env.json"))) if os.path.exists(os.path.join(root, "env.json")) else {}
-    bad = [s["key"] for s in scenarios if s["verdict"] != "PASS"] + [c["id"] for c in checks if not c["ok"]]
+    bad = [s["key"] for s in scenarios if s["verdict"] != "PASS"] + [c["id"] for c in checks if not c["ok"] and not c.get("skip")]
     if bad:
         print("refusing: a baseline must come from a fully clean run; not PASS: " + ", ".join(bad))
         return 1

@@ -17,6 +17,7 @@
 # The app must be a DEBUG build (E2E hooks are debug-only). Needs the harness tools built
 # (Tests/E2E/selftest/run.sh builds them).
 set -uo pipefail
+export PYTHONDONTWRITEBYTECODE=1   # never leave __pycache__ / *.pyc in the tree
 
 H=${0:A:h:h:h}
 B=$H/build/e2e
@@ -76,9 +77,9 @@ root=$B/runs/$id
 mkdir -p $root
 : > $root/index.txt; : > $root/checks.jsonl; : > $root/run-metrics.jsonl
 
-check() {  # check <id> <0|1 ok> <detail>
-  python3 -c 'import json,sys; print(json.dumps({"id": sys.argv[1], "ok": sys.argv[2] == "1", "detail": sys.argv[3]}))' "$1" "$2" "$3" >> $root/checks.jsonl
-  print -r -- "$([[ $2 == 1 ]] && echo PASS || echo FAIL) $1: $3"
+check() {  # check <id> <0|1|skip> <detail>
+  python3 -c 'import json,sys; s=sys.argv[2]; print(json.dumps({"id": sys.argv[1], "ok": s == "1", "skip": s == "skip", "detail": sys.argv[3]}))' "$1" "$2" "$3" >> $root/checks.jsonl
+  print -r -- "$(case $2 in 1) echo PASS ;; skip) echo SKIP ;; *) echo FAIL ;; esac) $1: $3"
 }
 rmetric() { print -r -- "{\"metric\":\"$1\",\"value\":$2}" >> $root/run-metrics.jsonl }
 
@@ -134,6 +135,46 @@ PY
   while read -r rid ok rest; do check "$rid $2" $ok "$rest"; done < $R/contract.txt
   local warns=$($B/analyze timing $R/log.ndjson 2>/dev/null | grep -c '^WARN unrecognized' || true)
   check "contract $2" $(( warns == 0 )) "$warns unrecognized cause/kind/curve/state values"
+}
+
+# cua checks (Tests/E2E/regressions.md C1–C8): window list, AX tree and hit tests through cua-driver
+# and the read-only axprobe. Never records another app's AX content (REG-041).
+cua() {  # cua <sub-run> <L|R>
+  local sub=$1 side=$2 R=$B/runs/$1
+  local pid=$(sed -n 's/^APP_PID=//p' $R/run.env)
+  local C=$R/cua; mkdir -p $C
+  $B/axprobe windows $pid > $C/windows.jsonl
+  $B/axprobe tree $pid 6 > $C/tree.jsonl
+  local wid=$(python3 -c "import json,sys
+ws=[json.loads(l) for l in open(sys.argv[1])]; ws=[w for w in ws if w['w']>50 and w['h']>50]
+print(ws[0]['id'] if ws else '')" $C/windows.jsonl)
+  [[ -n $wid ]] && cua-driver call get_window_state "{\"pid\":$pid,\"window_id\":$wid,\"include_screenshot\":false}" > $C/cua-state.json 2>&1
+  # C6: hidden dock lets clicks through at every tile centre.
+  python3 -c "
+import json; g=json.load(open('$R/data/e2e/geometry.json'))
+for t in g['docks'][0]['tiles']:
+  x,y,w,h=t['frame']['topLeft']; print(t['name'].replace(' ','_'), x+w/2, y+h/2)" > $C/tiles.txt
+  : > $C/hit-hidden.jsonl
+  while read -r name x y; do print -rn -- "{\"tile\":\"$name\",\"hit\":" >> $C/hit-hidden.jsonl; $B/axprobe at $x $y only=$pid | tr -d '\n' >> $C/hit-hidden.jsonl; print "}" >> $C/hit-hidden.jsonl; done < $C/tiles.txt
+  $B/axprobe front > $C/front-launch.json
+  # C7: reveal by dwell, pointer on a tile → Dedock gets the hit; 4 pt outside the capsule → other app.
+  local probe_y=$(python3 -c "import json;d=json.load(open('$R/data/e2e/geometry.json'))['docks'][0];x,y,w,h=d['capsule']['topLeft'];print(int(y+h/2))")
+  local first=($(head -1 $C/tiles.txt))
+  local pts=($(python3 -c "import json;d=json.load(open('$R/data/e2e/geometry.json'))['docks'][0];x,y,w,h=d['capsule']['topLeft'];L=d['edge']=='left';print(x+w+4 if L else x-4, x+w+400 if L else x-400)"))
+  local outside=${pts[1]} away=${pts[2]}
+  local edge=left; [[ $side == R ]] && edge=right
+  $E/desktop-lock.sh touch >/dev/null
+  print -l "edge $edge $probe_y" "wait 600" "glide ${first[2]} ${first[3]} 80" "wait 150" > $C/reveal.txt
+  $B/pointer -q script $C/reveal.txt
+  $B/axprobe at ${first[2]} ${first[3]} only=$pid > $C/hit-shown-tile.json
+  $B/pointer -q move $outside ${first[3]}; sleep 0.15
+  $B/axprobe at $outside ${first[3]} only=$pid > $C/hit-shown-outside.json
+  $B/axprobe front > $C/front-shown.json
+  $B/pointer -q move $away ${first[3]}   # leave: the dock hides before the next step
+  sleep 1
+  python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt
+  while IFS=$'\t' read -r cid ok detail; do check "$cid" $ok "$detail"; done < $C/results.txt
+  check "cua C8 settings labelled $side" skip "pending: needs the debug command openSettings"
 }
 
 run_scn() {  # run_scn <sub-run> <L|R> <scenario> [args]; re-runs once if contaminated (VOID)
@@ -203,6 +244,7 @@ for tag in $edge_list; do
     gf=$(grep -c '^FAIL' $B/runs/$sub/geom.txt); gp=$(grep -c '^PASS' $B/runs/$sub/geom.txt)
     check "geom $tag (REG-013 …)" $(( gf == 0 )) "$gp pass, $gf fail$( (( gf )) && print -r -- ": $(grep '^FAIL' $B/runs/$sub/geom.txt | head -2 | cut -c6-90 | tr '\n' ';')")"
     rmetric geom.${tag}_fails $gf
+    cua $sub $side
     run_scn $sub $side x-01 n=4
     run_scn $sub $side x-02 n=4
     run_scn $sub $side x-03 n=3

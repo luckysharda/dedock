@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-040.**
+Ask the E2E lane for the next free id. **Next free: REG-042.**
 
 ## How the suite runs
 
@@ -12,6 +12,7 @@ Ask the E2E lane for the next free id. **Next free: REG-040.**
 | Verdicts | **FAIL**: a gate broke (blocks a merge). **VOID**: real input got into a scenario twice (no app verdict; rerun). **PASS**. Drift **WARN**: a metric moved > 20 % from `Tests/E2E/baseline/m1.json` *and* more than its noise floor (2 ms, 1 pt, 0.05 % CPU, 0.2 wakeups/s, 5 MB), even though it is inside the gate. |
 | `regress.sh rescore <id>` | Re-judges saved logs after an analyzer change: no new desktop run. |
 | `regress.sh baseline <id>` | Writes the baseline from a fully clean run, after the user has looked at its scorecard. The current baseline is **partial** (left edge only, `7e7ae7e` debug) until a full run lands. |
+| cua checks | Its own scorecard table: C1 the dock panel window (one window, level 24, frame = GEOM); C2 cua-driver `get_window_state` lists every tile; C3 the AX tree has every tile labelled with its app name, framed as in GEOM, with role `AXButton`; C4 the status item; C5 Dedock never becomes frontmost; C6 tile centres reach the window underneath while the dock is hidden; C7 with the pointer on a shown tile, Dedock takes the hit, and 4 pt outside the capsule does not; C8 Settings controls labelled (SKIP until the debug command `openSettings` exists). Read-only (`axprobe`, cua-driver), plus pointer moves inside the lock for C7. Failures are app findings. |
 | Merge gate | `regress.sh run` must PASS on the head build of every app PR before it merges into `develop`, and the scorecard is attached to the PR as a comment. GitHub runners cannot post synthetic input (no TCC grant), so this runs locally in a hands-off window the orchestrator schedules. Harness-only items (marked **harness**) gate harness changes, not app PRs. |
 
 ## Catalogue
@@ -57,6 +58,8 @@ Ask the E2E lane for the next free id. **Next free: REG-040.**
 | REG-037 | `flush()` at quit did not wait for a debounced save already writing (PR #7) | unit guard; E2E planned: change a setting through the debug command channel, quit at once, and the change is in `layout.json` | unit (E2E planned: needs the command channel) | app |
 | REG-038 | A relayout mid-slide snapped to the target instead of re-issuing the slide (DD-928) (PR #7) | unit guard; E2E planned: `setEdge` / relayout mid-slide via the command channel; `analyze frames` DD-928 continuity and max-step gates over that slide | unit (E2E planned: needs the command channel) | app |
 | REG-039 | A reversal's new animation effectively restarts ~1 frame (≈ 17 ms) after its commit: the first frame follows the new curve, later frames lag it by a frame, so the dock steps back toward its start (0.07 pt seen at an ease-in start; several pt possible at speed). Found by regress.sh on PR #7 head `c207730`, x-06 right, reversal 29 | `analyze frames` "DD-928 no flicker" (direction change inside one animation) and continuity worst offset; x-06 per edge | regress.sh | app |
+| REG-040 | Dock tiles are AX elements with the right labels but role `AXUnknown`: VoiceOver does not announce them as buttons and AX clients (cua-driver included) see nothing actionable (NFR-10, design §6) | cua checks C3 "tiles are buttons" (`axprobe tree`: role `AXButton`) and C2 (cua-driver `get_window_state` lists every tile) | regress.sh (cua checks) | app |
+| REG-041 | The AX probe recorded another app's element text (a hit test over the user's terminal captured its contents) | `axprobe at … only=<pid>` reports role and label only for the app under test, `other_app` otherwise; self-test asserts it | regress.sh, self-test | **harness** |
 
 ## Adding an entry
 
