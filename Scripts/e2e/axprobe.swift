@@ -12,6 +12,11 @@
 //                                — who would receive a click there. Role/label only for <pid> (privacy:
 //                                another app's element can hold the user's content); never an app name.
 //   axprobe front                the frontmost app: {"pid","app","bundle"}
+//   axprobe focus [pid]          who holds KEY focus: {"pid","source","front","app_focus"}. pid/source from
+//                                the system-wide AXFocusedUIElement (else the focused application; -1/none
+//                                when the system refuses, e.g. kAXErrorCannotComplete); front = the
+//                                frontmost app's pid; app_focus = whether <pid> reports a focused element
+//                                of its own (a key window). Pids and booleans only: never content.
 //
 // One JSON object per line. Needs Accessibility for the host process (tree / at).
 
@@ -115,6 +120,22 @@ case "at":
         d["chain"] = chain
     }
     out(d)
+case "focus":
+    guard AXIsProcessTrusted() else { fail("this process lacks Accessibility") }
+    let sys = AXUIElementCreateSystemWide()
+    var pid: pid_t = -1, source = "none"
+    if let e: AXUIElement = attr(sys, kAXFocusedUIElementAttribute), AXUIElementGetPid(e, &pid) == .success {
+        source = "focusedUIElement"
+    } else if let app: AXUIElement = attr(sys, kAXFocusedApplicationAttribute), AXUIElementGetPid(app, &pid) == .success {
+        source = "focusedApplication"
+    }
+    let front = Int(NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1)
+    var appFocus = false
+    if a.count > 1, let p = Int32(a[1]) {
+        let el: AXUIElement? = attr(AXUIElementCreateApplication(p), kAXFocusedUIElementAttribute)
+        appFocus = el != nil
+    }
+    out(["pid": Int(pid), "source": source, "front": front, "app_focus": appFocus])
 case "front":
     let f = NSWorkspace.shared.frontmostApplication
     out(["pid": Int(f?.processIdentifier ?? -1), "app": f?.localizedName ?? "", "bundle": f?.bundleIdentifier ?? ""])

@@ -120,7 +120,10 @@ else:
     op = first_line(f"{C}/c8-open.txt")
     chk("C8 Settings window opens", bool(sub) and len(wins) >= 1 and op.startswith("1 "),
         f"AXWindow '{SETTINGS_TITLE}': {'yes' if sub else 'no'}; normal-level windows on screen: {len(wins)}; debug.command openSettings ok: {'yes' if 'openSettings' in op and op.startswith('1') else op[2:60]}")
-    ctrls = [e for e in sub if e.get("role") in CONTROLS and e.get("subrole") not in ("AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton")]
+    # system parts with no name of their own: window buttons and the scroller's arrows/pages
+    SYSTEM = {"AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton",
+              "AXIncrementArrow", "AXDecrementArrow", "AXIncrementPage", "AXDecrementPage"}
+    ctrls = [e for e in sub if e.get("role") in CONTROLS and e.get("subrole") not in SYSTEM]
     bare = [e.get("role") for e in ctrls if not (e.get("name", e.get("label")) or "").strip()]  # a value is not a name
     chk("C8 settings controls labelled", bool(ctrls) and not bare,
         f"{len(ctrls)} controls, {len(bare)} without a label" + (f" ({', '.join(sorted(set(bare)))})" if bare else ""))

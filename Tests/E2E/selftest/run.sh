@@ -176,6 +176,8 @@ rm -rf $T/cua-c8; cp -R Tests/E2E/selftest/cua-fixture $T/cua-c8
 { print -r -- '{"depth": 0, "role": "AXWindow", "subrole": "AXFloatingWindow", "label": "Edge Dock", "name": "Edge Dock"}'
   print -r -- '{"depth": 0, "role": "AXWindow", "subrole": "AXStandardWindow", "label": "Dedock Settings", "name": "Dedock Settings"}'
   print -r -- '{"depth": 1, "role": "AXButton", "subrole": "AXCloseButton", "label": "", "name": ""}'
+  print -r -- '{"depth": 4, "role": "AXButton", "subrole": "AXIncrementPage", "label": "", "name": ""}'
+  print -r -- '{"depth": 4, "role": "AXButton", "subrole": "AXDecrementArrow", "label": "", "name": ""}'
   print -r -- '{"depth": 3, "role": "AXCheckBox", "subrole": "", "label": "Show on the left edge", "name": "Show on the left edge"}'
   print -r -- '{"depth": 3, "role": "AXSlider", "subrole": "", "label": "Show delay", "name": "Show delay"}' } > $T/cua-c8/settings-tree.jsonl
 print -r -- '{"id": 7, "layer": 0, "x": 400, "y": 200, "w": 700, "h": 500, "alpha": 1, "onscreen": true, "name": ""}' > $T/cua-c8/settings-windows.jsonl
@@ -203,6 +205,11 @@ check "cua-eval: C9 style switch SKIPs without a switch, passes when the log and
 check "cua-eval: C9 style SKIP without GEOM style, PASS darkGlass/hudWindow, FAIL otherwise" "grep -q \$'^cua C9 dock style tokens L\tskip' $T/cua.txt && grep -q \$'^cua C9 dock style tokens L\t1' $T/c9-good.txt && grep -q \$'^cua C9 dock style tokens L\t0' $T/c9-bad.txt"
 # axpress (REG-051): refuses without the REAL lock, even for the harness-owned fake bundle; the
 # bundle refusal is then the second guard. (The real lock is free here: the self-test refused otherwise.)
+DEDOCK_LOCK_OWNER=selftest-owner $B/notify $$ openSettings > /dev/null 2> $T/notify-lock.err; echo $? > $T/notify-lock.rc
+$B/notify openSettings > /dev/null 2> $T/notify-usage.err; echo $? > $T/notify-usage.rc
+check "REG-051 notify refuses without the REAL lock, and needs a target pid" "[[ \$(cat $T/notify-lock.rc) == 2 && \$(cat $T/notify-usage.rc) == 2 ]] && grep -q 'does not hold the REAL desktop lock' $T/notify-lock.err && grep -q 'usage: notify <pid> <cmd>' $T/notify-usage.err"
+$B/axprobe focus $$ > $T/focus.json 2>&1
+check "axprobe focus reports pids and booleans only" "python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not (set(d) == {'pid','source','front','app_focus'} and isinstance(d['pid'], int) and isinstance(d['app_focus'], bool)))\" $T/focus.json"
 check "axpress refuses a process that is not a harness-owned Dedock build" "! $B/axpress close $$ 'Dedock Settings' 2> $T/axpress.err && grep -q 'refusing' $T/axpress.err"
 # REG-061 gates (DEDOCK_REG061=1): C3 = whole cell; C7 cell edge = AXButton with the tile label
 DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py Tests/E2E/selftest/cua-fixture Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061.txt
