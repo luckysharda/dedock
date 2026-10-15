@@ -24,3 +24,14 @@ import Testing
         #expect(m.phase == .arming(.wall))
     }
 }
+
+@Suite struct DebugCommandTests {
+    @Test(arguments: [
+        ("setEdge=right", DebugCommand?.some(.setEdge(.right))), ("setEdge=top", .some(.setEdge(.top))),
+        ("rebuildZones", .some(.rebuildZones)), ("reveal", .some(.reveal)), ("hide", .some(.hide)),
+        ("setEdge=diagonal", nil), ("setEdge", nil), ("rm -rf", nil), ("", nil), ("reveal=1", nil),
+    ])
+    func parsesOnlyKnownCommands(raw: String, expected: DebugCommand?) {
+        #expect(DebugCommand.parse(raw) == expected)
+    }
+}

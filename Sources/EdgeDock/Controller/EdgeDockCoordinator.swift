@@ -186,6 +186,13 @@ public struct DockSurroundings: Sendable, Equatable {
         panel.close()
     }
 
+    /// Rebuilds the zones even if nothing changed (E2E debug command `rebuildZones`).
+    func forceRebuildZones(_ s: DockSurroundings) {
+        environmentKey = nil
+        rebuildZones(s)
+        onChange?()
+    }
+
     private func rebuildZones(_ s: DockSurroundings) {
         let footprint = s.nativeDock.orientation == config.edge
             ? NativeDockPreferences.footprint(prefs: s.nativeDock, display: display) : nil

@@ -30,6 +30,7 @@ import SettingsStore
     public private(set) var firstArmMs: Int?
     private let launchTime = ProcessInfo.processInfo.systemUptime - EdgeDockManager.processAge()
     private var geometryWritePending = false
+    private var debugCommands: DebugCommandListener?
 
     public init(settings: SettingsModel, topology: DisplayTopology, hub: PointerHub,
                 clock: any Clock<Duration> = ContinuousClock(), dataDirectory: URL) {
@@ -60,6 +61,7 @@ import SettingsStore
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.sync(reason: "reduceMotion") } }
         hub.addSink(self)
+        debugCommands = DebugCommandListener { [weak self] in self?.perform($0) }
         sync(reason: "launch")
         // Edge sensing is live: zones built, panels parked, monitors installed.
         edgeReadyMs = msSinceProcessStart()
@@ -230,6 +232,24 @@ import SettingsStore
         settings.update { doc in
             guard let i = doc.profiles.firstIndex(where: { $0.id == profile }) else { return }
             doc.profiles[i].items.removeAll { $0.id == tile }
+        }
+    }
+
+    /// E2E debug commands (debug bundle + DEDOCK_E2E=1 only).
+    func perform(_ command: DebugCommand) {
+        switch command {
+        case .setEdge(let edge):
+            settings.update { doc in
+                guard !doc.docks.isEmpty else { return }
+                doc.docks[0].edge = edge
+                doc.docks[0].scenario = "custom"
+            }
+        case .rebuildZones:
+            for c in coordinators.values { c.forceRebuildZones(surroundings) }
+        case .reveal:
+            reveal(dock: nil)
+        case .hide:
+            hide(dock: nil, animated: true)
         }
     }
 
