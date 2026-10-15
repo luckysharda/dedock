@@ -29,7 +29,7 @@ import Testing
 
         // AXPress routes to the same activation the click uses.
         var pressed: [TileID] = []
-        DockTileAccessibility(tile: app) { pressed.append($0) }.press()
+        DockTileAccessibility(tile: app, cell: CGSize(width: 62, height: 54)) { pressed.append($0) }.press()
         #expect(pressed == ["c"])
 
         // (Token-agnostic on purpose: this guard must compile with any DockTokens skin.)
@@ -62,6 +62,33 @@ extension AccessibilityRegressionTests {
         #expect(panel.accessibilityRole() == .window)
         #expect(panel.accessibilitySubrole() == .floatingWindow)
         #expect(panel.accessibilityLabel() == "Edge Dock")
+    }
+}
+
+extension AccessibilityRegressionTests {
+    /// REG-061: a tile's AX element was only the 52 pt icon while the click target is the whole
+    /// cell, so at the cell edge a click opened the app but VoiceOver found the content group.
+    /// SwiftUI's live AX frames are not readable in-process (the cua C3/C7 checks verify them);
+    /// this guard pins that every laid-out tile's element is sized to its layout cell.
+    @Test("REG-061: each tile's accessibility element covers its whole layout cell",
+          .enabled(if: NSScreen.main != nil))
+    func reg061() throws {
+        let doc = DedockDocument.makeDefault()
+        let config = doc.docks[0]
+        let display = DisplaySnapshot(identity: DisplayIdentity(uuid: "reg061"), frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                                      visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1056), menuBarHeight: 24,
+                                      menuBarAutoHides: false, isMain: true, backingScale: 1)
+        let items = [TileItem(id: "a", kind: .app, bundleID: "com.apple.calculator"),
+                     TileItem(id: "f", kind: .folder, path: "/tmp"),
+                     TileItem(id: "s", kind: .separator)]
+        let layout = LayoutEngine.layout(items.map(\.tileSpec), PlacementInput(display: display, edge: config.edge), config.tokens.metrics)
+        let model = DockViewModel(tokens: config.tokens, icons: IconCache())
+        for item in items where item.kind != .separator {
+            let cell = try #require(layout.tileFrames[item.id])
+            let view = TileView(tile: item.tileModel, model: model, size: cell.size)
+            #expect(view.accessibility.cell == cell.size, "\(item.id)")
+            #expect(view.accessibility.cell.width > config.tokens.appIcon)   // larger than the icon alone
+        }
     }
 }
 
