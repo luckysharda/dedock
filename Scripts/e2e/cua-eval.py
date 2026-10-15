@@ -52,5 +52,11 @@ chk("C6 click-through while hidden", hid and all(h["hit"].get("pid") != pid for 
 t = json.load(open(f"{C}/hit-shown-tile.json")); o = json.load(open(f"{C}/hit-shown-outside.json"))
 first = next(iter(tiles))
 chk("C7 shown tile takes the hit", t.get("pid") == pid and t.get("label") == first, f"pointer on '{first}': hit {'Dedock' if t.get('pid') == pid else 'other app'}, label '{t.get('label', '')}'")
+try:
+    ce = json.load(open(f"{C}/hit-shown-cell.json"))
+    chk("C7 tile cell edge stays in the dock", ce.get("pid") == pid,
+        f"2 pt inside the '{first}' cell, outside its icon: hit {'Dedock' if ce.get('pid') == pid else 'other app'} ({ce.get('role') or '-'} '{ce.get('label', '')}')")
+except Exception as ex:
+    chk("C7 tile cell edge stays in the dock", False, f"not probed or unreadable: {type(ex).__name__}")
 chk("C7 4 pt outside passes through", o.get("pid") != pid, f"4 pt outside the capsule: hit {'Dedock' if o.get('pid') == pid else 'other app'}")
 for r in res: print(f"{r[0]}\t{r[1]}\t{r[2]}")

@@ -1,7 +1,7 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=6] [gap=8] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [dry=1]
 #       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
 #       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
 #       (never committed; no user window is ever in the frame).
@@ -56,7 +56,7 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=6 gap=8 shots=0
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0
 for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
@@ -74,7 +74,8 @@ fi
 edge_list=(${(s:,:)edges})
 # Calibrated on the first full run (2026-10-15: 489 s for edges L,R + idle): launches, settle
 # waits and VOID re-runs make each edge ~200 s; each extra x-06 seed ~15 s.
-est=$(( 15 + ${#edge_list} * (200 + ${#extra_seeds} * 15 + 25 + (shots ? 15 : 0)) + (idle ? 75 : 0) ))
+# Calibrated on the 82d2d69 candidate (edges L,R + 3 extra x-06 seeds + shots + idle: 293 s measured).
+est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0)) + (idle ? 70 : 0) ))
 echo "regress $id: app $(git -C $app rev-parse --short HEAD) edges=$edges idle=$idle — moves the cursor for about $est s"
 if (( dry )); then
   echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}; idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
@@ -111,7 +112,7 @@ psharing=on
     print -l "geom $t (REG-013 …)" "REG-043 $t" "REG-018 $t" "REG-014 $t" "contract $t" "REG-006 $t" "REG-006 ${t}0" \
              "cua C1 panel window $t" "cua C2 cua-driver sees tiles $t" "cua C3 tiles in AX tree $t" "cua C3 REG-040 tiles are buttons $t" \
              "cua C3 REG-040 tiles pressable $t" "cua C4 status item $t" "cua C5 non-activating $t" "cua C6 click-through while hidden $t" \
-             "cua C7 shown tile takes the hit $t" "cua C7 4 pt outside passes through $t" "cua C8 settings labelled $t"
+             "cua C7 shown tile takes the hit $t" "cua C7 tile cell edge stays in the dock $t" "cua C7 4 pt outside passes through $t" "cua C8 settings labelled $t"
     for scn in x-01 x-02 x-03 x-04 x-05a x-05b x-06; do print -r -- "$t.$scn-$t"; done
     for sd in $extra_seeds; do print -r -- "$t.x-06-$t-s$sd"; done
     (( shots )) && print -l "shot $t" "REG-006 S$t"
@@ -249,6 +250,11 @@ for t in g['docks'][0]['tiles']:
   print -l "edge $edge $probe_y" "wait 600" "glide ${first[2]} ${first[3]} 80" "wait 150" > $C/reveal.txt
   $B/pointer -q script $C/reveal.txt
   $B/axprobe at ${first[2]} ${first[3]} only=$pid > $C/hit-shown-tile.json
+  # C7 cell edge: inside the first tile's GEOM cell but outside its (smaller) icon/AX frame, 2 pt in
+  # from the cell's edge on the side away from the screen edge: still the dock, never the window under it.
+  local cell=($(python3 -c "import json;d=json.load(open('$R/data/e2e/geometry.json'))['docks'][0];x,y,w,h=d['tiles'][0]['frame']['topLeft'];print(x+w-2 if d['edge']=='left' else x+2, y+h/2)"))
+  $B/pointer -q move ${cell[1]} ${cell[2]}; sleep 0.15
+  $B/axprobe at ${cell[1]} ${cell[2]} only=$pid > $C/hit-shown-cell.json
   $B/pointer -q move $outside ${first[3]}; sleep 0.15
   $B/axprobe at $outside ${first[3]} only=$pid > $C/hit-shown-outside.json
   $B/axprobe front > $C/front-shown.json

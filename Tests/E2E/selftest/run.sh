@@ -134,7 +134,14 @@ rm -rf $SR/selftest-s*
 echo "-- cua checks (fixture shaped like the real c7fb642 inspection)"
 python3 Scripts/e2e/cua-eval.py Tests/E2E/selftest/cua-fixture Tests/E2E/selftest/cua-geom.json 99 L > $T/cua.txt
 check "cua-eval: REG-040 fails on AXUnknown tiles" "grep -q \$'^cua C3 REG-040 tiles are buttons L\t0' $T/cua.txt"
-check "cua-eval: C1 C3 C4 C5 C6 C7 pass on the fixture" "[[ \$(grep -cE \$'^cua C(1|3 tiles|4|5|6|7)[^\t]*\t1' $T/cua.txt) == 7 ]]"
+check "cua-eval: C1 C3 C4 C5 C6 C7 (incl. cell edge) pass on the fixture" "[[ \$(grep -cE \$'^cua C(1|3 tiles|4|5|6|7)[^\t]*\t1' $T/cua.txt) == 8 ]]"
+# C7 cell edge: a hit on another app inside the cell fails; a missing probe fails (fails closed)
+rm -rf $T/cua-cell; cp -R Tests/E2E/selftest/cua-fixture $T/cua-cell
+print -r -- '{"pid":7,"role":"","label":"","other_app":true}' > $T/cua-cell/hit-shown-cell.json
+python3 Scripts/e2e/cua-eval.py $T/cua-cell Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-cell.txt
+rm $T/cua-cell/hit-shown-cell.json
+python3 Scripts/e2e/cua-eval.py $T/cua-cell Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-cell-missing.txt
+check "cua-eval: C7 cell edge fails when another app takes the hit, or when not probed" "grep -q \$'^cua C7 tile cell edge stays in the dock L\t0' $T/cua-cell.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t0\tnot probed' $T/cua-cell-missing.txt"
 # C3 lower bound: a degenerate 2x2 AX frame at the tile centre is inside and centred, but must fail
 rm -rf $T/cua-tiny; cp -R Tests/E2E/selftest/cua-fixture $T/cua-tiny
 python3 -c "
