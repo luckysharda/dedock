@@ -53,6 +53,9 @@ Every message starts with the **event name**, then space-separated `key=value` p
 | `tiles` | `tile.indicator` | `bundle`, `state` (none/running/frontmost/hidden) | indicator re-rendered |
 | `tiles` | `tile.reorder` | `id`, `from`, `to` | drop that changes the order |
 | `settings` | `settings.changed` | `key`, `value`, `scenario` | any settings write |
+| `settings` | `settings.recovered` | `source` (backup/default), `moved` (file name) | a corrupt `layout.json` was moved aside (REG-036) |
+| `settings` | `settings.notice` | `kind` (recovered) | the one-time recovery notice is shown (REG-036) |
+| `settings` | `settings.readFailed` | — | `layout.json` unreadable (I/O error); left in place, not treated as corrupt (REG-036) |
 | `pointer` | `pointer.mode` | `mode` (monitors/menuTimer) | swap to or from the 30 Hz menu-tracking timer |
 
 The harness matches on the event name at the start of `eventMessage`; extra keys may be added freely, but renaming or removing one is a contract change.
