@@ -115,16 +115,21 @@ wait $lpid 2>/dev/null || true
 sleep 0.5
 
 # Only this scenario's log lines: between the driver's first and last marks (+1 s for trailing hides).
-python3 - $RUN_DIR/log.ndjson $O/driver.txt $O/log.ndjson <<'EOF'
+# Only this run's process: another session's Dedock logs to the same subsystem.
+python3 - $RUN_DIR/log.ndjson $O/driver.txt $O/log.ndjson $APP_PID <<'EOF'
 import json, re, sys
 marks = [int(m) for m in re.findall(r"^mach=(\d+) .*ev=mark", open(sys.argv[2]).read(), re.M)]
 lo, hi = marks[0], marks[-1] + 24_000_000  # 1 s of mach ticks (24 MHz)
+pid, other = int(sys.argv[4]), set()
 with open(sys.argv[3], "w") as out:
     for line in open(sys.argv[1]):
         if line.startswith("{"):
-            try: t = json.loads(line).get("machTimestamp", 0)
+            try: o = json.loads(line)
             except ValueError: continue
-            if lo <= t <= hi: out.write(line)
+            if not lo <= o.get("machTimestamp", 0) <= hi: continue
+            if o.get("processID") != pid: other.add(o.get("processID")); continue
+            out.write(line)
+if other: print(f"WARN other Dedock processes logged during the scenario: {sorted(other)} (excluded; they may also have reacted to the pointer)")
 EOF
 
 {

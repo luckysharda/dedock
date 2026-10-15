@@ -106,6 +106,9 @@ DEDOCK_LOCKS=$T/qlocks Scripts/e2e/desktop-lock.sh acquire dedock-app-f1 e2e sel
 check "quit-refs quits a running reference app politely and logs it" "DEDOCK_LOCKS=$T/qlocks DEDOCK_REFS_PATTERN=$QP Scripts/e2e/quit-refs.sh selftest-refs >/dev/null && ! kill -0 $fakepid 2>/dev/null && grep -q 'not relaunched' $B/runs/selftest-refs/refs-quit.txt"
 DEDOCK_LOCKS=$T/qlocks Scripts/e2e/desktop-lock.sh release dedock-app-f1 >/dev/null
 kill $fakepid 2>/dev/null
+mkdir -p $T/Fake/Dedock.app/Contents/MacOS && cp $B/fake-dock $T/Fake/Dedock.app/Contents/MacOS/Dedock
+DEDOCK_LOCKS=$T/glocks Scripts/e2e/launch.sh selftest-guard --bin $T/Fake/Dedock.app/Contents/MacOS/Dedock > $T/guard.txt 2>&1
+check "launch refuses a real Dedock without the lock" "grep -q 'refusing: launching Dedock needs the desktop lock' $T/guard.txt && [[ ! -e $B/runs/selftest-guard ]]"
 check "scenario dry run" "Scripts/e2e/launch.sh selftest-dry --bin $B/fake-dock >/dev/null && Scripts/e2e/scenario.sh selftest-dry L x-01 n=2 dry=1 | grep -q 'edge left' ; Scripts/e2e/teardown.sh selftest-dry >/dev/null"
 
 echo

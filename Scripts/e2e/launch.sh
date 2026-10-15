@@ -14,7 +14,8 @@
 #   data/            DEDOCK_E2E_HOME (layout.json, e2e/geometry.json)
 #   log.ndjson       log stream of subsystem app.dedock.Dedock
 #   dock-before.plist, before-apps.txt, run.env (APP_PID, LOG_PID, paths)
-# Does not move the cursor (no desktop lock needed). Does not quit CoolDock or
+# Does not move the cursor, but a real Dedock shows a dock and reacts to the pointer, so it
+# refuses unless this session holds the desktop lock and no other Dedock runs. Does not quit CoolDock or
 # DockDoor: it records them and warns, because quitting them is the user's call.
 # Stop everything with Scripts/e2e/teardown.sh <run-id>.
 set -euo pipefail
@@ -41,6 +42,18 @@ if [[ -z $bin ]]; then
   [[ -z $seed && -f $app/Tests/E2E/fixtures/layout-seed.json ]] && seed=$app/Tests/E2E/fixtures/layout-seed.json
 fi
 [[ -x $bin ]] || { echo "not executable: $bin (run Scripts/make-app.sh debug in the app worktree)" >&2; exit 2 }
+
+# A real Dedock puts a dock on screen and reacts to the pointer, so launching one counts as
+# driving the desktop: only while THIS session holds the lock, and never next to another
+# Dedock (two instances react to the same pointer and share one log subsystem).
+# The self-test's fake app (not named Dedock) shows nothing and is exempt.
+if [[ ${bin:t} == Dedock ]]; then
+  me=${DEDOCK_LOCK_OWNER:-dedock-app-f1}
+  holder=$($HARNESS/Scripts/e2e/desktop-lock.sh status | sed -n 's/^owner=//p')
+  [[ $holder == $me ]] || { echo "refusing: launching Dedock needs the desktop lock held by '$me' (holder: '${holder:-nobody}')" >&2; exit 2 }
+  others=$(pgrep -x Dedock || true)
+  [[ -z $others ]] || { echo "refusing: another Dedock is running (pid $others); quit it first" >&2; exit 2 }
+fi
 
 R=$HARNESS/build/e2e/runs/$run
 [[ -e $R ]] && { echo "run dir exists: $R (pick a new run id)" >&2; exit 2 }
