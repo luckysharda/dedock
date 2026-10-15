@@ -33,6 +33,30 @@ public enum DebugCommand: Equatable, Sendable {
 
     public static let notificationName = "app.dedock.debug.command"
 
+    /// Who a posted command is for. A distributed notification reaches every listening debug
+    /// instance, so each command names its target process in `userInfo["pid"]`; another
+    /// session's debug Dedock must not act on it.
+    public enum Addressing: Equatable, Sendable {
+        case mine
+        /// Meant for another process: ignored quietly.
+        case other
+        /// No usable pid: rejected and logged.
+        case missing
+    }
+
+    /// Reads `userInfo["pid"]` (a number, or a decimal string) against `ownPID`.
+    public static func addressing(_ pid: Any?, ownPID: Int32) -> Addressing {
+        let value: Int32? = switch pid {
+        case let n as Int32: n
+        case let n as Int: Int32(exactly: n)
+        case let n as NSNumber: Int32(exactly: n.int64Value)
+        case let s as String: Int32(s)
+        default: nil
+        }
+        guard let value, value > 0 else { return .missing }
+        return value == ownPID ? .mine : .other
+    }
+
     /// Parses the `cmd` user-info value. Unknown commands are rejected (nil).
     public static func parse(_ raw: String) -> DebugCommand? {
         let parts = raw.split(separator: "=", maxSplits: 1).map(String.init)

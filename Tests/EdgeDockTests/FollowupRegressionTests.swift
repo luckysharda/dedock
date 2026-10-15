@@ -61,6 +61,20 @@ import Testing
         #expect(DebugCommand.parse(raw) == expected)
     }
 
+    /// A command acts only in the process it names; one without a usable pid is rejected.
+    @Test func commandsAreAddressedByPID() {
+        #expect(DebugCommand.addressing(Int32(4242), ownPID: 4242) == .mine)
+        #expect(DebugCommand.addressing(4242, ownPID: 4242) == .mine)
+        #expect(DebugCommand.addressing(NSNumber(value: 4242), ownPID: 4242) == .mine)
+        #expect(DebugCommand.addressing("4242", ownPID: 4242) == .mine)
+        #expect(DebugCommand.addressing("4243", ownPID: 4242) == .other)
+        #expect(DebugCommand.addressing(nil, ownPID: 4242) == .missing)
+        #expect(DebugCommand.addressing("", ownPID: 4242) == .missing)
+        #expect(DebugCommand.addressing("42x", ownPID: 4242) == .missing)
+        #expect(DebugCommand.addressing(-1, ownPID: 4242) == .missing)
+        #expect(DebugCommand.addressing(Int.max, ownPID: 4242) == .missing)
+    }
+
     /// Any process can post arbitrary text, so the debug log keeps at most 64 characters of it.
     @Test func loggedTextIsCapped() {
         #expect(DebugCommand.logged("reveal") == "reveal")

@@ -14,7 +14,15 @@ import Foundation
             forName: Notification.Name(DebugCommand.notificationName), object: nil, queue: .main
         ) { note in
             let raw = note.userInfo?["cmd"] as? String ?? ""
+            let addressing = DebugCommand.addressing(note.userInfo?["pid"], ownPID: ProcessInfo.processInfo.processIdentifier)
             MainActor.assumeIsolated {
+                switch addressing {
+                case .mine: break
+                case .other: return     // another session's debug instance: not ours to log
+                case .missing:
+                    DedockLog.event(.app, "debug.command", ["cmd": DebugCommand.logged(raw), "ok": false, "reason": "pid"])
+                    return
+                }
                 guard let command = DebugCommand.parse(raw) else {
                     DedockLog.event(.app, "debug.command", ["cmd": DebugCommand.logged(raw), "ok": false])
                     return
