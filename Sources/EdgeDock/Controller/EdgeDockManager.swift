@@ -19,6 +19,7 @@ import SettingsStore
     private let env = DedockEnvironment.current
     private let geometryWriter: GeometryWriter
     private var dockPrefs: DockPreferencesReader!
+    private var fullscreen: FullscreenProbe!
     private var topologyToken: ObservationToken?
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
@@ -34,8 +35,18 @@ import SettingsStore
         self.clock = clock
         geometryWriter = GeometryWriter(dataDirectory: dataDirectory)
         dockPrefs = DockPreferencesReader { [weak self] _ in self?.sync(reason: "dockPrefs") }
-        topologyToken = topology.observe { [weak self] _ in self?.sync(reason: "displays") }
+        fullscreen = FullscreenProbe(clock: clock, layout: { [weak topology] in topology?.layout ?? DisplayLayout(displays: []) })
+        topologyToken = topology.observe { [weak self] _ in
+            self?.sync(reason: "displays")
+            self?.fullscreen.check()
+        }
         settingsObserver = settings.addObserver { [weak self] _ in self?.sync(reason: "settings") }
+        fullscreen.onChange = { [weak self] changed in
+            guard let self else { return }
+            for c in self.coordinators.values {
+                if let on = changed[c.display.identity] { c.controller.send(.fullscreenChanged(on)) }
+            }
+        }
         running.onChange = { [weak self] in
             guard let self else { return }
             for c in self.coordinators.values { c.refreshRunning() }
@@ -80,6 +91,8 @@ import SettingsStore
                 c.onChange = { [weak self] in self?.dockChanged() }
                 c.onArmed = { [weak self] in self?.logEdgeReady() }
                 c.onRemoveTile = { [weak self] tile in self?.remove(tile: tile, from: config.profileID) }
+                // A dock created while its display is full screen starts with the longer dwell.
+                if fullscreen.states[display.identity] == true { c.controller.send(.fullscreenChanged(true)) }
                 coordinators[config.id] = c
             }
         }
