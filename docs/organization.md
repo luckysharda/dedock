@@ -67,7 +67,7 @@ Dedock app/                          repo root
 │   ├── run.sh                       make-app, quit a running copy, run in the foreground (logs to the terminal)
 │   ├── measure-idle.sh              idle CPU / RSS sampler (replaces XCTest metrics)
 │   ├── measure-pixels.swift         pixel and edge measurement (docs/evaluation.md §8, §9)
-│   ├── check-deps.swift             module layering rules (architecture.md §5)
+│   ├── check-deps.sh             module layering rules (architecture.md §5)
 │   └── check-strings.sh             clean-room string guard (adoption-plan.md §7.2 item 4), from M2
 ├── Tools/
 │   ├── (E2E driver lives in Scripts/e2e/pointer.swift, owned by the E2E lane)

@@ -71,8 +71,8 @@ In short: `DedockCore` ← {`Diagnostics`, `DesignSystem`, `DisplayTopology`} �
 | D1 Layering | A module imports only modules in a lower layer. The app target is the only place that sees every module. | `dependencies:` lists in `Package.swift`. A missing edge is a compile error. |
 | D2 Features never import each other | `EdgeDock`, and later `PreviewUI`, `Switcher` and `DedockWidgets`, do not import one another. The single planned exception is `EdgeDock → DedockWidgets` (the dock renders widget tiles), as in `<pack>/dedock-plan/architecture.md` §5 D2. | `Package.swift` |
 | D3 Cross-feature calls go through Core protocols | Example: the Edge Dock asks for a preview through `PreviewPresenting` (declared in `DedockCore`); `PreviewUI` implements it; the composition root injects it. `SettingsUI` changes the dock only by writing `SettingsModel`; it never calls `EdgeDock`. | Compile-time: the import is not available |
-| D4 No AppKit or SwiftUI in Core | `DedockCore` imports Foundation and CoreGraphics only | `Scripts/check-deps.swift` (`docs/plan.md` T1) |
-| D5 Pure logic stays pure | The pure files in `Sources/EdgeDock/Logic/` (`EdgeGeometry`, `TriggerEvaluator`, `RevealStateMachine`, `LayoutEngine`) import only Foundation, CoreGraphics and `DedockCore`. They hold no clock, no timer and no reference types. Nothing impure lives in `Logic/`; the controller, coordinator and manager live in `Controller/`. | the Linux build of `Logic/` (no AppKit) plus `Scripts/check-deps.swift` by folder (follow-up, tracked in `docs/status.md`) |
+| D4 No AppKit or SwiftUI in Core | `DedockCore` imports Foundation and CoreGraphics only | `Scripts/check-deps.sh` (`docs/plan.md` T1) |
+| D5 Pure logic stays pure | The pure files in `Sources/EdgeDock/Logic/` (`EdgeGeometry`, `TriggerEvaluator`, `RevealStateMachine`, `LayoutEngine`) import only Foundation, CoreGraphics and `DedockCore`. They hold no clock, no timer and no reference types. Nothing impure lives in `Logic/`; the controller, coordinator and manager live in `Controller/`. | the Linux build of `Logic/` (no AppKit) plus `Scripts/check-deps.sh` by folder, run by CI `guards` on every push |
 | D6 Main actor for UI, actors for I/O | Anything touching `NSWindow`, `NSView`, `NSEvent` or SwiftUI state is `@MainActor`. File I/O runs on `actor LayoutFile`. No locks in feature code. | Swift 6 strict concurrency |
 | D7 Settings only through SettingsStore | No module reads or writes `layout.json` or `UserDefaults` directly | review + grep |
 | D8 No private API and no network in v0 | No `dlsym`, no SkyLight or CoreDock symbols, no `URLSession`. Private symbols arrive with Pillar A, only inside `PrivateBridges`, resolved with `dlsym`, each optional (`<pack>/dedock-plan/architecture.md` §8). | grep |
@@ -136,7 +136,7 @@ Dedock app/                              repo root (and the root of every worktr
 ├── Scripts/
 │   ├── make-app.sh                      build → build/Dedock.app → ad-hoc sign
 │   ├── run.sh                           make-app.sh, quit a running copy, run in the foreground
-│   ├── check-deps.swift                 rules D4, D5, D8 (docs/plan.md T1; follow-up, CI `guards` runs it once present)
+│   ├── check-deps.sh                 rules D4, D5, D8 (docs/plan.md T1; run by CI `guards`)
 │   ├── measure-idle.sh                  idle CPU / RSS sampler (docs/evaluation.md §6)
 │   └── measure-pixels.swift             pixel and edge measurement (docs/evaluation.md §8, §9)
 ├── Tools/
@@ -949,4 +949,4 @@ The first Edge Dock implementation (PR #7) differed from this document in four p
 | Pure logic folder | `EdgeDock/Trigger/`, `Reveal/`, `Layout/` | `EdgeDock/Logic/` (pure) + `EdgeDock/Controller/` (impure) | One folder is easy to build on Linux and to check by path; impure code is never mixed in. |
 | `JSONValue` | DedockCore | SettingsStore `Model/` | Only the settings store needs it in v0; it moves to Core when a second module does. |
 | `NativeDockGeometryProviding`, `PreviewPresenting` | declared in Core in v0 | added with their first consumer (M2/M3) | v0 has a single implementation and no consumer; empty protocols add nothing. |
-| `Scripts/check-deps.swift` | required in T1 | follow-up | The Linux build already enforces "no AppKit in `Logic/`"; the script adds the reference-type and clock checks later. |
+| `Scripts/check-deps.sh` | `check-deps.swift`, required in T1 | `check-deps.sh` (shell, no toolchain), landed with the review follow-ups; CI `guards` runs it | A shell script runs in the cheap Ubuntu `guards` job with no Swift toolchain. |
