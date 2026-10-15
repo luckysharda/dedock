@@ -538,7 +538,6 @@ public struct RevealStateMachine: Sendable {
 }
 ```
 
-
 **Implementation decisions recorded 2026-10-15 (implementer, accepted by the planner).**
 
 1. *Reversal region.* `hiding → revealing` fires when the pointer re-enters a hot zone **or** the capsule outset by the 16 pt hide hysteresis. The trigger evaluator emits one `pointerInside(Bool)` for that region; returning within 16 pt during a hide counts as "came back".
