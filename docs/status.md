@@ -4,6 +4,56 @@ Newest entry first. Each entry: done, in progress, next, blockers and notes, the
 
 ---
 
+## 2026-10-16, second update
+
+### Done: follow-up stack merged
+
+| PR | Content | Merged |
+|---|---|---|
+| #20 | Behaviour follow-ups: live status items, full-screen flag per display, re-hold on a moving reading, stricter drop-to-pin, cancel reorder on relayout (REG-044…048); REG-021/023 guards that can fail | `fbd56bc` |
+| #21 | Review follow-ups (REG-031…038), debug-only E2E command channel, `Scripts/check-deps.sh` | `18d116b` |
+| #22 | E2E harness: re-baseline from `82d2d69`, x-00 prompts by window id, REG-055 refuses while OS pointer sharing is on, C7 cell edge | `d87917d` |
+| #23 | REG-057…060: launch notices are non-modal panels that never take key focus, read-only notice, capped re-holds, first sync `reason=launch`, check-deps fails closed | `d505f07` |
+| #24 | REG-056: the dock window is a named floating window, not a system dialog | `00a5fe3` |
+| #25 | `design.md` §5.5 names in UI text ("Dedock", "Edge Dock", "the Dock") | `7cecb2c` |
+| #26 | REG-061: a tile's accessibility element covers its whole cell | `ba29394` |
+| #28 | E2E harness: paired GEOM snapshots, REG-061 gates, C8/C9 Settings rows, `axpress` (own windows only, real lock), REG-062 row | `7bd6f68` |
+| #19 | DD-934 pointer-sharing edges as an open item | `9051948` |
+
+### Candidate cards
+
+| Candidate | Covers | Result |
+|---|---|---|
+| `af3a80e` | #20 + #21 | 21/21 scenarios, 55/55 checks; 2 drift warnings accepted (idle RSS: the baseline value was the outlier; first launch after a rebuild, reported, not gated) |
+| `a726ee1` | #23 + #24 | 21/21, 63/65: no reveal while the recovery alert was up (app: `runModal`, fixed by the non-modal notice); C1 R 1 pt (harness: unpaired snapshot, fixed in #28) |
+| `7690688` | #23 + #26 + #27 | 21/21, 75/79: REG-057, REG-061, REG-062 and C9 pass; 4 C8 FAILs hold #27 (REG-063, REG-064) |
+
+### Open before M1 sign-off
+
+| Item | Owner |
+|---|---|
+| #27 Settings: numeric fields beside sliders have no AX name (REG-063); opening Settings latches an explicit reveal, so closing it never hides the dock (REG-064); then a short C8 card | implementer, E2E lane |
+| Bottom and top edges on the E2E card: M1 closes only when all four edges work (S-5) | E2E lane, implementer |
+| AX hit test honours the click-through gate outside the capsule (#15 review) | implementer |
+| Debug channel scoping: `notify` sends a target pid and needs the real lock; the app ignores commands for another pid (#28 review) | E2E lane, implementer |
+| "The notice does not take focus" reads the system-wide focused element, not the frontmost app; REG-062's zone thickness expectation comes from the native Dock's edge (#28 review) | E2E lane |
+| DD-934 pointer-sharing edges: (a) leave, (b) per-edge setting (proposed), (c) detect | owner |
+
+Done from the first 2026-10-16 list: x-00 by window id and the listener `ready` line (#22), the C3 lower bound (superseded by the REG-061 whole-cell gate, #28), the `tile.reorderCancelled` emitter (#20), the `openSettings` debug command (#21).
+
+### Watch
+
+| Item | Note |
+|---|---|
+| Idle RSS ≈ 90 MB against the 120 MB budget (NFR-2) | before M3 previews, gate on `phys_footprint` (34 MB) next to RSS; RSS counts shared framework pages |
+| Settings nudges a side dock by about 1 pt (the native Dock's reserved area changes when Dedock becomes a regular app) | accepted for M1; relayout hysteresis in M2 (`design.md` §4.3) |
+
+### Design rules added (`design.md`)
+
+§2.2 the Settings hold lasts only while Settings is open; §2.3a no modal sessions while docks are live; §4.3 relayout hysteresis for side docks (M2); §6 accessibility frames equal click targets, every control is named.
+
+---
+
 ## 2026-10-16
 
 ### Done: M1 candidate stack merged

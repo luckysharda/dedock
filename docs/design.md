@@ -70,12 +70,24 @@ States: `hidden → arming → revealing → shown → armingHide → hiding →
 
 Hide inhibitors (DD-929): `previewOpen`, `popoverOpen`, `menuOpen`, `dragging`, `editing`, `textFocus`, `keyboardFocused`, `pinnedByUser`. Any one blocks `shown → armingHide`.
 
+`editing` (Settings open) holds the dock only for the window's lifetime. Opening Settings shows the dock through that hold, never through an explicit reveal (an explicit reveal latches until the first pointer visit), so closing Settings returns to normal behaviour: with the pointer away, `armingHide` and the hide delay follow (REG-064).
+
 ### 2.3 Click-through (DD-933)
 
 - While `hidden` or `faded`, the dock panel ignores mouse events.
 - While shown, hit-testing returns nil outside visible tiles and controls. Test: a click 4 pt outside the container hits the window underneath.
 - Interactive at the **start** of a reveal; pass-through at the **start** of a hide (`dedock-inputs/animation-spec.md` §3.1).
 - The `NSPanel` frame stays fixed; only the content layer's translation animates (DD-927).
+
+### 2.3a No modal sessions
+
+While any dock is live, Dedock never starts an app-wide modal session (`runModal`, `beginModalSession`): a modal run loop stalls the pointer monitors and the reveal timers, so the dock stops working behind it (REG-057).
+
+| Need | Use |
+|---|---|
+| A launch or error notice | a small floating, non-activating panel that never becomes key on its own (`becomesKeyOnlyIfNeeded`), so the user's typing stays in their app; OK by click (REG-057) |
+| A file or app picker | a sheet on the Settings window (`beginSheetModal`), never `runModal` |
+| A confirmation inside Settings | a sheet on the Settings window |
 
 ### 2.4 Preview lifecycle (later milestone; recorded so the look can plan for it)
 
@@ -195,6 +207,10 @@ Rules:
 6. **Fixed panel frame.** The `NSPanel` is sized once to dock + label room + shadow; only content moves. Labels draw inside this frame on the screen-centre side, so they never need a second window.
 7. **Overflow** (DD-977): Adapt size shrinks tiles to 60 % of `t`, then scrolls along the edge axis.
 
+### 4.3 Relayout hysteresis for side docks (M2, with DD-947)
+
+A side dock is centred on its display's `visibleFrame`, which moves by a point or two whenever the native Dock's reserved area changes (an app icon added, for example when Settings switches Dedock to a regular app; magnification limits; autohide). Each change re-centres the capsule by about 1 pt: correct, but a visible nudge. M1 accepts it. From M2 a side dock re-centres only when the change along its axis is ≥ 4 pt, or when the capsule would otherwise overlap the newly reserved area; smaller changes keep its position. GEOM always reports the position actually placed, so the E2E C1 check is unchanged.
+
 ---
 
 ## 5. Component inventory per surface
@@ -267,6 +283,8 @@ Accessibility descriptions follow the same rule (the status item's image descrip
 | Contrast | text ≥ 4.5:1 (≥ 3:1 at ≥ 18 pt or 14 pt bold); non-text indicators and borders ≥ 3:1; a high-chroma accent that fails as text is used only as a fill with dark text |
 | Focus vs hover | keyboard focus uses a distinct focus mark from pointer hover |
 | VoiceOver | labels, values and hints as in §5 and `dedock-plan/ux-patterns.md` §9.1; when the dock reveals by keyboard, post layout-changed focused on the first tile and announce "Left dock" |
+| Accessibility frames | an element's accessibility frame equals its click target: a dock tile's element is its whole cell, not the icon inside it, so pointer-based VoiceOver finds the tile wherever a click would open it (REG-054, REG-061) |
+| Named controls | every control has a name (description or title), not only a value: a numeric field beside a slider is named after the slider's row (REG-063) |
 | Keyboard | every surface reachable by shortcut and from the menu-bar menu; Esc closes; arrow keys move along the edge axis |
 | Hit targets | ≥ 28 × 28 pt pointer targets; remove buttons ≥ 18 pt visual with a 28 pt hit area |
 | Motor | all dwells adjustable; "Click to reveal" and "Sticky reveal" options (`dedock-plan/ux-patterns.md` §9.3) |
