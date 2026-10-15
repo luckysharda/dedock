@@ -121,6 +121,9 @@ for line in open(log):
         except ValueError: continue
         if o.get("processID") == pid and o.get("subsystem") == "app.dedock.Dedock":
             ev.append(o["eventMessage"])
+priv = sum(1 for e in ev if "<private>" in e)
+print(f"REG-043 {int(priv == 0)} debug log lines carrying <private>: {priv}/{len(ev)} (debug must log everything .public)")
+ev = [e.replace("<private>", "") for e in ev]
 names = [e.split(" ", 1)[0] for e in ev]
 ready = [i for i, n in enumerate(names) if n == "launch.edgeReady"]
 prep = [i for i, n in enumerate(names) if n in ("layout.pass", "docks.sync")]

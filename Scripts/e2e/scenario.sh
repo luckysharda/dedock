@@ -27,7 +27,10 @@ for kv in "$@"; do case $kv in n=*) n=${kv#n=} ;; seed=*) seed=${kv#seed=} ;; dr
 
 R=$B/runs/$run
 [[ -f $R/run.env ]] || { echo "no run $run: start it with launch.sh" >&2; exit 2 }
-source $R/run.env
+# run.env is read, never sourced: it holds app-provided text (e.g. a "<private>" log value once
+# broke `source` and left an instance running).
+envv() { sed -n "s/^$1=//p" $R/run.env | head -1 | sed 's/\\ / /g' }
+APP_PID=$(envv APP_PID); LOG_PID=$(envv LOG_PID); RUN_DIR=$R; DATA_DIR=$R/data; GEOM=$R/data/e2e/geometry.json
 if (( ! dry )); then
   kill -0 $APP_PID 2>/dev/null || { echo "app (pid $APP_PID) is not running" >&2; exit 2 }
   # The lock must be held by THIS session, not merely by someone.

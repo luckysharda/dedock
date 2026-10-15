@@ -23,7 +23,7 @@ DRIFT = 0.20
 DEFAULT_FLOORS = {"_ms": 2.0, "_pt": 1.0, "cpu_pct": 0.05, "wakeups_per_s": 0.2, "_mb": 5.0}
 # Counts describe the run, not the app's quality: never drift-checked.
 # Harness checks (Tests/E2E/regressions.md "gates: harness") never decide an app PR's verdict.
-HARNESS_IDS = ("REG-015", "REG-016", "REG-017", "REG-041")
+HARNESS_IDS = ("REG-015", "REG-016", "REG-017", "REG-041", "REG-042")
 COUNTS = ("_trials", "reversals", "foreign_events", "leave_before_dwell", "hide_cancelled", "_n")
 
 

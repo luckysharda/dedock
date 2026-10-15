@@ -12,7 +12,10 @@ HARNESS=${0:A:h:h:h}
 run=${1:?usage: teardown.sh <run-id>}
 R=$HARNESS/build/e2e/runs/$run
 [[ -f $R/run.env ]] || { echo "no run.env in $R" >&2; exit 2 }
-source $R/run.env
+# run.env is read, never sourced: it holds app-provided text (e.g. a "<private>" log value once
+# broke `source` and left an instance running).
+envv() { sed -n "s/^$1=//p" $R/run.env | head -1 | sed 's/\\ / /g' }
+APP_PID=$(envv APP_PID); LOG_PID=$(envv LOG_PID)
 
 for pid in $APP_PID $LOG_PID; do
   kill $pid 2>/dev/null || true

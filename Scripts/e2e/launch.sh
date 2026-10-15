@@ -131,7 +131,7 @@ while (( SECONDS < deadline )); do
     ready_mach=$(print -r -- $line | grep -o '"machTimestamp":[0-9]*' | cut -d: -f2)
     ext=""
     [[ -n $ready_mach && ${exec_mach:-0} -gt 0 ]] && ext=" external=$(( (ready_mach - exec_mach) / 24000 ))ms"
-    print -r -- "EDGE_READY=$ready$ext" >> $R/run.env
+    print -r -- "EDGE_READY=${(q)ready}${(q)ext}" >> $R/run.env   # app text: quoted (may hold "<private>")
     echo "PASS launched pid=$app_pid run=$R ($ready$ext)"
     exit 0
   fi

@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-042.**
+Ask the E2E lane for the next free id. **Next free: REG-044.**
 
 ## How the suite runs
 
@@ -60,6 +60,8 @@ Ask the E2E lane for the next free id. **Next free: REG-042.**
 | REG-039 | A reversal's new animation effectively restarts ~1 frame (≈ 17 ms) after its commit: the first frame follows the new curve, later frames lag it by a frame, so the dock steps back toward its start (0.07 pt seen at an ease-in start; several pt possible at speed). Found by regress.sh on PR #7 head `c207730`, x-06 right, reversal 29 | `analyze frames` "DD-928 no flicker" (direction change inside one animation) and continuity worst offset; x-06 per edge | regress.sh | app |
 | REG-040 | Dock tiles are AX elements with the right labels but role `AXUnknown`: VoiceOver does not announce them as buttons and AX clients (cua-driver included) see nothing actionable (NFR-10, design §6) | cua checks C3 "tiles are buttons" (`axprobe tree`: role `AXButton`) and C2 (cua-driver `get_window_state` lists every tile) | regress.sh (cua checks) | app |
 | REG-041 | The AX probe recorded another app's element text (a hit test over the user's terminal captured its contents) | `axprobe at … only=<pid>` reports role and label only for the app under test, `other_app` otherwise; self-test asserts it | regress.sh, self-test | **harness** |
+| REG-042 | The harness `source`d `run.env`, which held app-provided text: a `<private>` value made zsh treat it as an input redirect, teardown aborted and a Dedock instance kept running after the lock was released | `run.env` values are written quoted and only ever parsed (`sed`), never sourced; teardown always stops the recorded pid; self-test launches a fake whose `launch.edgeReady` carries `<private>` and shell metacharacters | self-test | **harness** |
+| REG-043 | Every debug log line ends with a literal `<private>` (an empty `.private` interpolation, from REG-030's split): the last key=value of every line is corrupted | regress.sh contract check: no `<private>` in any debug line (analyzer strips it meanwhile so runs stay readable) | regress.sh | app |
 
 ## Adding an entry
 

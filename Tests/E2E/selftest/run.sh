@@ -18,7 +18,7 @@ fails=0
 # Never leak an app or a log stream, even if a check or a teardown fails midway.
 cleanup() {
   for env in $B/runs/selftest-*/run.env(N); do
-    ( source $env; kill $APP_PID $LOG_PID 2>/dev/null )
+    kill $(sed -n 's/^\(APP_PID\|LOG_PID\)=//p' $env) 2>/dev/null
   done
 }
 trap cleanup EXIT
@@ -152,6 +152,14 @@ kill $fakepid 2>/dev/null
 mkdir -p $T/Fake/Dedock.app/Contents/MacOS && cp $B/fake-dock $T/Fake/Dedock.app/Contents/MacOS/Dedock
 DEDOCK_LOCKS=$T/glocks Scripts/e2e/launch.sh selftest-guard --bin $T/Fake/Dedock.app/Contents/MacOS/Dedock > $T/guard.txt 2>&1
 check "launch refuses a real Dedock without the lock" "grep -q 'refusing: launching Dedock needs the desktop lock' $T/guard.txt && [[ ! -e $B/runs/selftest-guard ]]"
+# REG-042: app text with "<private>" and shell metacharacters must never break or execute.
+rm -f $T/pwned1 $T/pwned2
+FAKE_READY_SUFFIX="<private> \$(touch $T/pwned1) \`touch $T/pwned2\` ;|& >x" Scripts/e2e/launch.sh selftest-hostile --bin $B/fake-dock > $T/hostile-launch.txt 2>&1
+hpid=$(sed -n 's/^APP_PID=//p' $B/runs/selftest-hostile/run.env)
+Scripts/e2e/teardown.sh selftest-hostile > $T/hostile-teardown.txt 2>&1
+check "REG-042 hostile edgeReady text: launch passes" "grep -q '^PASS launched' $T/hostile-launch.txt"
+check "REG-042 teardown stops the app anyway" "grep -q 'PASS REG-006' $T/hostile-teardown.txt && ! kill -0 $hpid 2>/dev/null"
+check "REG-042 nothing in the app text was executed" "[[ ! -e $T/pwned1 && ! -e $T/pwned2 && ! -e x ]]"
 check "scenario dry run" "Scripts/e2e/launch.sh selftest-dry --bin $B/fake-dock >/dev/null && Scripts/e2e/scenario.sh selftest-dry L x-01 n=2 dry=1 | grep -q 'edge left' ; Scripts/e2e/teardown.sh selftest-dry >/dev/null"
 
 echo

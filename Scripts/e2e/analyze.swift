@@ -45,8 +45,11 @@ func loadEvents(_ path: String) -> [Event] {
     for line in text.split(separator: "\n") where line.hasPrefix("{") {
         guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
               (obj["subsystem"] as? String) == "app.dedock.Dedock",
-              let msg = obj["eventMessage"] as? String,
+              var msg = obj["eventMessage"] as? String,
               let mach = (obj["machTimestamp"] as? NSNumber)?.uint64Value else { continue }
+        // REG-043: a stray trailing "<private>" (an empty .private interpolation) must not corrupt
+        // the last key=value; it is stripped here and flagged by regress.sh's contract check.
+        while msg.hasSuffix("<private>") { msg.removeLast("<private>".count) }
         let words = msg.split(separator: " ")
         guard let first = words.first else { continue }
         var kv: [String: String] = [:]
