@@ -75,7 +75,7 @@ In short: `DedockCore` ← {`Diagnostics`, `DesignSystem`, `DisplayTopology`} �
 | D5 Pure logic stays pure | The pure files in `Sources/EdgeDock/Logic/` (`EdgeGeometry`, `TriggerEvaluator`, `RevealStateMachine`, `LayoutEngine`) import only Foundation, CoreGraphics and `DedockCore`. They hold no clock, no timer and no reference types. Nothing impure lives in `Logic/`; the controller, coordinator and manager live in `Controller/`. | the Linux build of `Logic/` (no AppKit) plus `Scripts/check-deps.sh` by folder, run by CI `guards` on every push |
 | D6 Main actor for UI, actors for I/O | Anything touching `NSWindow`, `NSView`, `NSEvent` or SwiftUI state is `@MainActor`. File I/O runs on `actor LayoutFile`. No locks in feature code. | Swift 6 strict concurrency |
 | D7 Settings only through SettingsStore | No module reads or writes `layout.json` or `UserDefaults` directly | review + grep |
-| D8 No private API and no network in v0 | No `dlsym`, no SkyLight or CoreDock symbols, no `URLSession`. Private symbols arrive with Pillar A, only inside `PrivateBridges`, resolved with `dlsym`, each optional (`<pack>/dedock-plan/architecture.md` §8). | grep |
+| D8 No private API and no network in v0 | No `dlsym`, no SkyLight or CoreDock symbols, no `URLSession`. Private symbols arrive with Pillar A, only inside `PrivateBridges`, resolved with `dlsym`, each optional (`<pack>/dedock-plan/architecture.md` §8). Owner-approved exceptions so far: MediaRemote for the media widget only, with an adapter process and a public fallback (`docs/plan.md` §2.3a). | grep |
 
 ---
 
