@@ -1,5 +1,6 @@
 import DedockCore
 import Foundation
+import SettingsStore
 import Testing
 @testable import EdgeDock
 
@@ -17,5 +18,23 @@ import Testing
     @MainActor func reorderedInsertsAmongTheOthers(moving: String, index: Int, expected: [String]) {
         let result = EdgeDockCoordinator.reordered(order, moving: TileID(moving), to: index)
         #expect(result == expected.map { TileID($0) })
+    }
+}
+
+@Suite struct DropToPinTests {
+    @Test @MainActor func appURLBecomesAnAppTileWithItsBundleID() {
+        let item = EdgeDockManager.tileItem(for: URL(fileURLWithPath: "/System/Applications/Calculator.app"))
+        #expect(item.kind == .app)
+        #expect(item.bundleID == "com.apple.calculator")
+        #expect(item.path == "/System/Applications/Calculator.app")
+        #expect(item.displayName == "Calculator")
+    }
+
+    @Test @MainActor func folderURLBecomesAFolderTileWithABookmark() {
+        let dir = FileManager.default.temporaryDirectory
+        let item = EdgeDockManager.tileItem(for: dir)
+        #expect(item.kind == .folder)
+        #expect(item.bookmark != nil)
+        #expect(item.bundleID == nil)
     }
 }

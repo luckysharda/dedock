@@ -45,6 +45,8 @@ public struct DockSurroundings: Sendable, Equatable {
     var onRemoveTile: ((TileID) -> Void)?
     /// Called with the new tile order after a reorder drop (DD-975).
     var onReorder: (([TileID]) -> Void)?
+    /// Called with dropped app/folder URLs and the insertion index (DD-975 item 4).
+    var onPin: (([URL], Int) -> Void)?
 
     /// A reorder drag: layout and order frozen at drag start, so live changes cannot corrupt it.
     private struct ReorderSession {
@@ -92,6 +94,17 @@ public struct DockSurroundings: Sendable, Equatable {
         panel.root.onDragMoved = { [weak self] p in self?.moveReorder(to: p) }
         panel.root.onDragEnded = { [weak self] p in self?.endReorder(at: p) }
         panel.root.plainDragReorders = { [weak self] in self?.config.appearance.dragToRearrange ?? false }
+        panel.root.onDropHover = { [weak self] on in
+            guard let self else { return }
+            self.gate.dragInFlight = on
+            self.controller.send(.hold(.dragging, on))
+        }
+        panel.root.onDropURLs = { [weak self] urls, p in
+            guard let self else { return }
+            let order = self.tiles.map(\.id)
+            let index = LayoutEngine.insertionIndex(for: p, in: self.layout, order: order, moving: TileID("__drop__"))
+            self.onPin?(urls, index)
+        }
         controller.onOrder = { [weak self] on in
             guard let self else { return }
             if on { self.panel.orderFrontRegardless() } else { self.panel.orderOut(nil) }

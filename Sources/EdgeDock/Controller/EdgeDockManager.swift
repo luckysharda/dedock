@@ -92,6 +92,7 @@ import SettingsStore
                 c.onArmed = { [weak self] in self?.logEdgeReady() }
                 c.onRemoveTile = { [weak self] tile in self?.remove(tile: tile, from: config.profileID) }
                 c.onReorder = { [weak self] order in self?.reorder(order, in: config.profileID) }
+                c.onPin = { [weak self] urls, index in self?.pin(urls, at: index, in: config.profileID) }
                 // A dock created while its display is full screen starts with the longer dwell.
                 if fullscreen.states[display.identity] == true { c.controller.send(.fullscreenChanged(true)) }
                 coordinators[config.id] = c
@@ -161,6 +162,35 @@ import SettingsStore
             doc.profiles[i].items = reordered + items.filter { !order.contains($0.id) }
         }
         Task { await settings.flush() }
+    }
+
+    /// Pin dropped apps or folders at `index` (duplicates of an existing app are skipped).
+    private func pin(_ urls: [URL], at index: Int, in profile: ProfileID) {
+        settings.update { doc in
+            guard let i = doc.profiles.firstIndex(where: { $0.id == profile }) else { return }
+            var items = doc.profiles[i].items
+            var at = min(max(0, index), items.count)
+            for url in urls {
+                let item = Self.tileItem(for: url)
+                if let b = item.bundleID, items.contains(where: { $0.bundleID == b }) { continue }
+                if item.kind == .folder, items.contains(where: { $0.kind == .folder && $0.path == item.path }) { continue }
+                items.insert(item, at: at)
+                at += 1
+                DedockLog.event(.tiles, "tile.pin", ["id": item.id.rawValue, "kind": item.kind.rawValue, "at": at - 1])
+            }
+            doc.profiles[i].items = items
+        }
+        Task { await settings.flush() }
+    }
+
+    static func tileItem(for url: URL) -> TileItem {
+        let id = TileID("t-\(UUID().uuidString.prefix(8).lowercased())")
+        if url.pathExtension == "app" {
+            return TileItem(id: id, kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path,
+                            displayName: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
+        }
+        return TileItem(id: id, kind: .folder, path: url.path, bookmark: try? url.bookmarkData(),
+                        displayName: FileManager.default.displayName(atPath: url.path))
     }
 
     private func remove(tile: TileID, from profile: ProfileID) {

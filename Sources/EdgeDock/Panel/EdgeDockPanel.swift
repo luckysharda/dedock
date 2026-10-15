@@ -46,6 +46,10 @@ import SwiftUI
     var onDragBegan: ((TileID, CGPoint) -> Void)?
     var onDragMoved: ((CGPoint) -> Void)?
     var onDragEnded: ((CGPoint) -> Void)?
+    /// Apps or folders dropped from Finder (DD-975 item 4), with the screen drop point.
+    var onDropURLs: (([URL], CGPoint) -> Void)?
+    /// Raised while a Finder drag hovers the dock, so it stays shown.
+    var onDropHover: ((Bool) -> Void)?
     /// Whether a plain (no ⌘) drag reorders ("Drag to rearrange").
     var plainDragReorders: () -> Bool = { false }
 
@@ -66,6 +70,7 @@ import SwiftUI
         container.autoresizingMask = [.width, .height]
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
+        registerForDraggedTypes([.fileURL])
         container.addSubview(capsule)
         container.addSubview(hosting)
         addSubview(container)
@@ -136,6 +141,39 @@ import SwiftUI
     override public func rightMouseDown(with event: NSEvent) {
         guard let id = tile(at: event) else { return }
         onTileRightClick?(id, event)
+    }
+
+    // MARK: Drop to pin (NSDraggingDestination)
+
+    /// Accept only applications and folders; anything else (documents, text) is refused.
+    static func pinnableURLs(_ info: any NSDraggingInfo) -> [URL] {
+        let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                                                       options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        return urls.filter { url in
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
+            return url.pathExtension == "app" || isDir.boolValue
+        }
+    }
+
+    override public func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        guard !Self.pinnableURLs(sender).isEmpty else { return [] }
+        onDropHover?(true)
+        return .link
+    }
+
+    override public func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        Self.pinnableURLs(sender).isEmpty ? [] : .link
+    }
+
+    override public func draggingExited(_ sender: (any NSDraggingInfo)?) { onDropHover?(false) }
+
+    override public func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        defer { onDropHover?(false) }
+        let urls = Self.pinnableURLs(sender)
+        guard !urls.isEmpty, let window else { return false }
+        onDropURLs?(urls, window.convertPoint(toScreen: sender.draggingLocation))
+        return true
     }
 
     private func tile(at event: NSEvent) -> TileID? {
