@@ -133,7 +133,15 @@ public enum LayoutEngine {
         case (.start, false): available.lower
         case (.end, false): available.upper - capsuleLength
         }
-        let span = Interval(start, start + capsuleLength)
+        // Device-pixel alignment: an odd visibleFrame (e.g. 975 pt) would otherwise put the dock on
+        // half points and blur its edges on a 1× display.
+        let scalePx = max(1, d.backingScale)
+        func px(_ v: CGFloat) -> CGFloat { (v * scalePx).rounded() / scalePx }
+        func aligned(_ r: CGRect) -> CGRect {
+            let minX = px(r.minX), minY = px(r.minY)
+            return CGRect(x: minX, y: minY, width: px(r.maxX) - minX, height: px(r.maxY) - minY)
+        }
+        let span = Interval(px(start), px(start) + px(capsuleLength))
 
         // Cross-axis: distance from the screen edge (or the native Dock's inner edge at the bottom).
         let f = d.frame
@@ -159,7 +167,7 @@ public enum LayoutEngine {
                 r = CGRect(x: cursor, y: capsule.midY - cross / 2, width: l, height: cross)
                 cursor += l + m.gap * scale
             }
-            frames[tile.id] = r
+            frames[tile.id] = aligned(r)
         }
 
         // Panel: from the true screen edge (or the native Dock's inner edge) through the capsule,
@@ -177,7 +185,7 @@ public enum LayoutEngine {
             CGRect(x: capsule.minX - alongPad, y: capsule.minY - inward, width: capsule.width + 2 * alongPad,
                    height: (f.maxY - d.menuBarHeight) - capsule.minY + inward)
         }
-        panel = panel.intersection(f)
+        panel = aligned(panel).intersection(f)
         if edge.isVertical {
             panel = panel.intersection(CGRect(x: f.minX, y: f.minY, width: f.width, height: f.height - d.menuBarHeight))
         }

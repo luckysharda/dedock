@@ -124,8 +124,15 @@ public struct DockSurroundings: Sendable, Equatable {
 
     /// Running state changed: only the tile models change, never the geometry.
     func refreshRunning() {
-        for i in tiles.indices { tiles[i].running = running.state(for: tiles[i].bundleID) }
-        model.tiles = tiles
+        var changed = false
+        for i in tiles.indices where tiles[i].kind == .app {
+            let state = running.state(for: tiles[i].bundleID)
+            guard state != tiles[i].running else { continue }
+            tiles[i].running = state
+            changed = true
+            DedockLog.event(.tiles, "tile.indicator", ["bundle": tiles[i].bundleID ?? "-", "state": state.rawValue])
+        }
+        if changed { model.tiles = tiles }
     }
 
     func teardown() {

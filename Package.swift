@@ -16,6 +16,7 @@ let testStrict: [SwiftSetting] = [
     .enableUpcomingFeature("ExistentialAny"),
 ]
 
+#if os(macOS)
 let package = Package(
     name: "Dedock",
     platforms: [.macOS(.v14)],
@@ -29,7 +30,7 @@ let package = Package(
         .target(name: "DisplayTopology", dependencies: ["DedockCore", "Diagnostics"], swiftSettings: strict),
         // L2
         .target(name: "EventTapKit", dependencies: ["DedockCore", "Diagnostics"], swiftSettings: strict),
-        .target(name: "SettingsStore", dependencies: ["DedockCore", "Diagnostics"], swiftSettings: strict),
+        .target(name: "SettingsStore", dependencies: ["DedockCore"], swiftSettings: strict),
         // L3
         .target(name: "EdgeDock", dependencies: ["DedockCore", "Diagnostics", "DesignSystem",
                                                  "DisplayTopology", "EventTapKit", "SettingsStore"],
@@ -47,3 +48,20 @@ let package = Package(
     },
     swiftLanguageModes: [.v6]
 )
+#else
+// Linux CI (swift:6.2): only the Foundation-only pure logic builds and tests. AppKit modules,
+// the app and the AppKit-backed EdgeDock files are macOS-only.
+let package = Package(
+    name: "Dedock",
+    targets: [
+        .target(name: "DedockCore", swiftSettings: strict),
+        .target(name: "SettingsStore", dependencies: ["DedockCore"], swiftSettings: strict),
+        .target(name: "EdgeDock", dependencies: ["DedockCore"], sources: ["Logic"], swiftSettings: strict),
+        .testTarget(name: "DedockCoreTests", dependencies: ["DedockCore"], swiftSettings: testStrict),
+        .testTarget(name: "SettingsStoreTests", dependencies: ["SettingsStore", "DedockCore"], swiftSettings: testStrict),
+        .testTarget(name: "EdgeDockTests", dependencies: ["EdgeDock", "DedockCore"],
+                    exclude: ["NativeDockTests.swift"], swiftSettings: testStrict),
+    ],
+    swiftLanguageModes: [.v6]
+)
+#endif

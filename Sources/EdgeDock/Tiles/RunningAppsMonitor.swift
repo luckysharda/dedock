@@ -1,5 +1,4 @@
 import AppKit
-import Diagnostics
 
 /// Running, frontmost and hidden state of regular apps, from `NSWorkspace` notifications
 /// (DD-962). Only `activationPolicy == .regular` apps count.
@@ -43,11 +42,9 @@ import Diagnostics
             next[id] = state
         }
         guard next != states else { return }
-        let changed = Set(next.keys).union(states.keys).filter { next[$0] != states[$0] }
         states = next
-        for id in changed.sorted() {
-            DedockLog.event(.tiles, "tile.indicator", ["bundle": id, "state": (next[id] ?? .none).rawValue])
-        }
+        // `tile.indicator` is logged by the coordinators, for dock tiles only: the full list of
+        // running apps never goes to the log.
         onChange?()
     }
 
