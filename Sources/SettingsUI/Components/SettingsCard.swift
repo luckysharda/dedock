@@ -48,10 +48,16 @@ struct ValueSlider: View {
     let unit: String
     var help: String?
 
+    private var stepped: Binding<Double> {
+        Binding(get: { value }, set: { value = (($0 / step).rounded() * step).clamped(to: range) })
+    }
+
     var body: some View {
         SettingsRow(label: label, help: help) {
             HStack(spacing: 10) {
-                Slider(value: $value, in: range, step: step)
+                // No `step:`: SwiftUI draws one tick mark per step (500 on a 0–5000 ms range).
+                // Values are rounded to the step in the binding instead.
+                Slider(value: stepped, in: range)
                     .frame(width: 200)
                     .accessibilityLabel(label)
                 TextField(label, value: $value, format: .number.precision(.fractionLength(0)))
@@ -64,4 +70,8 @@ struct ValueSlider: View {
             }
         }
     }
+}
+
+private extension Double {
+    func clamped(to r: ClosedRange<Double>) -> Double { Swift.min(r.upperBound, Swift.max(r.lowerBound, self)) }
 }

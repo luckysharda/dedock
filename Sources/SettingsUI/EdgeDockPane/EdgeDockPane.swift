@@ -199,12 +199,14 @@ struct ScenarioCard: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(card.title).font(.system(size: 13, weight: .semibold))
-                    if card.isBeta { Tag(text: "Beta", tint: .orange) }
-                    Spacer(minLength: 0)
-                    if recommended { Tag(text: "Recommended", tint: .accentColor) }
+                // Tags sit on their own row so a narrow card never wraps them mid-word.
+                if card.isBeta || recommended {
+                    HStack(spacing: 4) {
+                        if recommended { Tag(text: "Recommended", tint: .accentColor) }
+                        if card.isBeta { Tag(text: "Beta", tint: .orange) }
+                    }
                 }
+                Text(card.title).font(.system(size: 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.85)
                 Text(card.subtitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .padding(12)
@@ -227,6 +229,8 @@ struct Tag: View {
     var body: some View {
         Text(text)
             .font(.system(size: 9, weight: .semibold))
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(Capsule().fill(tint.opacity(0.18)))
             .foregroundStyle(tint)
