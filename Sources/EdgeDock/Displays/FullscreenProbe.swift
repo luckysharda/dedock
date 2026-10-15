@@ -9,8 +9,12 @@ import Diagnostics
 /// Checked on Space changes, app activation, launch and quit, never by polling. A full-screen
 /// change is reported only once a reading holds for the 120 ms confirmation hold, which
 /// debounces Space-switch animations; a reading that moves during the hold starts a new hold
-/// (REG-046). macOS posts nothing when a status item appears, so launches are re-checked once
+/// (REG-046), at most `maxReholds` times, so a flapping window cannot turn it into a poller
+/// (REG-058). macOS posts nothing when a status item appears, so launches are re-checked once
 /// more after `statusSettle`, by which time a launching app has usually added its items.
+/// Known limit (REG-044): an item added later by an app that is already running, or items
+/// rearranged with ⌘-drag, are picked up only at the next Space change, activation, launch or
+/// quit; an Accessibility-based refresh comes with the M2 permissions.
 @MainActor public final class FullscreenProbe {
     public private(set) var states: [DisplayIdentity: Bool] = [:]
     /// Called with the displays whose state changed.
@@ -57,8 +61,13 @@ import Diagnostics
         statusItems = Self.statusItems(records, layout: now)
     }
 
+    /// Re-holds after the first hold before an unsettled reading is left to the next notification.
+    static let maxReholds = 3
+
     /// Re-check now (after a display change, for example), confirming after the hold.
-    public func check() {
+    public func check() { check(rehold: 0) }
+
+    private func check(rehold: Int) {
         let records = windows(), now = layout()
         updateStatusItems(records, layout: now)
         let candidate = FullscreenDetection.states(records, layout: now, ownPID: getpid())
@@ -72,8 +81,16 @@ import Diagnostics
             do { try await clock.sleep(for: hold, tolerance: .zero) } catch { return }
             guard let self else { return }
             let confirmed = FullscreenDetection.states(self.windows(), layout: self.layout(), ownPID: getpid())
-            // Still moving: the new reading becomes the candidate for another hold (REG-046).
-            guard confirmed == candidate else { self.check(); return }
+            // Still moving: the new reading becomes the candidate for another hold (REG-046),
+            // up to the cap; then the next notification re-checks (REG-058).
+            guard confirmed == candidate else {
+                if rehold < Self.maxReholds {
+                    self.check(rehold: rehold + 1)
+                } else {
+                    DedockLog.event(.display, "display.fullscreenUnsettled", ["reholds": rehold])
+                }
+                return
+            }
             let changed = confirmed.filter { self.states[$0.key] != $0.value }
             self.states = confirmed
             guard !changed.isEmpty else { return }

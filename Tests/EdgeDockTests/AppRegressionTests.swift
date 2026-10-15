@@ -257,6 +257,91 @@ extension AppRegressionTests {
         c.teardown()
     }
 
+    /// REG-057: with a corrupt layout.json the recovery alert ran modally before the display
+    /// topology and the manager existed: no dock and no `launch.edgeReady` until a click. The
+    /// app now posts notices to `LaunchNotices`, which the manager releases once the docks are
+    /// live, onto a later main-queue turn. (The app posting rather than presenting is visible in
+    /// AppDelegate; this guard pins the hold and the release.)
+    @Test("REG-057: launch notices wait for live docks and never show inside setup",
+          .enabled(if: NSScreen.main != nil))
+    func reg057() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dedock-reg057-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let clock = ManualClock()
+        var scheduled: [@MainActor () -> Void] = []
+        var shown: [LaunchNotices.Notice] = []
+        let notices = LaunchNotices(present: { shown.append($0) }, schedule: { scheduled.append($0) })
+        notices.post(.recovered(movedTo: "layout.corrupt.json", fromBackup: false))
+        notices.post(.readOnly)
+        #expect(scheduled.isEmpty)                      // held: no dock stack yet
+
+        let settings = SettingsModel(file: LayoutFile(directory: dir), clock: clock, document: .makeDefault())
+        let manager = EdgeDockManager(settings: settings, topology: DisplayTopology(clock: clock),
+                                      hub: PointerHub(source: SilentPointerSource(), clock: clock),
+                                      clock: clock, dataDirectory: dir, notices: notices)
+        #expect(manager.edgeReadyMs != nil)
+        #expect(shown.isEmpty)                          // never presented inside setup
+        #expect(scheduled.count == 2)                   // released after edgeReady, in order
+        for work in scheduled { work() }
+        #expect(shown == [.recovered(movedTo: "layout.corrupt.json", fromBackup: false), .readOnly])
+
+        notices.post(.readOnly)                         // later notices go straight to the queue
+        #expect(scheduled.count == 3)
+        for c in manager.coordinators.values { c.teardown() }
+    }
+
+    /// REG-058: the REG-046 re-hold had no limit, so a full-display window that keeps flapping
+    /// turned the probe into a 120 ms poller. It now stops after `maxReholds` and waits for the
+    /// next notification.
+    @Test("REG-058: a flapping reading stops re-holding after the cap")
+    func reg058() async {
+        let a = Self.regDisplay, b = Self.otherDisplay
+        let full = { (x: CGFloat) in WindowRecord(ownerPID: 42, layer: 0, alpha: 1, bounds: CGRect(x: x, y: 0, width: 1920, height: 1080)) }
+        let reads = Counter()
+        let clock = ManualClock()
+        // Every read differs from the one before it, and none matches the settled state.
+        let probe = FullscreenProbe(clock: clock, layout: { DisplayLayout(displays: [a, b]) }, windows: {
+            reads.value += 1
+            return reads.value == 1 ? [] : (reads.value % 2 == 0 ? [full(0)] : [full(0), full(1920)])
+        })
+        var reported = 0
+        probe.onChange = { _ in reported += 1 }
+        probe.check()
+        for _ in 0..<12 { await advance(clock, by: .milliseconds(120)) }
+        // The first hold plus `maxReholds` re-holds, two reads each, after the initial read.
+        #expect(reads.value == 1 + 2 * (1 + FullscreenProbe.maxReholds))
+        #expect(clock.pendingCount == 0)                // no hold left running
+        #expect(reported == 0)
+        #expect(probe.states == [a.identity: false, b.identity: false])
+        probe.check()                                   // a notification starts a fresh cycle
+        await advance(clock, by: .milliseconds(120))
+        #expect(reads.value > 1 + 2 * (1 + FullscreenProbe.maxReholds))
+        probe.invalidate()
+    }
+
+    /// REG-059: when folder bookmarks were filled on the first launch, the fill re-entered sync
+    /// through the settings observer and the first `docks.sync` line said `reason=settings`,
+    /// never `reason=launch`.
+    @Test("REG-059: the first sync after a bookmark fill still reports reason=launch",
+          .enabled(if: NSScreen.main != nil))
+    func reg059() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dedock-reg059-\(UUID().uuidString)")
+        let folder = dir.appendingPathComponent("Folder")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var doc = DedockDocument.makeDefault()
+        doc.profiles[0].items.append(TileItem(id: "fold", kind: .folder, path: folder.path))
+        #expect(EdgeDockManager.fillingBookmarks(doc) != nil)   // the launch sync will fill it
+        let clock = ManualClock()
+        let settings = SettingsModel(file: LayoutFile(directory: dir), clock: clock, document: doc)
+        let manager = EdgeDockManager(settings: settings, topology: DisplayTopology(clock: clock),
+                                      hub: PointerHub(source: SilentPointerSource(), clock: clock),
+                                      clock: clock, dataDirectory: dir)
+        #expect(manager.lastSyncReason == "launch")
+        #expect(settings.document.profiles[0].items.last?.bookmark != nil)
+        for c in manager.coordinators.values { c.teardown() }
+    }
+
     func advance(_ clock: ManualClock, by d: Duration) async {
         for _ in 0..<100 where clock.pendingCount == 0 { await Task.yield() }
         clock.advance(by: d)

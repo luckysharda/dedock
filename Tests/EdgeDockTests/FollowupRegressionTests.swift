@@ -35,4 +35,12 @@ import Testing
     func parsesOnlyKnownCommands(raw: String, expected: DebugCommand?) {
         #expect(DebugCommand.parse(raw) == expected)
     }
+
+    /// Any process can post arbitrary text, so the debug log keeps at most 64 characters of it.
+    @Test func loggedTextIsCapped() {
+        #expect(DebugCommand.logged("reveal") == "reveal")
+        let long = String(repeating: "x", count: 500)
+        #expect(DebugCommand.logged(long) == String(repeating: "x", count: DebugCommand.maxLoggedLength) + "…")
+        #expect(DebugCommand.logged(String(repeating: "y", count: 64)).count == 64)
+    }
 }
