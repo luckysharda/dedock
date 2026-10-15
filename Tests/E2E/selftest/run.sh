@@ -22,7 +22,11 @@ cleanup() {
   done
 }
 trap cleanup EXIT
+export DEDOCK_LOCK_OWNER=selftest-owner   # no default owner anywhere (review of #12)
+export DEDOCK_SELFTEST=1                  # fake bundle ids and private locks only; never posts input
 check() { if eval "$2"; then echo "PASS $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi }
+skipped=0
+skip() { echo "SKIP $1 ($2)"; skipped=$((skipped + 1)); }   # a skipped check is never a PASS
 
 echo "-- build"
 for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/e2e/backdrop.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
@@ -145,13 +149,13 @@ sleep 1.5
 QP="selftest/Fake/CoolDock\\.app/Contents/MacOS/"
 DEDOCK_LOCKS=$T/qlocks DEDOCK_REFS_PATTERN=$QP Scripts/e2e/quit-refs.sh selftest-refs > $T/qr-nolock.txt 2>&1
 check "quit-refs refuses without the lock" "grep -q '^refusing: desktop lock' $T/qr-nolock.txt && kill -0 $fakepid"
-DEDOCK_LOCKS=$T/qlocks Scripts/e2e/desktop-lock.sh acquire dedock-app-f1 e2e selftest >/dev/null
+DEDOCK_LOCKS=$T/qlocks Scripts/e2e/desktop-lock.sh acquire $DEDOCK_LOCK_OWNER e2e selftest >/dev/null
 check "quit-refs quits a running reference app politely and logs it" "DEDOCK_LOCKS=$T/qlocks DEDOCK_REFS_PATTERN=$QP Scripts/e2e/quit-refs.sh selftest-refs >/dev/null && ! kill -0 $fakepid 2>/dev/null && grep -q 'not relaunched' $B/runs/selftest-refs/refs-quit.txt"
-DEDOCK_LOCKS=$T/qlocks Scripts/e2e/desktop-lock.sh release dedock-app-f1 >/dev/null
+DEDOCK_LOCKS=$T/qlocks Scripts/e2e/desktop-lock.sh release $DEDOCK_LOCK_OWNER >/dev/null
 kill $fakepid 2>/dev/null
 mkdir -p $T/Fake/Dedock.app/Contents/MacOS && cp $B/fake-dock $T/Fake/Dedock.app/Contents/MacOS/Dedock
-DEDOCK_LOCKS=$T/glocks Scripts/e2e/launch.sh selftest-guard --bin $T/Fake/Dedock.app/Contents/MacOS/Dedock > $T/guard.txt 2>&1
-check "launch refuses a real Dedock without the lock" "grep -q 'refusing: launching Dedock needs the desktop lock' $T/guard.txt && [[ ! -e $B/runs/selftest-guard ]]"
+DEDOCK_LOCK_OWNER=selftest-owner DEDOCK_LOCKS=$T/glocks Scripts/e2e/launch.sh selftest-guard --bin $T/Fake/Dedock.app/Contents/MacOS/Dedock > $T/guard.txt 2>&1
+check "launch refuses a real Dedock without the REAL lock" "grep -q 'refusing: launching Dedock needs the REAL desktop lock' $T/guard.txt && [[ ! -e $B/runs/selftest-guard ]]"
 # REG-042: app text with "<private>" and shell metacharacters must never break or execute.
 rm -f $T/pwned1 $T/pwned2
 FAKE_READY_SUFFIX="<private> \$(touch $T/pwned1) \`touch $T/pwned2\` ;|& >x" Scripts/e2e/launch.sh selftest-hostile --bin $B/fake-dock > $T/hostile-launch.txt 2>&1
@@ -160,8 +164,65 @@ Scripts/e2e/teardown.sh selftest-hostile > $T/hostile-teardown.txt 2>&1
 check "REG-042 hostile edgeReady text: launch passes" "grep -q '^PASS launched' $T/hostile-launch.txt"
 check "REG-042 teardown stops the app anyway" "grep -q 'PASS REG-006' $T/hostile-teardown.txt && ! kill -0 $hpid 2>/dev/null"
 check "REG-042 nothing in the app text was executed" "[[ ! -e $T/pwned1 && ! -e $T/pwned2 && ! -e x ]]"
+echo "-- fail-closed and teardown (REG-049 / REG-050, review of #12)"
+# judge: analyze cannot read the log → not judged → FAIL, never PASS
+J=$T/judge-missing; mkdir -p $J; print "scn=x-01 edge=left show=120 hide=400 n=1 run=selftest" > $J/params.env
+print 'mach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1' > $J/listen.txt
+Scripts/e2e/judge.sh $J > /dev/null 2>&1; echo $? > $T/judge-missing.rc
+check "REG-049 judge: analyze that cannot run is FAIL" "[[ \$(cat $T/judge-missing.rc) == 1 ]] && grep -q '^FAIL tool analyze timing exited 2' $J/report.txt"
+J=$T/judge-nogate; mkdir -p $J; print "scn=perf-move edge=left show=120 hide=400 n=1 run=selftest" > $J/params.env
+cp $T/judge-missing/listen.txt $J/; : > $J/log.ndjson; : > $J/perf.txt
+Scripts/e2e/judge.sh $J > /dev/null 2>&1
+check "REG-049 judge: no gate evaluated is FAIL" "grep -q '^FAIL no gate was evaluated' $J/report.txt && grep -q '^VERDICT FAIL' $J/report.txt"
+# score: missing expected row and a failed tool → FAIL, tool health NOT OK
+mkfix selftest-sexp PASS 1.2
+print -l "REG-006 L" "L.x-01-L" "REG-018 L" > $SR/selftest-sexp/expected.txt
+print '{"tool":"geom-check L","rc":0,"ok":true}' > $SR/selftest-sexp/tools.jsonl
+python3 Scripts/e2e/score.py $SR/selftest-sexp > $T/s-exp.txt; echo $? > $T/s-exp.rc
+check "REG-049 score: a missing expected row is FAIL" "[[ \$(cat $T/s-exp.rc) == 1 ]] && grep -q 'REG-018 L | FAIL | MISSING' $SR/selftest-sexp/scorecard.md && grep -q 'Tool health: \*\*NOT OK' $T/s-exp.txt"
+print -l "REG-006 L" "L.x-01-L" > $SR/selftest-sexp/expected.txt
+print '{"tool":"geom-check L","rc":139,"ok":false}' > $SR/selftest-sexp/tools.jsonl
+python3 Scripts/e2e/score.py $SR/selftest-sexp > $T/s-tool.txt; echo $? > $T/s-tool.rc
+check "REG-049 score: a crashed tool is FAIL" "[[ \$(cat $T/s-tool.rc) == 1 ]] && grep -q 'geom-check L rc=139' $T/s-tool.txt"
+print '{"tool":"geom-check L","rc":0,"ok":true}' > $SR/selftest-sexp/tools.jsonl
+python3 Scripts/e2e/score.py $SR/selftest-sexp > $T/s-ok.txt; echo $? > $T/s-ok.rc
+check "score: complete rows + healthy tools PASS" "[[ \$(cat $T/s-ok.rc) == 0 ]] && grep -q 'Tool health: \*\*OK' $T/s-ok.txt"
+rm -rf $SR/selftest-sexp $SR/selftest-sexp-L
+# measure-idle: no top samples → FAIL (not zeros that pass)
+: > $T/empty-top.txt
+DEDOCK_TOP_OVERRIDE=$T/empty-top.txt Scripts/measure-idle.sh $$ 5 > $T/idle-empty.txt 2>&1
+check "REG-049 measure-idle: no samples is FAIL" "grep -q '^FAIL top gave 0 samples' $T/idle-empty.txt && grep -q '^verdict=FAIL' $T/idle-empty.txt"
+# launch.sh: the app never becomes ready → FAIL, and nothing is left running
+FAKE_NO_READY=1 Scripts/e2e/launch.sh selftest-noready --bin $B/fake-dock --timeout 2 > $T/noready.txt 2>&1
+nr_app=$(sed -n 's/^APP_PID=//p' $B/runs/selftest-noready/run.env); nr_log=$(sed -n 's/^LOG_PID=//p' $B/runs/selftest-noready/run.env)
+check "REG-050 failed launch leaves nothing running" "grep -q '^FAIL no launch.edgeReady' $T/noready.txt && ! kill -0 $nr_app 2>/dev/null && ! kill -0 $nr_log 2>/dev/null"
+# regress.sh killed mid-run: the trap tears down what it launched (fake debug bundle, private lock)
+FA=$T/fakeapp; mkdir -p $FA/build/Dedock.app/Contents/MacOS; cp $B/fake-dock $FA/build/Dedock.app/Contents/MacOS/Dedock
+# Fake bundle id: launch.sh treats it as a non-real app, regress.sh runs it in self-test mode
+# (no input, no tccutil, no scenarios), so this is safe even while a real Dedock or a demo runs.
+printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Dedock</string><key>CFBundleIdentifier</key><string>app.dedock.Fake</string><key>LSUIElement</key><true/></dict></plist>' > $FA/build/Dedock.app/Contents/Info.plist
+export DEDOCK_LOCKS=$T/rlocks; Scripts/e2e/desktop-lock.sh acquire $DEDOCK_LOCK_OWNER e2e selftest > /dev/null
+rm -rf $B/runs/selftest-trap*
+c0=$($B/pointer pos)
+Scripts/e2e/regress.sh run $FA id=selftest-trap edges= idle=0 > $T/trap.txt 2>&1 &
+rp=$!
+for i in {1..80}; do [[ -f $B/runs/selftest-trap-X/run.env ]] && break; sleep 0.1; done
+sleep 0.5; kill -TERM $rp; wait $rp 2>/dev/null
+tr_app=$(sed -n 's/^APP_PID=//p' $B/runs/selftest-trap-X/run.env 2>/dev/null)
+check "REG-050 regress trap tears down on interrupt" "[[ -n '$tr_app' ]] && ! kill -0 ${tr_app:-0} 2>/dev/null && [[ -f $B/runs/selftest-trap-X/teardown.txt ]]"
+check "REG-051 self-test mode posted no input (cursor untouched)" "[[ \"\$($B/pointer pos)\" == '$c0' ]]"
+DEDOCK_SELFTEST=0 Scripts/e2e/regress.sh run ../e2e-target id=selftest-nolock edges= idle=0 > $T/nolock.txt 2>&1   # exits 2 by design
+check "REG-051 regress refuses a real build without the REAL lock" "grep -q 'does not hold the REAL desktop lock' $T/nolock.txt && [[ ! -e $B/runs/selftest-nolock ]]"
+Scripts/e2e/desktop-lock.sh release $DEDOCK_LOCK_OWNER > /dev/null; unset DEDOCK_LOCKS
+rm -rf $B/runs/selftest-trap*
+# owner-checked touch; pointer release with nothing held posts nothing harmful
+DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh acquire owner-a e2e t > /dev/null
+check "touch is owner-checked" "! DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh touch owner-b > /dev/null && DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh touch owner-a > /dev/null"
+DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh release owner-a > /dev/null
+check "pointer release with nothing held" "$B/pointer release | grep -q 'label=released' && $B/pointer mods | grep -q '^mods=0'"
 check "scenario dry run" "Scripts/e2e/launch.sh selftest-dry --bin $B/fake-dock >/dev/null && Scripts/e2e/scenario.sh selftest-dry L x-01 n=2 dry=1 | grep -q 'edge left' ; Scripts/e2e/teardown.sh selftest-dry >/dev/null"
 
 echo
+(( skipped )) && echo "selftest: $skipped check(s) SKIPPED (not counted as passed)"
 (( fails == 0 )) && echo "selftest: all checks passed" || echo "selftest: $fails check(s) FAILED (details in $T)"
 exit $(( fails > 0 ))

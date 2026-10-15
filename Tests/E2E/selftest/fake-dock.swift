@@ -108,6 +108,8 @@ if mode == "serve" {
     FileManager.default.createFile(atPath: dir + "/geometry.json.tmp", contents: out)
     _ = try? FileManager.default.replaceItemAt(URL(fileURLWithPath: dir + "/geometry.json"), withItemAt: URL(fileURLWithPath: dir + "/geometry.json.tmp"))
     if !FileManager.default.fileExists(atPath: dir + "/geometry.json") { try? FileManager.default.moveItem(atPath: dir + "/geometry.json.tmp", toPath: dir + "/geometry.json") }
+    // FAKE_NO_READY=1: never become ready (launch.sh failure path, REG-050).
+    if env["FAKE_NO_READY"] == "1" { while true { sleep(60) } }
     // FAKE_READY_SUFFIX: hostile text for the REG-042 self-test (e.g. "<private> $(…) ;|&").
     log(launch, "launch.edgeReady ms=42.0 edge=\(edgeName) frameLog=\(env["DEDOCK_FRAME_LOG"] ?? "0")\(env["FAKE_READY_SUFFIX"] ?? "")")
     while true { sleep(60) }

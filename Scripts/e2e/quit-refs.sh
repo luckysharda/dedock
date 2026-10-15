@@ -17,9 +17,15 @@ run=${1:?usage: quit-refs.sh <run-id>}
 R=$HARNESS/build/e2e/runs/$run
 [[ -d $R ]] || { echo "no run dir $R" >&2; exit 2 }
 
-me=${DEDOCK_LOCK_OWNER:-dedock-app-f1}
-holder=$($HARNESS/Scripts/e2e/desktop-lock.sh status | sed -n 's/^owner=//p')
-[[ $holder == $me ]] || { echo "refusing: desktop lock is held by '${holder:-nobody}', not '$me'" >&2; exit 2 }
+me=${DEDOCK_LOCK_OWNER:?set DEDOCK_LOCK_OWNER to your session name}
+# Quitting real apps on the user's desktop: REAL lock only. Self-tests (DEDOCK_SELFTEST=1 with a
+# pattern override that targets only a fake bundle) may use a private lock instead.
+if [[ ${DEDOCK_SELFTEST:-0} == 1 && -n ${DEDOCK_REFS_PATTERN:-} ]]; then
+  holder=$($HARNESS/Scripts/e2e/desktop-lock.sh status | sed -n 's/^owner=//p')
+  [[ $holder == $me ]] || { echo "refusing: desktop lock is held by '${holder:-nobody}', not '$me'" >&2; exit 2 }
+else
+  $HARNESS/Scripts/e2e/desktop-lock.sh require $me 2>/dev/null || { echo "refusing: desktop lock is held by '$($HARNESS/Scripts/e2e/desktop-lock.sh status | sed -n 's/^owner=//p')', not '$me' (or not the real lock)" >&2; exit 2 }
+fi
 
 log=$R/refs-quit.txt
 stamp() { date -u +%Y-%m-%dT%H:%M:%SZ }

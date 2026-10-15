@@ -61,7 +61,15 @@ for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=}
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
-[[ $bid == app.dedock.Dedock.debug ]] || { echo "need a DEBUG build at $bundle (found '${bid:-none}'): Scripts/make-app.sh debug" >&2; exit 2 }
+# Self-test mode: the fake bundle id only, with DEDOCK_SELFTEST=1, no edges/idle/shots: it posts no
+# input, runs no tccutil and launches no real app, so it may run under a private lock.
+selftest=0
+if [[ $bid == app.dedock.Fake && ${DEDOCK_SELFTEST:-0} == 1 ]]; then
+  selftest=1
+  [[ -z $edges && $idle == 0 && $shots == 0 ]] || { echo "self-test mode: edges= idle=0 shots=0 only (no input may be posted)" >&2; exit 2 }
+elif [[ $bid != app.dedock.Dedock.debug ]]; then
+  echo "need a DEBUG build at $bundle (found '${bid:-none}'): Scripts/make-app.sh debug" >&2; exit 2
+fi
 
 edge_list=(${(s:,:)edges})
 # Calibrated on the first full run (2026-10-15: 489 s for edges L,R + idle): launches, settle
@@ -73,14 +81,61 @@ if (( dry )); then
   exit 0
 fi
 
-me=${DEDOCK_LOCK_OWNER:-dedock-app-f1}
-holder=$($E/desktop-lock.sh status | sed -n 's/^owner=//p')
-[[ $holder == $me ]] || { echo "refusing: hold the desktop lock as '$me' first (holder: '${holder:-nobody}')" >&2; exit 2 }
+me=${DEDOCK_LOCK_OWNER:?set DEDOCK_LOCK_OWNER to your session name (no default: the lock must name its real holder)}
+if (( selftest )); then
+  holder=$($E/desktop-lock.sh status | sed -n 's/^owner=//p')
+  [[ $holder == $me ]] || { echo "refusing: hold the (private) self-test lock as '$me' first" >&2; exit 2 }
+else
+  # HARD RULE: this run posts input, moves the cursor, runs tccutil and launches the real app.
+  $E/desktop-lock.sh require $me || exit 2
+fi
 
 root=$B/runs/$id
 [[ -e $root ]] && { echo "run exists: $root" >&2; exit 2 }
 mkdir -p $root
-: > $root/index.txt; : > $root/checks.jsonl; : > $root/run-metrics.jsonl
+: > $root/index.txt; : > $root/checks.jsonl; : > $root/run-metrics.jsonl; : > $root/tools.jsonl
+
+# Fail closed (review of #12): every row this run must produce is listed up front; score.py FAILs
+# any that is missing, and every tool's exit code is recorded (tools.jsonl, "tool health").
+{
+  print -l "x-00 UIElement" "x-00 status item" "x-00 no permission prompt" "x-00 starts hidden" "REG-026 first launch" \
+           "REG-043 X" "REG-018 X" "REG-014 X" "contract X" "REG-006 X"
+  for t in $edge_list; do
+    print -l "geom $t (REG-013 …)" "REG-043 $t" "REG-018 $t" "REG-014 $t" "contract $t" "REG-006 $t" "REG-006 ${t}0" \
+             "cua C1 panel window $t" "cua C2 cua-driver sees tiles $t" "cua C3 tiles in AX tree $t" "cua C3 REG-040 tiles are buttons $t" \
+             "cua C3 REG-040 tiles pressable $t" "cua C4 status item $t" "cua C5 non-activating $t" "cua C6 click-through while hidden $t" \
+             "cua C7 shown tile takes the hit $t" "cua C7 4 pt outside passes through $t" "cua C8 settings labelled $t"
+    for scn in x-01 x-02 x-03 x-04 x-05a x-05b x-06; do print -r -- "$t.$scn-$t"; done
+    for sd in $extra_seeds; do print -r -- "$t.x-06-$t-s$sd"; done
+    (( shots )) && print -l "shot $t" "REG-006 S$t"
+  done
+  (( idle )) && print -l "I.idle-L" "REG-006 I"
+  print -l "REG-016 cursor restored" "REG-017 no modifier held" "REG-015 no Dedock left running"
+} > $root/expected.txt
+
+tool() {  # tool <name> <rc> [ok-rcs…]: record a tool's exit code (default ok: 0 and 1 = "ran, gate failed")
+  local name=$1 rc=$2; shift 2; local okrcs=(${@:-0 1})
+  local ok=0; (( ${okrcs[(Ie)$rc]} )) && ok=1
+  print -r -- "{\"tool\":\"$name\",\"rc\":$rc,\"ok\":$( (( ok )) && echo true || echo false)}" >> $root/tools.jsonl
+  (( ok )) || print -r -- "FAIL tool $name exited $rc"
+  return $(( ! ok ))
+}
+
+# Tear down on ANY exit path (review of #12): every sub-run launched by this run, plus held input.
+subs=()
+moved=0   # set once this run has posted pointer events; only then is the cursor restored
+cleanup() {
+  local s
+  for s in $subs; do
+    [[ -f $B/runs/$s/run.env && ! -f $B/runs/$s/teardown.txt ]] && $E/teardown.sh $s > $B/runs/$s/teardown.txt 2>&1
+  done
+  if (( moved )); then
+    $B/pointer release > /dev/null 2>&1   # no modifier or mouse button left down (REG-017)
+    (( ${#cursor0} == 2 )) && $B/pointer -q move ${cursor0[1]} ${cursor0[2]} 2>/dev/null
+  fi
+}
+trap cleanup EXIT
+trap 'echo "interrupted: tearing down" >&2; exit 130' INT TERM
 
 check() {  # check <id> <0|1|skip> <detail>
   python3 -c 'import json,sys; s=sys.argv[2]; print(json.dumps({"id": sys.argv[1], "ok": s == "1", "skip": s == "skip", "detail": sys.argv[3]}))' "$1" "$2" "$3" >> $root/checks.jsonl
@@ -102,16 +157,20 @@ json.dump({
 }, open(sys.argv[1], "w"), indent=1)
 EOF
 
-$E/quit-refs.sh $id >/dev/null || true
+(( selftest )) || $E/quit-refs.sh $id >/dev/null || true
 cursor0=($($B/pointer pos | sed 's/[xy]=//g'))
 
 launched() { grep -q '^PASS launched' $1 }
+launch() {  # launch <sub-run> <launch.sh args…>: registers the sub-run for teardown whatever happens
+  local sub=$1; shift; subs+=($sub)
+  $E/launch.sh $sub "$@"
+}
 edge_ready_ms() { grep -o 'ms=[0-9.]*' $B/runs/$1/run.env | head -1 | cut -d= -f2 }
 
 # Log contract on one launch (REG-018, REG-014, unknown values).
 contract() {  # contract <sub-run> <tag>
   local R=$B/runs/$1
-  python3 - $R/log.ndjson $R/data/e2e/geometry.json $(sed -n 's/^APP_PID=//p' $R/run.env) > $R/contract.txt <<'PY'
+  python3 - $R/log.ndjson $R/data/e2e/geometry.json $(sed -n 's/^APP_PID=//p' $R/run.env) > $R/contract.txt 2> $R/contract.err <<'PY'
 import json, sys
 log, geom, pid = sys.argv[1], sys.argv[2], int(sys.argv[3])
 ev = []
@@ -140,8 +199,10 @@ else:
     stray = sorted(ind - tiles)
     print(f"REG-014 {int(not stray)} tile.indicator bundles outside the dock: {len(stray)}")
 PY
+  tool "contract-parser $2" $? 0
   while read -r rid ok rest; do check "$rid $2" $ok "$rest"; done < $R/contract.txt
-  local warns=$($B/analyze timing $R/log.ndjson 2>/dev/null | grep -c '^WARN unrecognized' || true)
+  $B/analyze timing $R/log.ndjson > $R/contract-analyze.txt 2>&1; tool "analyze $2" $?
+  local warns=$(grep -c '^WARN unrecognized' $R/contract-analyze.txt || true)
   check "contract $2" $(( warns == 0 )) "$warns unrecognized cause/kind/curve/state values"
 }
 
@@ -151,12 +212,16 @@ cua() {  # cua <sub-run> <L|R>
   local sub=$1 side=$2 R=$B/runs/$1
   local pid=$(sed -n 's/^APP_PID=//p' $R/run.env)
   local C=$R/cua; mkdir -p $C
-  $B/axprobe windows $pid > $C/windows.jsonl
-  $B/axprobe tree $pid 6 > $C/tree.jsonl
+  $B/axprobe windows $pid > $C/windows.jsonl; tool "axprobe windows $side" $? 0
+  $B/axprobe tree $pid 6 > $C/tree.jsonl; tool "axprobe tree $side" $? 0
   local wid=$(python3 -c "import json,sys
 ws=[json.loads(l) for l in open(sys.argv[1])]; ws=[w for w in ws if w['w']>50 and w['h']>50]
 print(ws[0]['id'] if ws else '')" $C/windows.jsonl)
-  [[ -n $wid ]] && cua-driver call get_window_state "{\"pid\":$pid,\"window_id\":$wid,\"include_screenshot\":false}" > $C/cua-state.json 2>&1
+  if [[ -n $wid ]]; then
+    cua-driver call get_window_state "{\"pid\":$pid,\"window_id\":$wid,\"include_screenshot\":false}" > $C/cua-state.json 2>&1; tool "cua-driver get_window_state $side" $? 0
+  else
+    tool "axprobe found no panel window $side" 1 0
+  fi
   # C6: hidden dock lets clicks through at every tile centre.
   python3 -c "
 import json; g=json.load(open('$R/data/e2e/geometry.json'))
@@ -171,7 +236,8 @@ for t in g['docks'][0]['tiles']:
   local pts=($(python3 -c "import json;d=json.load(open('$R/data/e2e/geometry.json'))['docks'][0];x,y,w,h=d['capsule']['topLeft'];L=d['edge']=='left';print(x+w+4 if L else x-4, x+w+400 if L else x-400)"))
   local outside=${pts[1]} away=${pts[2]}
   local edge=left; [[ $side == R ]] && edge=right
-  $E/desktop-lock.sh touch >/dev/null
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
   print -l "edge $edge $probe_y" "wait 600" "glide ${first[2]} ${first[3]} 80" "wait 150" > $C/reveal.txt
   $B/pointer -q script $C/reveal.txt
   $B/axprobe at ${first[2]} ${first[3]} only=$pid > $C/hit-shown-tile.json
@@ -180,14 +246,15 @@ for t in g['docks'][0]['tiles']:
   $B/axprobe front > $C/front-shown.json
   $B/pointer -q move $away ${first[3]}   # leave: the dock hides before the next step
   sleep 1
-  python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt
+  python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt 2> $C/cua-eval.err; tool "cua-eval $side" $? 0
   while IFS=$'\t' read -r cid ok detail; do check "$cid" $ok "$detail"; done < $C/results.txt
   check "cua C8 settings labelled $side" skip "pending: needs the debug command openSettings"
 }
 
 run_scn() {  # run_scn <sub-run> <L|R> <scenario> [args]; re-runs once if contaminated (VOID)
   local sub=$1 side=$2 scn=$3; shift 3
-  $E/desktop-lock.sh touch >/dev/null
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
   $E/scenario.sh $sub $side $scn "$@" > /dev/null; local rc=$?
   local tg=""; for kv in "$@"; do [[ $kv == tag=* ]] && tg=-${kv#tag=}; done
   local dir=$B/runs/$sub/$scn-$side$tg
@@ -195,6 +262,7 @@ run_scn() {  # run_scn <sub-run> <L|R> <scenario> [args]; re-runs once if contam
     mv $dir $dir.void-1
     $E/scenario.sh $sub $side $scn "$@" > /dev/null; rc=$?
   fi
+  tool "scenario $scn $side$tg" $rc 0 1 3   # 0 PASS, 1 FAIL, 3 VOID; anything else = the scenario itself broke
   echo "  $scn $side$tg: $(tail -1 $dir/report.txt 2>/dev/null | cut -d' ' -f2)"
 }
 
@@ -205,15 +273,17 @@ teardown_check() {  # REG-006 after every launch
 
 # x-00 and REG-026 on an empty data dir, with every TCC grant reset.
 echo "x-00 / REG-026"
-tccutil reset All app.dedock.Dedock.debug >/dev/null 2>&1
+(( selftest )) || tccutil reset All app.dedock.Dedock.debug >/dev/null 2>&1   # real lock held (checked above)
 X=$id-X
-if $E/launch.sh $X --app $app --no-seed --timeout 8 > $B/runs/$id/launch-X.txt 2>&1 && launched $B/runs/$id/launch-X.txt; then
+if launch $X --app $app --no-seed --timeout 8 > $B/runs/$id/launch-X.txt 2>&1 && launched $B/runs/$id/launch-X.txt; then
   sleep 2
   pid=$(sed -n 's/^APP_PID=//p' $B/runs/$X/run.env)
   check "x-00 UIElement" $(lsappinfo info -only ApplicationType -app $pid 2>/dev/null | grep -q UIElement && echo 1 || echo 0) "no Dock icon (LSUIElement)"
   si=$(osascript -e "tell application \"System Events\" to tell (first process whose unix id is $pid) to get description of every menu bar item of menu bar 1" 2>/dev/null)
   check "x-00 status item" $([[ $si == *dedock* ]] && echo 1 || echo 0) "status item: ${si:-none}"
-  if command -v cua-driver >/dev/null; then
+  if ! command -v cua-driver >/dev/null; then
+    check "x-00 no permission prompt" 0 "cua-driver not installed: cannot check"
+  else
     prompts=$(cua-driver call list_windows '{}' 2>/dev/null | python3 -c 'import json,sys
 w=json.load(sys.stdin)["windows"]
 print(sum(1 for x in w if x["is_on_screen"] and x["app_name"] in ("UserNotificationCenter","universalAccessAuthWarn","SecurityAgent","tccd")))' 2>/dev/null || echo "?")
@@ -244,13 +314,15 @@ for tag in $edge_list; do
   side=$tag; [[ $tag == R ]] && set_edge=(--set 'docks[0].edge="right"') || set_edge=()
   echo "edge $tag"
   sub=$id-$tag
-  if $E/launch.sh $sub --app $app --frame-log $set_edge --timeout 8 > $root/launch-$tag.txt 2>&1 && launched $root/launch-$tag.txt; then
+  if launch $sub --app $app --frame-log $set_edge --timeout 8 > $root/launch-$tag.txt 2>&1 && launched $root/launch-$tag.txt; then
     print -r -- "$tag $sub" >> $root/index.txt
     sleep 1
     rmetric launch.${tag}_ms $(edge_ready_ms $sub)
-    $E/geom-check.py $B/runs/$sub/data/e2e/geometry.json layout=$B/runs/$sub/data/layout.json padding=$padding gap=$gap > $B/runs/$sub/geom.txt
+    $E/geom-check.py $B/runs/$sub/data/e2e/geometry.json layout=$B/runs/$sub/data/layout.json padding=$padding gap=$gap > $B/runs/$sub/geom.txt 2>&1
+    tool "geom-check $tag" $?
     gf=$(grep -c '^FAIL' $B/runs/$sub/geom.txt); gp=$(grep -c '^PASS' $B/runs/$sub/geom.txt)
-    check "geom $tag (REG-013 …)" $(( gf == 0 )) "$gp pass, $gf fail$( (( gf )) && print -r -- ": $(grep '^FAIL' $B/runs/$sub/geom.txt | head -2 | cut -c6-90 | tr '\n' ';')")"
+    # fail closed: a crashed or empty geom-check has no PASS lines
+    check "geom $tag (REG-013 …)" $(( gf == 0 && gp > 0 )) "$gp pass, $gf fail$( (( gf )) && print -r -- ": $(grep '^FAIL' $B/runs/$sub/geom.txt | head -2 | cut -c6-90 | tr '\n' ';')")"
     rmetric geom.${tag}_fails $gf
     cua $sub $side
     run_scn $sub $side x-01 n=4
@@ -264,7 +336,7 @@ for tag in $edge_list; do
     check "launch $tag" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-$tag.txt)"
   fi
   sub0=$id-${tag}0
-  if $E/launch.sh $sub0 --app $app --frame-log $set_edge --set 'docks[0].reveal.hideDelayMs=0' --timeout 8 > $root/launch-${tag}0.txt 2>&1 && launched $root/launch-${tag}0.txt; then
+  if launch $sub0 --app $app --frame-log $set_edge --set 'docks[0].reveal.hideDelayMs=0' --timeout 8 > $root/launch-${tag}0.txt 2>&1 && launched $root/launch-${tag}0.txt; then
     print -r -- "$tag $sub0" >> $root/index.txt
     sleep 1
     run_scn $sub0 $side x-05b n=3
@@ -279,20 +351,21 @@ done
 if (( idle )); then
   echo "idle"
   sub=$id-I
-  if $E/launch.sh $sub --app $app --timeout 8 > $root/launch-I.txt 2>&1 && launched $root/launch-I.txt; then
+  if launch $sub --app $app --timeout 8 > $root/launch-I.txt 2>&1 && launched $root/launch-I.txt; then
     print -r -- "I $sub" >> $root/index.txt
     pid=$(sed -n 's/^APP_PID=//p' $B/runs/$sub/run.env)
     for attempt in 1 2; do
       O=$B/runs/$sub/idle-L; rm -rf $O; mkdir -p $O
       sleep 3
-      $E/desktop-lock.sh touch >/dev/null
+      $E/desktop-lock.sh touch $me >/dev/null
       $B/listen 64 > $O/listen.txt &
       lp=$!; sleep 0.5
-      $H/Scripts/measure-idle.sh $pid 60 $O/perf.csv > $O/perf.txt
+      $H/Scripts/measure-idle.sh $pid 60 $O/perf.csv > $O/perf.txt 2>&1; tool "measure-idle" $?
       wait $lp 2>/dev/null
       {
-        $B/analyze contamination $O/listen.txt idle=1 metrics=$O/metrics.jsonl
+        $B/analyze contamination $O/listen.txt idle=1 metrics=$O/metrics.jsonl; tool "analyze contamination idle" $? >&2
         cat $O/perf.txt
+        grep -q '^cpu_avg_pct=' $O/perf.txt || echo "FAIL idle gate: measure-idle produced no numbers"
       } > $O/report.raw.txt
       tail -1 $O/perf.csv | awk -F, '{printf "{\"metric\":\"idle.cpu_pct\",\"value\":%s}\n{\"metric\":\"idle.wakeups_per_s\",\"value\":%s}\n{\"metric\":\"idle.footprint_mb\",\"value\":%s}\n{\"metric\":\"idle.rss_mb\",\"value\":%s}\n", $6, $8, $9, $10}' >> $O/metrics.jsonl
       if grep -q '^FAIL input contamination' $O/report.raw.txt; then v=VOID
@@ -315,7 +388,7 @@ if (( shots )); then
   for tag in $edge_list; do
     [[ $tag == R ]] && set_edge=(--set 'docks[0].edge="right"') || set_edge=()
     sub=$id-S$tag
-    if $E/launch.sh $sub --app $app $set_edge --set 'docks[0].mode="pinned"' --timeout 8 > $root/launch-S$tag.txt 2>&1 && launched $root/launch-S$tag.txt; then
+    if launch $sub --app $app $set_edge --set 'docks[0].mode="pinned"' --timeout 8 > $root/launch-S$tag.txt 2>&1 && launched $root/launch-S$tag.txt; then
       sleep 1
       rect=($(python3 -c "import json;g=json.load(open('$B/runs/$sub/data/e2e/geometry.json'));d=g['docks'][0];x,y,w,h=d['capsule']['topLeft'];sx,sy,sw,sh=g['screens'][0]['frame']['topLeft'];m=40;X=max(sx,x-m);Y=max(sy,y-m);print(int(X),int(Y),int(min(sx+sw,x+w+m)-X),int(min(sy+sh,y+h+m)-Y))"))
       $B/backdrop ${rect[1]} ${rect[2]} ${rect[3]} ${rect[4]} 15 > /dev/null &
@@ -334,14 +407,18 @@ fi
 # Post-run harness checks (they gate the harness, not the app).
 # A posted move lands asynchronously: reading the position right after posting can still return
 # the old point. Post, then poll for up to 1 s (re-posting once) before judging.
-$B/pointer -q move ${cursor0[1]} ${cursor0[2]}
-for i in {1..10}; do
-  sleep 0.1
-  now=($($B/pointer pos | sed 's/[xy]=//g'))
-  python3 -c "import sys; sys.exit(not (abs(float(sys.argv[1])-float(sys.argv[3]))<=1 and abs(float(sys.argv[2])-float(sys.argv[4]))<=1))" ${cursor0[1]} ${cursor0[2]} ${now[1]} ${now[2]} && break
-  (( i == 5 )) && $B/pointer -q move ${cursor0[1]} ${cursor0[2]}
-done
-check "REG-016 cursor restored" $(python3 -c "import sys; a=[float(x) for x in sys.argv[1:3]]; b=[float(x) for x in sys.argv[3:5]]; print(int(abs(a[0]-b[0])<=1 and abs(a[1]-b[1])<=1))" ${cursor0[1]} ${cursor0[2]} ${now[1]} ${now[2]}) "before ${cursor0[*]}, after ${now[*]}"
+if (( moved )); then
+  $B/pointer -q move ${cursor0[1]} ${cursor0[2]}
+  for i in {1..10}; do
+    sleep 0.1
+    now=($($B/pointer pos | sed 's/[xy]=//g'))
+    python3 -c "import sys; sys.exit(not (abs(float(sys.argv[1])-float(sys.argv[3]))<=1 and abs(float(sys.argv[2])-float(sys.argv[4]))<=1))" ${cursor0[1]} ${cursor0[2]} ${now[1]} ${now[2]} && break
+    (( i == 5 )) && $B/pointer -q move ${cursor0[1]} ${cursor0[2]}
+  done
+  check "REG-016 cursor restored" $(python3 -c "import sys; a=[float(x) for x in sys.argv[1:3]]; b=[float(x) for x in sys.argv[3:5]]; print(int(abs(a[0]-b[0])<=1 and abs(a[1]-b[1])<=1))" ${cursor0[1]} ${cursor0[2]} ${now[1]} ${now[2]}) "before ${cursor0[*]}, after ${now[*]}"
+else
+  check "REG-016 cursor restored" 1 "this run posted no pointer motion"
+fi
 mods=$($B/pointer mods)
 check "REG-017 no modifier held" $([[ $mods == mods=0* ]] && echo 1 || echo 0) "$mods"
 left=$(pgrep -x Dedock | tr '\n' ' ')

@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-044.**
+Ask the E2E lane for the next free id. **Next free: REG-052.**
 
 ## How the suite runs
 
@@ -62,6 +62,14 @@ Ask the E2E lane for the next free id. **Next free: REG-044.**
 | REG-041 | The AX probe recorded another app's element text (a hit test over the user's terminal captured its contents) | `axprobe at … only=<pid>` reports role and label only for the app under test, `other_app` otherwise; self-test asserts it | regress.sh, self-test | **harness** |
 | REG-042 | The harness `source`d `run.env`, which held app-provided text: a `<private>` value made zsh treat it as an input redirect, teardown aborted and a Dedock instance kept running after the lock was released | `run.env` values are written quoted and only ever parsed (`sed`), never sourced; teardown always stops the recorded pid; self-test launches a fake whose `launch.edgeReady` carries `<private>` and shell metacharacters | self-test | **harness** |
 | REG-043 | Every debug log line ends with a literal `<private>` (an empty `.private` interpolation, from REG-030's split): the last key=value of every line is corrupted | regress.sh contract check: no `<private>` in any debug line (analyzer strips it meanwhile so runs stay readable) | regress.sh | app |
+| REG-044 | Top-edge status-item exclusion is a one-time snapshot; it does not refresh when status items change (#13 review) | unit guard; E2E planned: x-18 top edge after adding/removing a status item | unit (E2E planned) | app |
+| REG-045 | Full-screen flag goes stale when a dock moves to another display (#13 review) | unit guard; E2E needs a second display | unit | app |
+| REG-046 | Full-screen probe confirmation drops results without re-checking (#13 review) | unit guard; E2E planned: x-10 enter/exit cycles | unit (E2E planned) | app |
+| REG-047 | Drop-to-pin accepts packages and fake `.app` files with no bundle check (#13 review) | unit guard | unit | app |
+| REG-048 | A reorder is not cancelled by a relayout mid-drag (#13 review) | unit guard; E2E planned: x-09 drag + debug `setEdge` mid-drag (command channel) | unit (E2E planned) | app |
+| REG-049 | Gates failed OPEN: a crashed geom-check / analyze / contract parser / cua-eval, or a `top` with no samples, recorded PASS or silently dropped rows (#12 review) | every tool's exit code goes to `tools.jsonl`; `judge.sh` FAILs a scenario whose `analyze` did not exit 0/1 or that evaluated no gate; geom needs PASS lines; `measure-idle.sh` needs ≥ secs−1 samples; `regress.sh` writes `expected.txt` and `score.py` FAILs every missing row; scorecard "Tool health" line | regress.sh, self-test | **harness** |
+| REG-050 | A failed launch left Dedock and its log stream running, so the next run tripped REG-015 (#12 review) | `launch.sh` stops the app and the log stream on every failure path; `regress.sh` EXIT/INT/TERM trap tears down every launched sub-run and releases held input | regress.sh, launch.sh, self-test | **harness** |
+| REG-051 | A harness step could post input, restore the cursor, run `tccutil` or launch a real-bundle-id app under a private (self-test) lock while someone else held the real one (found 2026-10-15; the test was skipped, so nothing happened) | HARD RULE: such steps call `desktop-lock.sh require <owner>`, which checks the **real** lock path only (a `DEDOCK_LOCKS` override never counts). Self-tests use the fake bundle id `app.dedock.Fake` with `DEDOCK_SELFTEST=1` (no input, no tccutil, no scenarios); the cursor is restored only if the run moved it; skipped self-tests print SKIP, never PASS | self-test | **harness** |
 
 ## Adding an entry
 

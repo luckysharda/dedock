@@ -3,8 +3,12 @@
 # Atomic: mkdir succeeds for exactly one taker.
 #
 #   desktop-lock.sh acquire <owner> <lane> <purpose>   exit 1 if held by someone else
-#   desktop-lock.sh touch                              refresh (do every 5 min while held)
+#   desktop-lock.sh touch <owner>                      refresh (every 5 min while held); only the owner
 #   desktop-lock.sh release <owner>                    only the owner may release
+#   desktop-lock.sh require <owner>                    exit 0 only if <owner> holds the REAL lock (the
+#                                                      default path; a DEDOCK_LOCKS override never counts).
+#                                                      Every step that can post input, move the cursor,
+#                                                      run tccutil or launch a real-bundle-id app calls it.
 #   desktop-lock.sh status
 #
 # Messaging the other sessions before taking and after releasing is still required;
@@ -26,7 +30,9 @@ acquire)
     echo "held:"; cat $LOCK/info $LOCK/owner 2>/dev/null; exit 1
   fi ;;
 touch)
+  owner=${2:?owner}
   [[ -d $LOCK ]] || { echo "not held"; exit 1 }
+  grep -qx "owner=$owner" $LOCK/info 2>/dev/null || { echo "held by someone else:"; cat $LOCK/info $LOCK/owner 2>/dev/null; exit 1 }
   touch $LOCK/info; echo "touched $(now)" ;;
 release)
   owner=${2:?owner}
@@ -36,6 +42,12 @@ release)
   else
     echo "held by someone else:"; cat $LOCK/info; exit 1
   fi ;;
+require)
+  owner=${2:?owner}
+  REAL=$HOME/dedock/.locks/desktop.lock
+  if [[ -d $REAL ]] && grep -qx "owner=$owner" $REAL/info 2>/dev/null; then exit 0; fi
+  echo "refusing: '$owner' does not hold the REAL desktop lock ($([[ -d $REAL ]] && sed -n 's/^owner=//p' $REAL/info 2>/dev/null || echo free))" >&2
+  exit 1 ;;
 status)
   if [[ -d $LOCK ]]; then
     # Holders write `info` (this script) or `owner` (other sessions' tooling); show whichever exists.

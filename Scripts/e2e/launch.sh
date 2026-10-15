@@ -49,10 +49,13 @@ fi
 # driving the desktop: only while THIS session holds the lock, and never next to another
 # Dedock (two instances react to the same pointer and share one log subsystem).
 # The self-test's fake app (not named Dedock) shows nothing and is exempt.
-if [[ ${bin:t} == Dedock ]]; then
-  me=${DEDOCK_LOCK_OWNER:-dedock-app-f1}
-  holder=$($HARNESS/Scripts/e2e/desktop-lock.sh status | sed -n 's/^owner=//p')
-  [[ $holder == $me ]] || { echo "refusing: launching Dedock needs the desktop lock held by '$me' (holder: '${holder:-nobody}')" >&2; exit 2 }
+# Real bundle ids (or an unbundled binary named Dedock) count; self-tests use app.dedock.Fake.
+plist=${bin:h:h}/Info.plist
+bid=""   # (set -e: a failing $(...) in an assignment would abort the script)
+[[ -f $plist ]] && bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $plist 2>/dev/null || true)
+if [[ $bid == app.dedock.Dedock || $bid == app.dedock.Dedock.debug || ( -z $bid && ${bin:t} == Dedock ) ]]; then
+  me=${DEDOCK_LOCK_OWNER:?set DEDOCK_LOCK_OWNER to your session name}
+  $HARNESS/Scripts/e2e/desktop-lock.sh require $me || { echo "refusing: launching Dedock needs the REAL desktop lock held by '$me'" >&2; exit 2 }
   others=$(pgrep -x Dedock || true)
   [[ -z $others ]] || { echo "refusing: another Dedock is running (pid $others); quit it first" >&2; exit 2 }
 fi
@@ -122,7 +125,8 @@ app_pid=$!
 deadline=$(( SECONDS + timeout ))
 while (( SECONDS < deadline )); do
   if ! kill -0 $app_pid 2>/dev/null; then
-    echo "FAIL app exited during launch (see $R/app-stdout.txt)"; exit 1
+    kill $log_pid 2>/dev/null
+    echo "FAIL app exited during launch (see $R/app-stdout.txt); log stream stopped"; exit 1
   fi
   if grep -q '"eventMessage":"launch.edgeReady' $R/log.ndjson; then
     line=$(grep '"eventMessage":"launch.edgeReady' $R/log.ndjson | head -1)
@@ -137,5 +141,9 @@ while (( SECONDS < deadline )); do
   fi
   sleep 0.1
 done
-echo "FAIL no launch.edgeReady within ${timeout}s (app pid $app_pid still running; teardown.sh $run to stop)"
+# A failed launch never leaves anything behind (review of #12): stop the app and the log stream.
+kill $app_pid $log_pid 2>/dev/null
+for i in {1..30}; do kill -0 $app_pid 2>/dev/null || break; sleep 0.1; done
+kill -9 $app_pid 2>/dev/null || true
+echo "FAIL no launch.edgeReady within ${timeout}s (app and log stream stopped)"
 exit 1

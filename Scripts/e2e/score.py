@@ -23,7 +23,7 @@ DRIFT = 0.20
 DEFAULT_FLOORS = {"_ms": 2.0, "_pt": 1.0, "cpu_pct": 0.05, "wakeups_per_s": 0.2, "_mb": 5.0}
 # Counts describe the run, not the app's quality: never drift-checked.
 # Harness checks (Tests/E2E/regressions.md "gates: harness") never decide an app PR's verdict.
-HARNESS_IDS = ("REG-015", "REG-016", "REG-017", "REG-041", "REG-042")
+HARNESS_IDS = ("REG-015", "REG-016", "REG-017", "REG-041", "REG-042", "REG-049", "REG-050", "REG-051")
 COUNTS = ("_trials", "reversals", "foreign_events", "leave_before_dwell", "hide_cancelled", "_n")
 
 
@@ -75,7 +75,28 @@ def collect(root):
     for row in load_jsonl(os.path.join(root, "run-metrics.jsonl")):
         metrics[row["metric"]] = row["value"]
     checks = load_jsonl(os.path.join(root, "checks.jsonl"))
+    # Fail closed (review of #12): every row the run promised (expected.txt) must exist; a missing
+    # one becomes a FAIL row, so a crashed or skipped step can never read as PASS.
+    exp_path = os.path.join(root, "expected.txt")
+    if os.path.exists(exp_path):
+        have = {c["id"] for c in checks} | {s["key"] for s in scenarios}
+        for want in (l.strip() for l in open(exp_path)):
+            if want and want not in have:
+                checks.append({"id": want, "ok": False, "detail": "MISSING: expected row not produced (step crashed or was skipped)"})
     return scenarios, metrics, checks
+
+
+def tool_health(root, checks):
+    """(ok, line) for the scorecard: every tool exited 0/1 and every expected row is present."""
+    tools = load_jsonl(os.path.join(root, "tools.jsonl"))
+    bad = [t for t in tools if not t.get("ok")]
+    missing = [c for c in checks if str(c.get("detail", "")).startswith("MISSING:")]
+    has_expected = os.path.exists(os.path.join(root, "expected.txt"))
+    ok = not bad and not missing and has_expected and bool(tools)
+    bad_s = ", ".join(t["tool"] + " rc=" + str(t["rc"]) for t in bad[:5])
+    parts = [f"{len(tools)} tool runs, {len(bad)} failed" + (f" ({bad_s})" if bad else ""),
+             f"{len(missing)} expected rows missing" if has_expected else "no expected-rows list (old run: not fail-closed)"]
+    return ok, f"Tool health: **{'OK' if ok else 'NOT OK'}** — " + "; ".join(parts)
 
 
 def floor_for(name, floors):
@@ -112,6 +133,9 @@ def write_scorecard(root, baseline_path):
     harness_failed = [c for c in checks if not c["ok"] and is_harness(c)]
     live = [c for c in checks if not c.get("skip")]
     failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in live if not c["ok"] and not is_harness(c)]
+    health_ok, health_line = tool_health(root, checks)
+    if not health_ok and os.path.exists(os.path.join(root, "expected.txt")):
+        failed.append({"id": "tool health"})
     void = [s for s in scenarios if s["verdict"] == "VOID"]
     verdict = "FAIL" if failed else ("VOID" if void else "PASS")
     res = lambda c: "SKIP" if c.get("skip") else ("PASS" if c["ok"] else "FAIL")
@@ -132,6 +156,8 @@ def write_scorecard(root, baseline_path):
                  f"{', PARTIAL' if p.get('partial') else ''})")
     else:
         L.append("Baseline: none (drift not checked)")
+    L.append("")
+    L.append(health_line)
     L.append("")
     L.append(f"**{verdict}** — scenarios: {sum(s['verdict'] == 'PASS' for s in scenarios)} pass, "
              f"{len([s for s in scenarios if s['verdict'] == 'FAIL'])} fail, {len(void)} void (contaminated, rerun); "

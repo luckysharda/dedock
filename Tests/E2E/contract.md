@@ -35,7 +35,7 @@ log stream --style ndjson --level debug --predicate 'subsystem == "app.dedock.De
 
 Timing comes from the ndjson `machTimestamp` field (mach absolute time). The pointer driver prints the same clock for every event it posts, so the two series line up with no clock conversion.
 
-Every message starts with the **event name**, then space-separated `key=value` pairs. No spaces inside values (use `,` for lists, `-` for none). All values `.public`. Never log window titles.
+Every message starts with the **event name**, then space-separated `key=value` pairs. No spaces inside values (use `,` for lists, `-` for none). All values `.public`. Never log window titles. **Nothing else on the line**: in debug builds no `<private>` segment, not even an empty one (REG-043; the regress contract check fails any line containing `<private>`). Release builds may redact string values (REG-030), never numbers.
 
 | Category | Event | Keys | When |
 |---|---|---|---|

@@ -181,6 +181,16 @@ func run(_ args: [String], _ s: inout Schedule) {
         let t = mach_absolute_time()
         print("mach=\(t) ns=\(ticksToNs(t))")
 
+    case "release": // let go of anything held: modifier keys and the left button (EXIT traps)
+        let f = CGEventSource.flagsState(.combinedSessionState)
+        for (k, m) in [("cmd", CGEventFlags.maskCommand), ("opt", .maskAlternate), ("ctrl", .maskControl), ("shift", .maskShift)] where f.contains(m) {
+            modifierFlags = f; postModifier(k, down: false)
+        }
+        if CGEventSource.buttonState(.combinedSessionState, button: .left) {
+            buttonDown = true; postButton(false, at: currentLocation())
+        }
+        emit("mark", nil, extra: "label=released")
+
     case "mods": // current modifier state, posts nothing: "mods=<raw> cmd=0 opt=0 ctrl=0 shift=0"
         let f = CGEventSource.flagsState(.combinedSessionState)
         let bit = { (m: CGEventFlags) in f.contains(m) ? 1 : 0 }
@@ -326,6 +336,7 @@ let help = """
 pointer — synthetic pointer driver for dedock E2E (global top-left points)
 
   pos | screen | now | mods                   (no event posted; mods: held modifier keys)
+  release                                     key-up / mouse-up for anything still held
   move x y                                    one move event (delta = from current point)
   glide x y ms [hz=120]                       straight line from the current point
   wait ms                                     keep still (no events)

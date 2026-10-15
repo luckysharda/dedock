@@ -23,7 +23,11 @@ if [[ $target == <-> ]]; then pid=$target; else pid=$(pgrep -x $target | head -1
 [[ -n ${pid:-} ]] && kill -0 $pid 2>/dev/null || { echo "no such process: $target" >&2; exit 2 }
 name=$(ps -o comm= -p $pid | xargs basename)
 
-samples=$(top -l $((secs + 1)) -s 1 -pid $pid -stats pid,cpu,idlew 2>/dev/null | awk -v p=$pid '$1 == p { print $2, $3 }')
+# DEDOCK_TOP_OVERRIDE=<file>: read top's output from a file (self-test of the fail-closed path).
+if [[ -n ${DEDOCK_TOP_OVERRIDE:-} ]]; then raw=$(<$DEDOCK_TOP_OVERRIDE); else raw=$(top -l $((secs + 1)) -s 1 -pid $pid -stats pid,cpu,idlew 2>/dev/null); fi
+[[ -n $csv ]] && print -r -- "$raw" > ${csv:r}.top.txt   # keep the raw samples next to the CSV
+samples=$(print -r -- "$raw" | awk -v p=$pid '$1 == p { print $2, $3 }')
+n=$(print -r -- "$samples" | grep -c . || true)
 kill -0 $pid 2>/dev/null || { echo "process $pid exited during the run" >&2; exit 2 }
 
 read cpu_avg cpu_max wps <<<$(print -r -- "$samples" | awk -v s=$secs '
@@ -37,6 +41,9 @@ rss_mb=$(ps -o rss= -p $pid | awk '{ printf "%.1f", $1 / 1024 }')
 
 verdict=PASS
 awk -v c=$cpu_avg -v w=$wps 'BEGIN { exit !(c < 0.5 && w <= 1.0) }' || verdict=FAIL
+# Fail closed: without (almost) every sample the averages above are made-up zeros.
+if (( n < secs - 1 )); then verdict=FAIL; echo "FAIL top gave $n samples for $pid (need >= $((secs - 1)) of $((secs + 1)))"; fi
+echo "samples=$n"
 
 stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 os=$(sw_vers -buildVersion)

@@ -34,9 +34,12 @@ APP_PID=$(envv APP_PID); LOG_PID=$(envv LOG_PID); RUN_DIR=$R; DATA_DIR=$R/data; 
 if (( ! dry )); then
   kill -0 $APP_PID 2>/dev/null || { echo "app (pid $APP_PID) is not running" >&2; exit 2 }
   # The lock must be held by THIS session, not merely by someone.
-  me=${DEDOCK_LOCK_OWNER:-dedock-app-f1}
-  lock_owner=$($HARNESS/Scripts/e2e/desktop-lock.sh status | sed -n 's/^owner=//p')
-  [[ $lock_owner == $me ]] || { echo "desktop lock is held by '${lock_owner:-nobody}', not '$me': acquire it first (desktop-lock.sh acquire $me e2e ...)" >&2; exit 2 }
+  me=${DEDOCK_LOCK_OWNER:?set DEDOCK_LOCK_OWNER to your session name}
+  # Moves the real cursor: only under the REAL desktop lock (a DEDOCK_LOCKS override never counts).
+  if ! $HARNESS/Scripts/e2e/desktop-lock.sh require $me 2>/dev/null; then
+    lock_owner=$($HARNESS/Scripts/e2e/desktop-lock.sh status | sed -n 's/^owner=//p')
+    echo "desktop lock is held by '${lock_owner:-nobody}', not '$me' (or not the real lock): acquire it first (desktop-lock.sh acquire $me e2e ...)" >&2; exit 2
+  fi
 fi
 
 for tool in pointer listen analyze; do
@@ -107,7 +110,7 @@ fi
 $B/listen $secs > $O/listen.txt &
 lpid=$!
 sleep 0.5
-$HARNESS/Scripts/e2e/desktop-lock.sh touch >/dev/null
+(( dry )) || $HARNESS/Scripts/e2e/desktop-lock.sh touch $me >/dev/null
 if [[ $scn == perf-move ]]; then
   $HARNESS/Scripts/measure-idle.sh $APP_PID 58 $R/perf.csv > $O/perf.txt &
   ppid=$!
