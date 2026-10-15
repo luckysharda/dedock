@@ -34,7 +34,7 @@
         "sharedEdgePolicy": "slowDwell",
         "hideInFullscreen": false
       },
-      "placement": { "alignment": "center", "edgeGapPt": 6 },
+      "placement": { "alignment": "center", "edgeGapPt": 8 },
       "appearance": { "size": "m", "dragToRearrange": false }
     }
   ],

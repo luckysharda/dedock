@@ -31,6 +31,8 @@ import SwiftUI
     /// The layer-backed view whose `sublayerTransform` slides (or whose opacity fades).
     public let container: NSView
     let model: DockViewModel
+    /// The Dark Glass capsule, under the tiles and inside the sliding container.
+    let capsule = CapsuleView(frame: .zero)
     private let hosting: NSHostingView<DockContentView>
     /// Where point-based accessibility hit tests go: the SwiftUI content, which owns the tile
     /// elements. A seam for the REG-054 guard.
@@ -52,8 +54,14 @@ import SwiftUI
         container.autoresizingMask = [.width, .height]
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
+        container.addSubview(capsule)
         container.addSubview(hosting)
         addSubview(container)
+    }
+
+    /// Re-applies the capsule's frame and material from the model (after layout or token changes).
+    func applyCapsule() {
+        capsule.apply(frame: model.capsule, tokens: model.tokens)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

@@ -12,10 +12,7 @@ struct DockContentView: View {
         let t = model.tokens
         let h = model.panelSize.height
         ZStack(alignment: .topLeading) {
-            CapsuleBackground(tokens: t)
-                .frame(width: model.capsule.width, height: model.capsule.height)
-                .position(x: model.capsule.midX, y: h - model.capsule.midY)
-
+            // The capsule itself is `CapsuleView` (AppKit), drawn under this view.
             ForEach(model.tiles) { tile in
                 if let f = model.tileFrames[tile.id] {
                     TileView(tile: tile, model: model, size: f.size)
@@ -57,45 +54,6 @@ struct DockContentView: View {
         case .bottom: .bottom
         case .top: .top
         }
-    }
-}
-
-/// Dark Glass capsule: behind-window blur forced active, a tint over it, a 1 px inner edge and
-/// a soft shadow. Under Reduce Transparency the blur is dropped and the tint is solid.
-struct CapsuleBackground: View {
-    let tokens: DockTokens
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: tokens.capsuleRadius, style: .continuous)
-        ZStack {
-            if let material = tokens.blurMaterial {
-                VisualEffectBackground(material: material).clipShape(shape)
-            }
-            shape.fill(Color(nsColor: tokens.capsuleTint))
-            shape.strokeBorder(Color(nsColor: tokens.capsuleEdge), lineWidth: 1)
-        }
-        .compositingGroup()
-        .shadow(color: Color(nsColor: tokens.shadowColor).opacity(Double(tokens.shadowOpacity)),
-                radius: tokens.shadowRadius / 2, x: 0, y: tokens.shadowY)
-    }
-}
-
-/// `NSVisualEffectView` behind the capsule. Forced `.active`: the panel never becomes key, and an
-/// inactive material would render flat.
-struct VisualEffectBackground: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let v = NSVisualEffectView()
-        v.blendingMode = .behindWindow
-        v.state = .active
-        v.material = material
-        v.appearance = NSAppearance(named: .darkAqua)
-        return v
-    }
-
-    func updateNSView(_ v: NSVisualEffectView, context: Context) {
-        v.material = material
     }
 }
 
