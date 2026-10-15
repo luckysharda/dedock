@@ -79,13 +79,22 @@ extension TileItem {
         case .separator:
             return TileModel(id: id, kind: .separator, name: "")
         case .folder:
-            let url = path.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            // Bookmark first (it follows a moved or renamed folder), then the path (REG-031).
+            let url = resolvedBookmark ?? path.map { URL(fileURLWithPath: $0, isDirectory: true) }
             return TileModel(id: id, kind: .folder, name: displayName ?? url?.lastPathComponent ?? "Folder", url: url)
         default:
             let url = path.map { URL(fileURLWithPath: $0) }
             let name = displayName ?? url.map { $0.deletingPathExtension().lastPathComponent } ?? bundleID ?? "App"
             return TileModel(id: id, kind: .app, name: name, bundleID: bundleID, url: url)
         }
+    }
+
+    /// The bookmark's current location, if it still resolves.
+    public var resolvedBookmark: URL? {
+        guard let bookmark else { return nil }
+        var stale = false
+        return try? URL(resolvingBookmarkData: bookmark, options: [.withoutUI, .withoutMounting],
+                        relativeTo: nil, bookmarkDataIsStale: &stale)
     }
 
     public var tileSpec: TileSpec {

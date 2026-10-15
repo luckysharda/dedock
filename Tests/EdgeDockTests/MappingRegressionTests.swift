@@ -77,3 +77,31 @@ import Testing
     var buttonsDown: Bool { false }
     var currentModifiers: ModifierSet { [] }
 }
+
+@Suite("Regression", .tags(.regression)) @MainActor struct BookmarkRegressionTests {
+    /// REG-031: folder tiles used the path only, ignoring the bookmark, and a tile seeded with a
+    /// path never got its bookmark filled in.
+    @Test("REG-031: folder tiles resolve the bookmark first and get one filled on save")
+    func reg031() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("dedock-reg031-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        let original = root.appendingPathComponent("Original", isDirectory: true)
+        try fm.createDirectory(at: original, withIntermediateDirectories: true)
+        let bookmark = try original.bookmarkData()
+        let moved = root.appendingPathComponent("Moved", isDirectory: true)
+        try fm.moveItem(at: original, to: moved)
+
+        // The path is stale; the bookmark follows the move.
+        let item = TileItem(id: "f", kind: .folder, path: original.path, bookmark: bookmark)
+        #expect(item.tileModel.url?.standardizedFileURL.resolvingSymlinksInPath().path
+                == moved.standardizedFileURL.resolvingSymlinksInPath().path)
+
+        // A path-only folder gets a bookmark; a document with nothing missing is left alone.
+        var doc = DedockDocument.makeDefault()
+        doc.profiles[0].items.append(TileItem(id: "p", kind: .folder, path: moved.path))
+        let filled = try #require(EdgeDockManager.fillingBookmarks(doc))
+        #expect(filled.profiles[0].items.last?.bookmark != nil)
+        #expect(EdgeDockManager.fillingBookmarks(filled) == nil)
+    }
+}

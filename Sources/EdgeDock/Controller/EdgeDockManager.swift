@@ -78,8 +78,30 @@ import SettingsStore
         DockSurroundings(layout: topology.layout, nativeDock: dockPrefs.current, reduceMotion: reduceMotion)
     }
 
+    /// Folder tiles saved with only a path (hand-written seeds, older files) get their bookmark
+    /// on the first save (evaluation.md §7.5, REG-031). Returns nil when nothing is missing.
+    static func fillingBookmarks(_ doc: DedockDocument) -> DedockDocument? {
+        var next = doc
+        var changed = false
+        for p in next.profiles.indices {
+            for i in next.profiles[p].items.indices {
+                let item = next.profiles[p].items[i]
+                guard item.kind == .folder, item.bookmark == nil, let path = item.path,
+                      FileManager.default.fileExists(atPath: path),
+                      let data = try? URL(fileURLWithPath: path, isDirectory: true).bookmarkData() else { continue }
+                next.profiles[p].items[i].bookmark = data
+                changed = true
+            }
+        }
+        return changed ? next : nil
+    }
+
     /// Reconcile coordinators with the settings document and display layout.
     func sync(reason: String) {
+        if let filled = Self.fillingBookmarks(settings.document) {
+            settings.update { $0 = filled }   // re-enters sync through the observer, then saves
+            return
+        }
         let doc = settings.document
         let s = surroundings
         var keep: Set<DockID> = []
