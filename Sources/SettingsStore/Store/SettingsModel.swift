@@ -18,12 +18,17 @@ import Observation
     @ObservationIgnored private(set) var pendingSave: Task<Void, Never>?
     @ObservationIgnored private var isDirty = false
 
+    /// When true the model never writes: used when layout.json exists but cannot be read, so
+    /// in-memory defaults never overwrite the user's file (REG-036).
+    public let isReadOnly: Bool
+
     public init(file: LayoutFile, clock: any Clock<Duration>, document: DedockDocument,
-                saveDelay: Duration = .milliseconds(500)) {
+                saveDelay: Duration = .milliseconds(500), readOnly: Bool = false) {
         self.file = file
         self.clock = clock
         self.document = document
         self.saveDelay = saveDelay
+        self.isReadOnly = readOnly
     }
 
     /// Loads the document from `file` (with corruption recovery) and builds the model.
@@ -82,6 +87,7 @@ import Observation
     }
 
     private func saveNow() async {
+        guard !isReadOnly else { return }
         let snapshot = document
         isDirty = false
         do {
