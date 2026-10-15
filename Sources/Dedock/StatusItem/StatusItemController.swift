@@ -8,10 +8,12 @@ import SettingsStore
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let settings: SettingsModel
     private let docks: EdgeDockManager
+    private let openSettings: () -> Void
 
-    init(settings: SettingsModel, docks: EdgeDockManager) {
+    init(settings: SettingsModel, docks: EdgeDockManager, openSettings: @escaping () -> Void) {
         self.settings = settings
         self.docks = docks
+        self.openSettings = openSettings
         super.init()
         item.button?.image = NSImage(systemSymbolName: "rectangle.lefthalf.inset.filled", accessibilityDescription: "dedock")
         item.button?.image?.isTemplate = true
@@ -48,6 +50,7 @@ import SettingsStore
         menu.addItem(withTitle: "Mode", action: nil, keyEquivalent: "").submenu = modeMenu
 
         menu.addItem(.separator())
+        add(menu, "Settings…", #selector(showSettings), key: ",")
         add(menu, "Quit dedock", #selector(NSApplication.terminate(_:)), key: "q", target: NSApp)
     }
 
@@ -63,6 +66,7 @@ import SettingsStore
     }
 
     @objc private func showDock() { docks.reveal(dock: nil) }
+    @objc private func showSettings() { openSettings() }
 
     @objc private func toggleKeepOpen() {
         let on = !docks.isHeldOpen
@@ -75,7 +79,7 @@ import SettingsStore
         settings.update { doc in
             guard !doc.docks.isEmpty else { return }
             doc.docks[0].edge = edge
-            doc.docks[0].scenario = "custom"
+            doc.docks[0].markCustom()
         }
     }
 
@@ -84,7 +88,7 @@ import SettingsStore
         settings.update { doc in
             guard !doc.docks.isEmpty else { return }
             doc.docks[0].mode = mode
-            doc.docks[0].scenario = "custom"
+            doc.docks[0].markCustom()
         }
     }
 }

@@ -35,9 +35,12 @@ let package = Package(
         .target(name: "EdgeDock", dependencies: ["DedockCore", "Diagnostics", "DesignSystem",
                                                  "DisplayTopology", "EventTapKit", "SettingsStore"],
                 swiftSettings: strict),
+        // L4
+        .target(name: "SettingsUI", dependencies: ["DedockCore", "DesignSystem", "SettingsStore"],
+                swiftSettings: strict),
         // App
         .executableTarget(name: "Dedock", dependencies: ["DedockCore", "Diagnostics", "DesignSystem", "DisplayTopology",
-                                                         "EventTapKit", "SettingsStore", "EdgeDock"],
+                                                         "EventTapKit", "SettingsStore", "EdgeDock", "SettingsUI"],
                           swiftSettings: strict),
         // Tests
         .target(name: "DedockTestSupport", dependencies: ["DedockCore", "EventTapKit", "EdgeDock"],
