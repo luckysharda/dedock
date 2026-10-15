@@ -15,7 +15,7 @@ import SettingsStore
         self.docks = docks
         self.openSettings = openSettings
         super.init()
-        item.button?.image = NSImage(systemSymbolName: "rectangle.lefthalf.inset.filled", accessibilityDescription: "dedock")
+        item.button?.image = NSImage(systemSymbolName: "rectangle.lefthalf.inset.filled", accessibilityDescription: "Dedock")
         item.button?.image?.isTemplate = true
         let menu = NSMenu()
         menu.delegate = self
@@ -27,7 +27,7 @@ import SettingsStore
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-        menu.addItem(withTitle: "dedock \(version)", action: nil, keyEquivalent: "").isEnabled = false
+        menu.addItem(withTitle: "Dedock \(version)", action: nil, keyEquivalent: "").isEnabled = false
         menu.addItem(.separator())
         add(menu, "Show Edge Dock", #selector(showDock))
         let keep = add(menu, "Keep Edge Dock Open", #selector(toggleKeepOpen))
@@ -51,7 +51,7 @@ import SettingsStore
 
         menu.addItem(.separator())
         add(menu, "Settings…", #selector(showSettings), key: ",")
-        add(menu, "Quit dedock", #selector(NSApplication.terminate(_:)), key: "q", target: NSApp)
+        add(menu, "Quit Dedock", #selector(NSApplication.terminate(_:)), key: "q", target: NSApp)
     }
 
     // The dock stays put while this menu is open (the hub swaps to its timer fallback).

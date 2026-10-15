@@ -149,7 +149,8 @@ struct EdgeDockPane: View {
     /// scenario cards cover edge, mode, timing and trigger, not placement or size.
     private func dockBinding<T: Equatable>(_ path: WritableKeyPath<DockConfig, T>, custom: Bool) -> Binding<T> {
         Binding(
-            get: { settings.document.docks[0][keyPath: path] },
+            // Safe on a document with no docks: the defaults stand in until one exists.
+            get: { (settings.document.docks.first ?? DockConfig(id: "dock-0"))[keyPath: path] },
             set: { value in
                 updateDock { d in
                     guard d[keyPath: path] != value else { return d }
@@ -344,7 +345,7 @@ struct TileListSection: View {
         }
     }
 
-    private func newID() -> TileID { TileID("t-\(UUID().uuidString.prefix(8).lowercased())") }
+    private func newID() -> TileID { TileItem.newID() }
 
     private func edit(_ change: (inout [TileItem]) -> Void) {
         settings.update { doc in
@@ -378,13 +379,7 @@ struct TileListSection: View {
         let add = { (response: NSApplication.ModalResponse) in
             guard response == .OK else { return }
             for url in panel.urls {
-                if apps {
-                    append(TileItem(id: newID(), kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path,
-                                    displayName: url.deletingPathExtension().lastPathComponent))
-                } else {
-                    append(TileItem(id: newID(), kind: .folder, path: url.path, bookmark: try? url.bookmarkData(),
-                                    displayName: FileManager.default.displayName(atPath: url.path)))
-                }
+                append(apps ? .app(at: url, id: newID()) : .folder(at: url, id: newID()))
             }
         }
         if let window = NSApp.keyWindow {

@@ -69,7 +69,7 @@ public struct DockSurroundings: Sendable, Equatable {
         self.config = config
         self.display = display
         self.running = running
-        evaluator = TriggerEvaluator(parameters: config.triggerParameters)
+        evaluator = TriggerEvaluator(parameters: config.triggerParameters(nativeDockEdge: surroundings.nativeDock.orientation))
         reduceMotion = surroundings.reduceMotion
 
         let tokens = config.tokens
@@ -164,7 +164,7 @@ public struct DockSurroundings: Sendable, Equatable {
         }
         model.apply(layout: layout, tiles: tiles)
         panel.root.applyCapsule()
-        evaluator.parameters = new.triggerParameters
+        evaluator.parameters = new.triggerParameters(nativeDockEdge: surroundings.nativeDock.orientation)
         rebuildZones(surroundings)
         controller.reconfigure(new.revealConfig(reduceMotion: surroundings.reduceMotion))
         onChange?()
@@ -213,7 +213,7 @@ public struct DockSurroundings: Sendable, Equatable {
         let env = EdgeEnvironment(layout: s.layout, display: display.identity, edge: config.edge,
                                   contentSpan: layout.contentSpan, nativeDock: footprint,
                                   hotCorners: s.nativeDock.hotCorners, statusItemRects: items)
-        let parameters = config.triggerParameters
+        let parameters = config.triggerParameters(nativeDockEdge: s.nativeDock.orientation)
         guard env != environmentKey || parameters != zoneParameters else { return }
         environmentKey = env
         zoneParameters = parameters

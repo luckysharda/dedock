@@ -32,13 +32,16 @@ import Testing
         #expect(d.profileID == "work")
     }
 
-    @Test func bottomBesideTheNativeDockGetsAThickerTrigger() {
-        #expect(Scenario.revealBottom.apply(to: base, nativeDockEdge: .bottom).reveal.triggerThicknessPt == 6)
-        #expect(Scenario.revealBottom.apply(to: base, nativeDockEdge: .left).reveal.triggerThicknessPt == 3)
-    }
-
-    @Test func topUsesTheLongerDwell() {
-        #expect(Scenario.revealTop.apply(to: base, nativeDockEdge: .bottom).reveal.showDwellMs == 300)
+    /// Edge-dependent values are derived at mapping time, never stored by a card (REG-062).
+    @Test func cardsStoreNoEdgeDerivedValues() {
+        let defaults = RevealSettings()
+        for card in Scenario.allCases {
+            for native in ScreenEdge.allCases {
+                let d = card.apply(to: base, nativeDockEdge: native)
+                #expect(d.reveal.showDwellMs == defaults.showDwellMs, "\(card) native=\(native)")
+                #expect(d.reveal.triggerThicknessPt == defaults.triggerThicknessPt, "\(card) native=\(native)")
+            }
+        }
     }
 
     @Test func pinnedKeepsTheEdge() {

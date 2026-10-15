@@ -499,3 +499,27 @@ extension JSONObjectModel {
         return .object(merged)
     }
 }
+
+extension TileItem {
+    /// A fresh tile id (`t-` + 8 hex characters).
+    public static func newID() -> TileID { TileID("t-\(UUID().uuidString.prefix(8).lowercased())") }
+
+    /// A new app tile for the application bundle at `url`. Drop-to-pin and Settings' Add both
+    /// use this, so the two never drift (REG-047 decides *what* may be pinned).
+    public static func app(at url: URL, id: TileID = newID()) -> TileItem {
+        var name = FileManager.default.displayName(atPath: url.path)
+        if name.hasSuffix(".app") { name.removeLast(4) }
+        return TileItem(id: id, kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path, displayName: name)
+    }
+
+    /// A new folder tile for the folder at `url`, with a bookmark where the platform has them.
+    public static func folder(at url: URL, id: TileID = newID()) -> TileItem {
+        #if canImport(Darwin)
+        let bookmark = try? url.bookmarkData()
+        #else
+        let bookmark: Data? = nil
+        #endif
+        return TileItem(id: id, kind: .folder, path: url.path, bookmark: bookmark,
+                        displayName: FileManager.default.displayName(atPath: url.path))
+    }
+}

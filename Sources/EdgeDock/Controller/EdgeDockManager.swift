@@ -205,7 +205,8 @@ import SettingsStore
             return DockGeometrySnapshot(id: c.id, display: c.display, edge: c.config.edge,
                                         mode: c.config.mode == .pinned ? .pinned : .reveal, phase: c.phase,
                                         layout: c.layout, zones: c.zones, tiles: c.tiles,
-                                        style: tokens.style.rawValue, material: Self.materialName(tokens.blurMaterial))
+                                        style: tokens.style.rawValue, material: Self.materialName(tokens.blurMaterial),
+                                        showDwellMs: Self.ms(c.config.revealConfig(reduceMotion: reduceMotion).showDwell))
         }
         geometryWriter.write(layout: topology.layout, docks: docks)
     }
@@ -225,6 +226,10 @@ import SettingsStore
             DedockLog.event(.settings, "settings.changed", ["key": change.key, "value": change.value, "scenario": change.scenario])
         }
         lastDocument = doc
+    }
+
+    static func ms(_ d: Duration) -> Int {
+        Int(d.components.seconds) * 1000 + Int(d.components.attoseconds / 1_000_000_000_000_000)
     }
 
     /// GEOM's `material` value: the blur material's name, or `solid` under Reduce Transparency.
@@ -278,13 +283,7 @@ import SettingsStore
     }
 
     static func tileItem(for url: URL) -> TileItem {
-        let id = TileID("t-\(UUID().uuidString.prefix(8).lowercased())")
-        if TileActions.pinKind(url) == .app {
-            return TileItem(id: id, kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path,
-                            displayName: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
-        }
-        return TileItem(id: id, kind: .folder, path: url.path, bookmark: try? url.bookmarkData(),
-                        displayName: FileManager.default.displayName(atPath: url.path))
+        TileActions.pinKind(url) == .app ? .app(at: url) : .folder(at: url)
     }
 
     private func remove(tile: TileID, from profile: ProfileID) {

@@ -22,9 +22,15 @@ extension DockConfig {
         return c
     }
 
-    public var triggerParameters: TriggerParameters {
+    /// The trigger as configured. Beside the native Dock use `triggerParameters(nativeDockEdge:)`.
+    public var triggerParameters: TriggerParameters { triggerParameters(nativeDockEdge: nil) }
+
+    /// The trigger for this dock with the native Dock on `nativeDockEdge`: where both share an
+    /// edge the zone is at least 6 pt thick (plan §6 table). Derived here, never stored (REG-062).
+    public func triggerParameters(nativeDockEdge: ScreenEdge?) -> TriggerParameters {
         var p = TriggerParameters()
         p.thickness = CGFloat(min(20, max(1, reveal.triggerThicknessPt)))
+        if nativeDockEdge == edge { p.thickness = max(p.thickness, 6) }
         p.spanMode = reveal.spanMode == .wholeEdge ? .wholeEdge : .content
         p.cornerExclusion = CGFloat(min(96, max(0, reveal.cornerExclusionPt)))
         p.pushThrough = reveal.pushThroughPt.map { CGFloat(min(200, max(16, $0))) }   // 16–200 pt or off

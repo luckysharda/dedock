@@ -38,8 +38,11 @@ public enum Scenario: String, Sendable, CaseIterable, Identifiable {
         nativeDockEdge == .left ? .revealRight : .revealLeft
     }
 
-    /// Applies this card to `dock`. Timing and trigger values return to their defaults, with the
-    /// per-edge adjustments; display, profile, placement and appearance are kept.
+    /// Applies this card to `dock`: edge, mode and scenario; timing and trigger values return to
+    /// their defaults. Display, profile, placement and appearance are kept. Edge-dependent values
+    /// (the top edge's longer dwell, a thicker trigger beside the native Dock) are NOT stored:
+    /// they are derived from the edge at mapping time, so a later edge change cannot leave them
+    /// behind in layout.json (REG-062).
     public func apply(to dock: DockConfig, nativeDockEdge: ScreenEdge) -> DockConfig {
         var d = dock
         var reveal = RevealSettings()
@@ -48,13 +51,9 @@ public enum Scenario: String, Sendable, CaseIterable, Identifiable {
         case .revealLeft: d.edge = .left
         case .revealRight: d.edge = .right
         case .revealBottom: d.edge = .bottom
-        case .revealTop:
-            d.edge = .top
-            reveal.showDwellMs = 300 // the zone shares pixels with the menu bar (architecture §6.4)
+        case .revealTop: d.edge = .top
         case .pinned: break // stays on its current edge
         }
-        // A thicker trigger where the native Dock shares the edge (plan §6 table).
-        if d.edge == nativeDockEdge { reveal.triggerThicknessPt = 6 }
         d.mode = self == .pinned ? .pinned : .reveal
         d.reveal = reveal
         d.scenario = rawValue

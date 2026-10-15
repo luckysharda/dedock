@@ -484,3 +484,18 @@ final class TestClock: Clock, @unchecked Sendable {
         #expect(AppearanceSettings.knownKeys.contains("style"))
     }
 }
+
+@Suite struct TileItemFactoryTests {
+    /// Drop-to-pin and Settings' Add build tiles through the same helpers.
+    @Test func appAndFolderTiles() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dedock-tileitem-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let folder = TileItem.folder(at: dir, id: "f")
+        #expect(folder.kind == .folder && folder.id == "f" && folder.path == dir.path)
+        let app = TileItem.app(at: dir.appendingPathComponent("Example.app"), id: "a")
+        #expect(app.kind == .app && app.displayName == "Example")
+        #expect(TileItem.newID().rawValue.hasPrefix("t-"))
+        #expect(TileItem.newID() != TileItem.newID())
+    }
+}
