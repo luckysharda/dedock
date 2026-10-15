@@ -9,6 +9,10 @@ import Foundation
 /// object: nil, userInfo: ["cmd": "setEdge=right"], deliverImmediately: true)`.
 /// Commands: `setEdge=<left|right|bottom|top>` (same path as the status menu), `rebuildZones`,
 /// `reveal`, `hide`. Each logs `debug.command cmd=… ok=…`.
+///
+/// SECURITY RULE: any process in the user's session can post a distributed notification, so
+/// commands stay benign and closed: no command may write files, launch apps, or take an
+/// argument beyond an enum value or a number. Unknown or malformed input is rejected.
 public enum DebugCommand: Equatable, Sendable {
     case setEdge(ScreenEdge)
     case rebuildZones
