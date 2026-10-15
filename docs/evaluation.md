@@ -489,7 +489,7 @@ Status on 2026-10-16 (develop `4bc4f61`; card `be64d3c`, edges L and R): **15 Pa
 | 33 | DD-928 | 20 crossings in 2 s: continuity ≤ 8 pt at reversals, no step above a clean run, no flicker | L1, E2E, L7 | §3.3, x-06 | **Pass**: fuzz tests; x-06 L/R continuity, max step, flicker |
 | 34 | DD-929 | Inhibitors block hiding (M1 tokens: dragging, menuOpen, popoverOpen, editing, pinnedByUser; previewOpen stubbed) | L1, E2E | §3.3, x-16 | **Partial**: menuOpen, dragging, editing (REG-064), REG-048; missing: popoverOpen, pinnedByUser; x-16 |
 | 35 | DD-929 | Menu-tracking 30 Hz `.common` timer replaces stalled monitors | L1, L2 | §3.3, §4 | **Partial**: menu-tracking swap tests; missing: 30 Hz and `.common` asserted |
-| 36 | DD-931 | Shared edges: wall / shared split, slow dwell, crossing guard, Modifier option, topology recompute | L1, L2 | §3.2, §4 | **Pass**: shared-edge geometry and trigger tests; topology refresh; missing: E2E x-11 deferred (one display; owner to approve) |
+| 36 | DD-931 | Shared edges: wall / shared split, slow dwell, crossing guard, Modifier option, topology recompute | L1, L2 | §3.2, §4 | **Pass**: shared-edge geometry and trigger tests; topology refresh; missing: E2E x-11 deferred to M8 (owner, 2026-10-16), unit coverage now |
 | 37 | DD-933 | Hidden or faded: ignores mouse events; shown: hit test nil outside tiles | L1, E2E | §3.4, x-08 | **Pass**: gate opens before the reveal; cua C6/C7; REG-054 |
 | 38 | DD-933 | Click 4 pt outside the container reaches the window underneath | E2E | x-08 (a) | **Partial**: cua C7 4 pt outside (AX hit test); missing: x-08 real click |
 | 39 | DD-961 | Pinned app tiles: click launches or activates; icons at 256 pt nominal | L1, E2E | §3.7, x-07 | **Partial**: REG-040 press = click path; REG-033; cua C3/C5; missing: x-07 real launch; 256 pt icons |
@@ -505,7 +505,7 @@ Status on 2026-10-16 (develop `4bc4f61`; card `be64d3c`, edges L and R): **15 Pa
 | 49 | NFR-4 | Dwell → reveal start ≤ show delay + 16 ms (p95, 50 trials) | L5 | §6 | **Partial**: x-01 lateness p95 ≤ 16 ms (n = 4 per edge); missing: 50 trials |
 | 50 | Perf | Pointer sample ≤ 20 µs p99; cold launch → armed ≤ 400 ms; 0 dropped frames at 60 Hz | L5 | §6 | **Partial**: launch times recorded as metrics; missing: pointer µs benchmark; launch ≤ 400 ms gate; dropped frames |
 | 51 | Visual | Placement, sizing, distinctness table signed; `docs/design.md` pixel check within tolerance | L6 | §9 | **Partial**: geom-check placement and sizing; missing: signed table; pixel check (owner) |
-| 52 | Clean-room | PR lists "Sources consulted"; no DockDoor code or strings | review | `docs/organization.md` | **Partial**: PR template "Sources consulted"; missing: review method to be accepted by the owner |
+| 52 | Clean-room | PR lists "Sources consulted"; no DockDoor code or strings | review | `docs/organization.md` | **Partial**: PR template "Sources consulted"; missing: method decided by the owner (2026-10-16): PR checklist + planner review + CI string scan from a repository secret (`docs/plan.md` T39), the scan still to build |
 
 Rows added because `docs/plan.md` §4.1 puts them in M1 scope (beyond the brief's list):
 
