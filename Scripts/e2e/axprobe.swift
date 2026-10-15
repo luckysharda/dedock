@@ -6,7 +6,8 @@
 //   axprobe windows <pid>        every window of the pid at any level (CGWindowList, top-left coords):
 //                                {"id","layer","x","y","w","h","alpha","onscreen","name"}
 //   axprobe tree <pid> [depth=6] the app's AX tree (windows and their descendants):
-//                                {"depth","role","subrole","label","x","y","w","h","enabled","actions"}
+//                                {"depth","role","subrole","label","name","x","y","w","h","enabled","actions"}
+//                                (label: description, title or value; name: description or title only)
 //   axprobe at <x> <y> only=<pid> the AX element under a global top-left point: {"pid","role","label","other_app"}
 //                                — who would receive a click there. Role/label only for <pid> (privacy:
 //                                another app's element can hold the user's content); never an app name.
@@ -46,6 +47,8 @@ func label(_ e: AXUIElement) -> String {
 func element(_ e: AXUIElement, depth: Int) -> [String: Any] {
     var d: [String: Any] = ["depth": depth, "role": (attr(e, kAXRoleAttribute) as String?) ?? "",
                             "subrole": (attr(e, kAXSubroleAttribute) as String?) ?? "", "label": label(e)]
+    // The name alone (no value): a control labelled only by its value (a slider's number) has no name (C8).
+    d["name"] = ((attr(e, kAXDescriptionAttribute) as String?).flatMap { $0.isEmpty ? nil : $0 }) ?? (attr(e, kAXTitleAttribute) as String?) ?? ""
     if let f = frame(e) { d["x"] = f.minX; d["y"] = f.minY; d["w"] = f.width; d["h"] = f.height }
     if let en: Bool = attr(e, kAXEnabledAttribute) { d["enabled"] = en }
     var names: CFArray?

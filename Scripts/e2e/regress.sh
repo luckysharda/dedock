@@ -1,9 +1,11 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [settings=1] [dry=1]
 #       reg061=1: gate REG-061 (the tile's AX element is the whole cell): C3 AX frame = GEOM cell ±1 pt,
 #       C7 cell edge = AXButton with the tile's label. Off until a build carries the fix.
+#       settings=1: run C8 (open Settings over the debug channel, labels, the editing hold, close via its
+#       own AX close button). Needs a build with the Settings window; without it C8 is SKIP.
 #       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
 #       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
 #       (never committed; no user window is ever in the frame).
@@ -58,8 +60,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -119,13 +121,14 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
 {
   print -l "x-00 UIElement" "x-00 status item" "x-00 no permission prompt" "x-00 starts hidden" "REG-026 first launch" \
            "REG-043 X" "REG-018 X" "REG-059 X" "REG-014 X" "contract X" "REG-006 X" \
-           "REG-057 corrupt layout: dock up, notice after, no input" "REG-057 corrupt layout: dock reveals while the alert is up" "REG-006 C" \
+           "REG-057 corrupt layout: dock up, notice after, no input" "REG-057 corrupt layout: dock reveals while the alert is up" "REG-057 the notice does not take focus" "REG-006 C" \
            "REG-057 unreadable layout: dock up read-only, notice after, no input" "REG-006 U"
   for t in $edge_list; do
     print -l "geom $t (REG-013 …)" "REG-043 $t" "REG-018 $t" "REG-059 $t" "REG-014 $t" "contract $t" "REG-006 $t" "REG-006 ${t}0" \
              "cua C1 panel window $t" "cua C1 REG-056 panel AX identity $t" "cua C2 cua-driver sees tiles $t" "cua C3 tiles in AX tree $t" "cua C3 REG-040 tiles are buttons $t" \
              "cua C3 REG-040 tiles pressable $t" "cua C4 status item $t" "cua C5 non-activating $t" "cua C6 click-through while hidden $t" \
-             "cua C7 shown tile takes the hit $t" "cua C7 tile cell edge stays in the dock $t" "cua C7 4 pt outside passes through $t" "cua C8 settings labelled $t"
+             "cua C7 shown tile takes the hit $t" "cua C7 tile cell edge stays in the dock $t" "cua C7 4 pt outside passes through $t" \
+             "cua C8 Settings window opens $t" "cua C8 settings controls labelled $t" "cua C8 dock held shown while Settings is open $t" "cua C8 closing Settings releases the hold $t" "cua C9 dock style tokens $t" "cua C9 style switch in Settings reaches GEOM $t"
     for scn in x-01 x-02 x-03 x-04 x-05a x-05b x-06; do print -r -- "$t.$scn-$t"; done
     for sd in $extra_seeds; do print -r -- "$t.x-06-$t-s$sd"; done
     (( shots )) && print -l "shot $t" "REG-006 S$t"
@@ -175,7 +178,7 @@ json.dump({
   "display": "$($B/pointer screen | sed 's/x=[0-9.]* y=[0-9.]* //')",
   "native_dock": "$(defaults read com.apple.dock orientation 2>/dev/null), autohide=$(defaults read com.apple.dock autohide 2>/dev/null)",
   "refs_running": "$(pgrep -lf 'CoolDock|DockDoor' | wc -l | tr -d ' ')",
-  "reg061_gates": "$reg061",
+  "reg061_gates": "$reg061", "settings_c8": "$settings",
   "pointer_sharing": "$psharing$( [[ $psharing == on ]] && print -n ' (psharing=allow)')",
   "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
 }, open(sys.argv[1], "w"), indent=1)
@@ -293,10 +296,32 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   $B/axprobe front > $C/front-shown.json
   $B/pointer -q move $away ${first[3]}   # leave: the dock hides before the next step
   sleep 1
+  # C8 (settings=1, a build with Settings): openSettings over the debug channel → a titled Settings
+  # window from our pid, every control labelled, the dock held shown (editing) while it is open; its
+  # own close button (AX press, our window only) releases the hold and the dock hides (pointer away).
+  if (( settings )); then
+    local SP=$R/log.ndjson
+    $B/notify openSettings > /dev/null; tool "notify openSettings $side" $? 0
+    sleep 1.5
+    $B/axprobe windows $pid > $C/settings-windows.jsonl
+    $B/axprobe tree $pid 14 > $C/settings-tree.jsonl; tool "axprobe settings tree $side" $? 0
+    python3 $E/log-order.py $SP pid=$pid '^debug[.]command cmd=openSettings ok=true' '^inhibitor .*token=editing on=true' '^reveal[.]transition .*to=shown' > $C/c8-open.txt
+    $B/axprobe front > $C/front-settings.json
+    # C9 live style switch: press "Light Glass" in the Style segment → settings.changed key=dd.dock.style
+    # → docks.sync reason=settings → GEOM style/material; then back to Dark Glass (the seeded default).
+    $B/axpress press $pid "Dedock Settings" "Light Glass" > $C/c9-press.txt 2>&1; echo "rc=$?" >> $C/c9-press.txt
+    sleep 1
+    python3 $E/log-order.py $SP pid=$pid '^debug[.]command cmd=openSettings ok=true' '^settings[.]changed key=dd[.]dock[.]style value=lightGlass' '^docks[.]sync reason=settings' > $C/c9-switch.txt
+    cp $R/data/e2e/geometry.json $C/geom-style.json 2>/dev/null
+    $B/axpress press $pid "Dedock Settings" "Dark Glass" > /dev/null 2>&1; sleep 0.6
+    $B/axpress close $pid "Dedock Settings" > $C/c8-close-press.txt 2>&1; tool "axpress close Settings $side" $? 0
+    sleep 1.2
+    python3 $E/log-order.py $SP pid=$pid '^debug[.]command cmd=openSettings ok=true' '^inhibitor .*token=editing on=true' '^inhibitor .*token=editing on=false' '^reveal[.]transition .*to=hidden' > $C/c8-close.txt
+    $B/axprobe windows $pid > $C/settings-windows-after.jsonl
+  fi
   cmp -s $C/geom-pair.json $G || print "relayout during step (GEOM changed after the snapshot; C1/C3 use the paired GEOM)" >> $C/pair.txt
   DEDOCK_REG061=$reg061 python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt 2> $C/cua-eval.err; tool "cua-eval $side" $? 0
   while IFS=$'\t' read -r cid ok detail; do check "$cid" $ok "$detail"; done < $C/results.txt
-  check "cua C8 settings labelled $side" skip "pending: needs the debug command openSettings"
 }
 
 run_scn() {  # run_scn <sub-run> <L|R> <scenario> [args]; re-runs once if contaminated (VOID)
@@ -386,11 +411,12 @@ fi
 # alert is not on screen (then nothing was proven).
 alert_reveal() {  # alert_reveal <sub-run> <pid>
   local S=$1 spid=$2 cid="REG-057 corrupt layout: dock reveals while the alert is up"
-  if (( selftest )); then check "$cid" skip "self-test mode posts no input"; return; fi
+  if (( selftest )); then check "$cid" skip "self-test mode posts no input"; check "REG-057 the notice does not take focus" skip "self-test mode"; return; fi
   local G=$B/runs/$S/data/e2e/geometry.json
+  $B/axprobe front > $B/runs/$S/front-notice.json
   local alerts=$($B/axprobe windows $spid | python3 -c "import json,sys; print(sum(1 for l in sys.stdin if l.strip() and (w := json.loads(l))['onscreen'] and w['layer'] != 24 and w['w'] > 50))" 2>/dev/null || echo 0)
   local pts=($(python3 -c "import json;d=json.load(open('$G'))['docks'][0];x,y,w,h=d['capsule']['topLeft'];L=d['edge']=='left';print(d['edge'], int(y+h/2), x+w+400 if L else x-400)" 2>/dev/null))
-  if (( ${#pts} != 3 )); then check "$cid" 0 "no GEOM for the recovered dock"; return; fi
+  if (( ${#pts} != 3 )); then check "$cid" 0 "no GEOM for the recovered dock"; check "REG-057 the notice does not take focus" 0 "not probed (no GEOM)"; return; fi
   $E/desktop-lock.sh touch $me >/dev/null
   moved=1
   print -l "edge ${pts[1]} ${pts[2]}" "wait 700" > $B/runs/$S/reveal.txt
@@ -400,6 +426,8 @@ alert_reveal() {  # alert_reveal <sub-run> <pid>
   $B/pointer -q move ${pts[3]} ${pts[2]}   # leave, so the dock hides before teardown
   sleep 0.5
   check "$cid" $(( ${r%% *} == 1 && alerts >= 1 )) "alert windows on screen: $alerts; ${r#* }"
+  local fpid=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('pid', -1))" $B/runs/$S/front-notice.json 2>/dev/null || echo -1)
+  check "REG-057 the notice does not take focus" $(( fpid != spid && fpid > 0 && alerts >= 1 )) "frontmost app while the notice is up: $( (( fpid == spid )) && echo Dedock || echo 'another app (kept focus)')"
 }
 
 notice_run() {  # notice_run <tag> <launch flag> <check id> <regex…>

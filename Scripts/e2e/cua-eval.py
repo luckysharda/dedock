@@ -81,4 +81,52 @@ try:
 except Exception as ex:
     chk("C7 tile cell edge stays in the dock", False, f"not probed or unreadable: {type(ex).__name__}")
 chk("C7 4 pt outside passes through", o.get("pid") != pid, f"4 pt outside the capsule: hit {'Dedock' if o.get('pid') == pid else 'other app'}")
+def first_line(f):
+    try: return open(f).readline().strip()
+    except OSError: return "0 not recorded"
+# C9: dd.dock.style in GEOM (Settings builds): the harness seed uses the default, Dark Glass, whose
+# material is hudWindow ('solid' under Reduce Transparency). SKIP when the build writes no style.
+MATERIALS = {"darkGlass": {"hudWindow", "solid"}, "black": {"hudWindow", "solid"}, "lightGlass": {"popover", "solid"}}
+if "style" not in d:
+    res.append((f"cua C9 dock style tokens {side}", "skip", "this build writes no dd.dock.style to GEOM"))
+else:
+    chk("C9 dock style tokens", d.get("style") == "darkGlass" and d.get("material") in MATERIALS["darkGlass"],
+        f"GEOM style {d.get('style')!r}, material {d.get('material')!r} (exp the default darkGlass / hudWindow)")
+if not os.path.exists(f"{C}/c9-switch.txt"):
+    res.append((f"cua C9 style switch in Settings reaches GEOM {side}", "skip", "pending: run with settings=1 on a build with the Style setting"))
+else:
+    sw = first_line(f"{C}/c9-switch.txt")
+    try: gs = json.load(open(f"{C}/geom-style.json"))["docks"][0]
+    except Exception: gs = {}
+    chk("C9 style switch in Settings reaches GEOM", sw.startswith("1 ") and gs.get("style") == "lightGlass" and gs.get("material") in MATERIALS["lightGlass"],
+        f"pressed 'Light Glass': {sw[2:]}; GEOM style {gs.get('style')!r}, material {gs.get('material')!r} (exp lightGlass / popover)")
+# C8 (regress.sh settings=1): the Settings window, its labels, and the editing hold. Without the
+# files (no Settings in the build, or settings=0) every C8 row is SKIP, never a PASS.
+C8 = ["C8 Settings window opens", "C8 settings controls labelled", "C8 dock held shown while Settings is open",
+      "C8 closing Settings releases the hold"]
+SETTINGS_TITLE = "Dedock Settings"
+CONTROLS = {"AXButton", "AXCheckBox", "AXRadioButton", "AXSlider", "AXPopUpButton", "AXMenuButton",
+            "AXTextField", "AXComboBox", "AXIncrementor", "AXSwitch", "AXSegmentedControl"}
+if not os.path.exists(f"{C}/settings-tree.jsonl"):
+    for cid in C8: res.append((f"cua {cid} {side}", "skip", "pending: run with settings=1 on a build with the Settings window"))
+else:
+    st = rows(f"{C}/settings-tree.jsonl")
+    # the Settings window's subtree: from its depth-0 AXWindow row to the next depth-0 row
+    sub, inside = [], False
+    for e in st:
+        if e.get("depth") == 0: inside = e.get("role") == "AXWindow" and e.get("label") == SETTINGS_TITLE
+        if inside: sub.append(e)
+    wins = [w for w in rows(f"{C}/settings-windows.jsonl") if w.get("layer") == 0 and w.get("onscreen") and w["w"] > 100]
+    op = first_line(f"{C}/c8-open.txt")
+    chk("C8 Settings window opens", bool(sub) and len(wins) >= 1 and op.startswith("1 "),
+        f"AXWindow '{SETTINGS_TITLE}': {'yes' if sub else 'no'}; normal-level windows on screen: {len(wins)}; debug.command openSettings ok: {'yes' if 'openSettings' in op and op.startswith('1') else op[2:60]}")
+    ctrls = [e for e in sub if e.get("role") in CONTROLS and e.get("subrole") not in ("AXCloseButton", "AXMinimizeButton", "AXZoomButton", "AXFullScreenButton")]
+    bare = [e.get("role") for e in ctrls if not (e.get("name", e.get("label")) or "").strip()]  # a value is not a name
+    chk("C8 settings controls labelled", bool(ctrls) and not bare,
+        f"{len(ctrls)} controls, {len(bare)} without a label" + (f" ({', '.join(sorted(set(bare)))})" if bare else ""))
+    chk("C8 dock held shown while Settings is open", op.startswith("1 "), op[2:])
+    cl = first_line(f"{C}/c8-close.txt")
+    gone = not any(w.get("layer") == 0 and w.get("onscreen") and w["w"] > 100 for w in rows(f"{C}/settings-windows-after.jsonl")) \
+        if os.path.exists(f"{C}/settings-windows-after.jsonl") else False
+    chk("C8 closing Settings releases the hold", cl.startswith("1 ") and gone, f"window closed: {gone}; {cl[2:]}")
 for r in res: print(f"{r[0]}\t{r[1]}\t{r[2]}")
