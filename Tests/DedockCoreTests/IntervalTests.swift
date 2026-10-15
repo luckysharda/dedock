@@ -1,6 +1,6 @@
-import CoreGraphics
 import Testing
 @testable import DedockCore
+import Foundation
 
 @Suite struct IntervalSetTests {
     @Test func normalisesOverlappingAndTouchingIntervals() {
@@ -35,35 +35,58 @@ import Testing
     }
 }
 
-@Suite struct ScreenInfoTests {
-    @Test func menuBarHeightWhenShown() {
-        let s = ScreenInfo(id: "a", frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
-                           visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 945))
-        #expect(s.menuBarHeight == 37)
-    }
-
-    @Test func menuBarHeightWhenAutoHiddenOnNotchedDisplay() {
-        let s = ScreenInfo(id: "a", frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
-                           safeAreaTop: 32, statusBarThickness: 24)
-        #expect(s.menuBarHeight == 32)
-    }
-
-    @Test func menuBarHeightWhenAutoHiddenWithoutNotch() {
-        let s = ScreenInfo(id: "a", frame: CGRect(x: 0, y: 0, width: 1920, height: 1080), statusBarThickness: 24)
-        #expect(s.menuBarHeight == 24)
-    }
-}
-
 @Suite struct PointerSampleTests {
+    /// Deltas are y-up (PointerHub flips NSEvent.deltaY once).
     @Test(arguments: [
         (ScreenEdge.left, CGVector(dx: -5, dy: 0), CGFloat(5)),
         (.left, CGVector(dx: 5, dy: 0), -5),
         (.right, CGVector(dx: 5, dy: 0), 5),
-        (.bottom, CGVector(dx: 0, dy: 5), 5), // NSEvent dy > 0 = downward
-        (.bottom, CGVector(dx: 0, dy: -5), -5),
+        (.bottom, CGVector(dx: 0, dy: -5), 5),
+        (.top, CGVector(dx: 0, dy: 5), 5),
+        (.top, CGVector(dx: 0, dy: -5), -5),
     ])
     func pushTowardEdge(edge: ScreenEdge, delta: CGVector, expected: CGFloat) {
-        let s = PointerSample(location: .zero, delta: delta, timestamp: 0)
+        let s = PointerSample(location: .zero, delta: delta, timestamp: .zero)
         #expect(s.push(toward: edge) == expected)
+    }
+}
+
+@Suite struct ScreenEdgeTests {
+    @Test func axesAndOpposites() {
+        #expect(ScreenEdge.left.orientation == .vertical)
+        #expect(ScreenEdge.top.orientation == .horizontal)
+        for e in ScreenEdge.allCases { #expect(e.opposite.opposite == e) }
+    }
+
+    @Test(arguments: ScreenEdge.allCases)
+    func stripLiesOnTheEdge(edge: ScreenEdge) {
+        let f = CGRect(x: 100, y: 50, width: 800, height: 600)
+        let line = edge.line(of: f)
+        let r = edge.strip(of: f, along: Interval(line.lower + 10, line.upper - 10), thickness: 3)
+        #expect(f.contains(r))
+        switch edge {
+        case .left: #expect(r.minX == f.minX)
+        case .right: #expect(r.maxX == f.maxX)
+        case .bottom: #expect(r.minY == f.minY)
+        case .top: #expect(r.maxY == f.maxY)
+        }
+    }
+
+    @Test func flipIsItsOwnInverse() {
+        let r = CGRect(x: 10, y: 20, width: 30, height: 40)
+        #expect(r.flippedVertically(primaryHeight: 1080) == CGRect(x: 10, y: 1020, width: 30, height: 40))
+        #expect(r.flippedVertically(primaryHeight: 1080).flippedVertically(primaryHeight: 1080) == r)
+    }
+
+    @Test func hotCornerMask() {
+        let m: HotCornerMask = [.topLeft, .bottomRight]
+        #expect(m.contains(ScreenCorner.topLeft))
+        #expect(!m.contains(ScreenCorner.topRight))
+        #expect(HotCornerMask.all.contains(ScreenCorner.bottomLeft))
+    }
+
+    @Test func durationSeconds() {
+        #expect(Duration.milliseconds(1500).seconds == 1.5)
+        #expect(Duration.seconds(0.12) == .milliseconds(120))
     }
 }
