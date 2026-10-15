@@ -151,6 +151,7 @@ dedock has **zero features today**, so every row is `missing`. One row per featu
 | DD-911, DD-912 | Pinned (Fixed) mode; Reveal mode with the reveal state machine | CD | P0 | missing | M1 | 25, 27 |
 | DD-913, DD-914 | Swap with the native Dock (consented auto-hide snapshot/restore); Floating (horizontal/vertical, under the menu bar) | CD | P1 | missing | M8 | 25, 47 |
 | DD-921–DD-923, DD-925–DD-929, DD-931, DD-933 | Show delay, hide delay, trigger zone size/span, alignment and distance, dock size, slide motion, reverse in place, hold-open inhibitors, shared display edges, click-through gate | CD, Pro, new | P0 | missing | M1 | 27 |
+| DD-934 | Pointer-sharing edges: an edge that also hands the pointer to a nearby Mac or iPad (the system's pointer-sharing feature) must not lose the pointer to a reveal push, and a dock must not stay open while the pointer is on the other device. **Open (§7 question 6)** | new | P1 | missing | decide in M2; ship in M2 | 27, 29 |
 | DD-924 | Full-screen reveal delay (pulled into M1 with a no-permission full-screen heuristic) | new | P1 | missing | M1 | 27 |
 | DD-926 (widget spacing, presets) | Separate tile-gap control; Compact/Cozy/Roomy presets | CD, Pro | P1 | missing | M8 | 26 |
 | DD-927 (speed) | Animation speed 1×–4× | Pro | P2 | missing | M13 | 27 |
@@ -433,6 +434,7 @@ Every feature (one worktree each) goes through these steps. A step is done only 
 | R12 | E2E timing is noisy through computer use | High / Low | Use the synthetic pointer driver (`Scripts/e2e/pointer.swift`) and the edge trace for timing assertions; use computer use for what is on screen. The driver needs Accessibility for the posting process (Terminal), not for dedock. |
 | R13 | Scope: about 300 PRD ids across four pillars | High / Medium | Strict milestone gates; P2 rows may be declined in writing; union audit at M5 and M11; add-ons only after parity. |
 | R14 | Business model (O-1) undecided affects licensing UI, notarization and the docs site | Medium / Medium | Decide before M11; nothing before M11 depends on it. |
+| R15 | The system's pointer-sharing feature uses the same push-through-the-edge gesture as Reveal mode on a wall edge, so a reveal push can carry the pointer to another device (seen in E2E, harness REG-055) | Medium / Medium | DD-934: dwell reveals before the push is long; per-edge pointer-sharing setting; hide on hand-off; E2E preflight checks the feature is off (REG-055) |
 
 ### Open questions for the user
 
@@ -441,3 +443,4 @@ Every feature (one worktree each) goes through these steps. A step is done only 
 3. Priority for DD-1147 (window tiles in the Edge Dock): proposed P2 in M13, decided at M9.
 4. Which of the add-ons X-1…X-8 to keep.
 5. O-1 business model, needed before M11.
+6. DD-934 pointer-sharing edges: when an Edge Dock edge is also the edge where the pointer passes to a nearby device, which default? Proposed: (b) below, plus the hand-off hide, with (c) only if the M2 spike finds a reliable public signal. See `docs/architecture.md` §"Pointer-sharing edges".
