@@ -284,10 +284,26 @@ if launch $X --app $app --no-seed --timeout 8 > $B/runs/$id/launch-X.txt 2>&1 &&
   if ! command -v cua-driver >/dev/null; then
     check "x-00 no permission prompt" 0 "cua-driver not installed: cannot check"
   else
-    prompts=$(cua-driver call list_windows '{}' 2>/dev/null | python3 -c 'import json,sys
-w=json.load(sys.stdin)["windows"]
-print(sum(1 for x in w if x["is_on_screen"] and x["app_name"] in ("UserNotificationCenter","universalAccessAuthWarn","SecurityAgent","tccd")))' 2>/dev/null || echo "?")
-    check "x-00 no permission prompt" $([[ $prompts == 0 ]] && echo 1 || echo 0) "TCC/notification windows on screen: $prompts"
+    # Only prompts that appeared with this launch count; one left on screen from before (e.g. an old
+    # universalAccessAuthWarn) is reported but is not an app result.
+    started=$(sed -n 's/^STARTED=//p' $B/runs/$X/run.env)
+    read prompts prior <<<$(cua-driver call list_windows '{}' 2>/dev/null | python3 -c '
+import json, sys, subprocess, datetime
+started = datetime.datetime.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+w = json.load(sys.stdin)["windows"]
+new = old = 0
+for x in w:
+    if not (x["is_on_screen"] and x["app_name"] in ("UserNotificationCenter", "universalAccessAuthWarn", "SecurityAgent", "tccd")):
+        continue
+    lstart = subprocess.run(["ps", "-o", "lstart=", "-p", str(x["pid"])], capture_output=True, text=True).stdout.strip()
+    try:
+        t = datetime.datetime.strptime(lstart, "%a %b %d %H:%M:%S %Y").astimezone(datetime.timezone.utc)
+    except ValueError:
+        t = started
+    if t >= started - datetime.timedelta(seconds=2): new += 1
+    else: old += 1
+print(new, old)' $started 2>/dev/null || echo "? ?")
+    check "x-00 no permission prompt" $([[ $prompts == 0 ]] && echo 1 || echo 0) "new TCC/notification windows since launch: $prompts (pre-existing, not counted: ${prior:-?})"
   fi
   state=$(python3 -c "import json;print(json.load(open('$B/runs/$X/data/e2e/geometry.json'))['docks'][0]['state'])" 2>/dev/null)
   check "x-00 starts hidden" $([[ $state == hidden ]] && echo 1 || echo 0) "GEOM state: ${state:-?}"
