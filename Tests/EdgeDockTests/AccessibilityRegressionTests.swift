@@ -50,6 +50,21 @@ import Testing
     }
 }
 
+extension AccessibilityRegressionTests {
+    /// REG-056: the panel's AXWindow reported subrole AXSystemDialog, so VoiceOver could announce
+    /// the dock as a "system dialog". It is a named floating window.
+    @Test("REG-056: the dock window is a named floating window, not a system dialog",
+          .enabled(if: NSScreen.main != nil))
+    func reg056() {
+        let model = DockViewModel(tokens: DedockDocument.makeDefault().docks[0].tokens, icons: IconCache())
+        let panel = EdgeDockPanel(frame: CGRect(x: 0, y: 0, width: 78, height: 400), model: model)
+        defer { panel.close() }
+        #expect(panel.accessibilityRole() == .window)
+        #expect(panel.accessibilitySubrole() == .floatingWindow)
+        #expect(panel.accessibilityLabel() == "Edge Dock")
+    }
+}
+
 /// Stands in for the SwiftUI content's accessibility tree.
 @MainActor final class HitTestSpy: NSView {
     static let element = "tile-button"

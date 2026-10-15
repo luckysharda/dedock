@@ -21,6 +21,11 @@ import SwiftUI
         ignoresMouseEvents = true
     }
 
+    /// AppKit reported this borderless, non-activating panel as `AXSystemDialog`, so VoiceOver could call
+    /// the dock a "system dialog" (REG-056). It is a floating utility panel with a name.
+    override public func accessibilitySubrole() -> NSAccessibility.Subrole? { .floatingWindow }
+    override public func accessibilityLabel() -> String? { "Edge Dock" }
+
     /// Move to a new fixed frame after a relayout (never during a slide).
     public func place(_ frame: CGRect) {
         setFrame(frame, display: false)
