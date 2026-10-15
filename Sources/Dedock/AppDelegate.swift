@@ -59,26 +59,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(settings: settings, docks: manager)
     }
 
+    /// Notices on screen; each is released when its OK is clicked.
+    private var noticePanels: [LaunchNoticePanel] = []
+
     /// Tells the user once about a layout problem found at launch (architecture §7). Runs after
-    /// the docks are live (`LaunchNotices`).
+    /// the docks are live (`LaunchNotices`), in a non-modal panel so the dock keeps working
+    /// behind it (REG-057).
     private func show(_ notice: LaunchNotices.Notice) {
-        let alert = NSAlert()
         switch notice {
-        case let .recovered(movedTo, fromBackup):
-            DedockLog.event(.settings, "settings.notice", ["kind": "recovered"])
-            alert.messageText = "Your Edge Dock layout was damaged"
-            alert.informativeText = fromBackup
-                ? "dedock restored the most recent backup. The damaged file was kept as \(movedTo)."
-                : "dedock started with a fresh layout. The damaged file was kept as \(movedTo)."
-        case .readOnly:
-            DedockLog.event(.settings, "settings.notice", ["kind": "readOnly"])
-            alert.messageText = "dedock can't read its layout file"
-            alert.informativeText = "The Edge Dock is using the default layout. Changes you make won't be saved until the file can be read again."
+        case .recovered: DedockLog.event(.settings, "settings.notice", ["kind": "recovered"])
+        case .readOnly: DedockLog.event(.settings, "settings.notice", ["kind": "readOnly"])
         }
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        var panel: LaunchNoticePanel?
+        panel = LaunchNoticePanel(notice) { [weak self] in
+            self?.noticePanels.removeAll { $0 === panel }
+        }
+        guard let panel else { return }
+        noticePanels.append(panel)
+        panel.show()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
