@@ -170,7 +170,10 @@ func cmdTiming(_ ev: [Event], _ o: [String: Double]) {
     // NFR-4: zone entry → reveal animation committed.
     var nfr4: [Double] = []
     for z in ev where z.name == "edge.zoneEnter" {
+        // Only a fresh approach counts: hidden → arming right after the zone entry. A zone entry
+        // during a hide reverses it (cause=return) and has no dwell to measure.
         guard let arm = next(after: z.ms - 0.001, where: { $0.kv["to"] == "arming" || $0.kv["to"] == "revealing" }),
+              arm.kv["from"] == "hidden", arm.kv["to"] == "arming",
               arm.ms - z.ms < 50,
               let end = next(after: arm.ms, where: { $0.kv["from"] == "arming" }),
               end.kv["to"] == "revealing", end.kv["cause"] == "dwell",
@@ -284,7 +287,10 @@ func cmdFrames(_ ev: [Event], _ o: [String: Double]) {
         // Duration (§8 rule 1: ± 1 frame). Spring: to its 99 % point (220 ms). Bezier and
         // ease-in end exactly at `dur`, and an ease-out is within 1 % long before that,
         // so they are timed to arrival at the target.
-        if !interrupted, a.curve != "fade", abs(a.to - a.from) > 1 {
+        // Below ~5 pt of travel the frame log cannot resolve arrival to ± 1 frame: report only.
+        if !interrupted, a.curve != "fade", abs(a.to - a.from) < 5 {
+            info("\(label) duration", "travel \(f1(abs(a.to - a.from))) pt too short to time")
+        } else if !interrupted, a.curve != "fade" {
             let expected = a.curve == "spring" ? 220.0 : a.dur * 1000
             let near = a.curve == "spring" ? abs(a.to - a.from) * 0.01 + 0.05 : 0.05
             if let f = a.seg.first(where: { abs($0.tx - a.to) <= near }) {
