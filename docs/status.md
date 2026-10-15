@@ -27,13 +27,28 @@ Newest entry first. Each entry: done, in progress, next, blockers and notes, the
 
 | PR | Content | State |
 |---|---|---|
-| #7 | M1 Edge Dock reveal (placeholder visuals); REG-027/028/029/039 fixed | merged `7a160cc`; `regress.sh` 21/21 |
+| #7 | M1 Edge Dock reveal (placeholder visuals); REG-027/028/029/039 | merged `7a160cc`; `regress.sh` 21/21 |
 | #9 | Regression policy + CI regression step (macOS + Linux) | merged `52930e6`; both steps ran the REG suites |
-| #10 | `fix/release-log-privacy` (REG-030) | planner: approve once CI green |
-| #11 | `feature/edge-dock-design`: E1 Capsule in Dark Glass (design.md §7.1) | planner: approve once CI green; follow-ups: style setting, appearance re-apply, edit badges, pixel check |
-| #12 | `test/e2e-harness` (harness + `regress.sh`) | review queued |
-| #13 | `feature/edge-dock-behaviour` (full-screen dwell, top-edge status-item exclusion, ⌘-drag reorder, drop to pin, REG-013…026) | review queued |
-| this PR | architecture reconcile, check-deps.sh, branch kinds | open |
+| #10 | Release log privacy (REG-030) | merged `ced2536` |
+| #14 | Architecture reconcile, check-deps.sh, branch kinds | merged `f407038` |
+| #11 | E1 Capsule in Dark Glass (`design.md` §7.1) | planner approve; shown to the owner live on 2026-10-15 (no feedback) |
+| #12 | `test/e2e-harness` (harness + `regress.sh`); fail-closed REG-049, teardown REG-050, real-lock rule REG-051 | planner approve at `ba01a50` |
+| #13 | Edge Dock behaviour (full-screen dwell, top-edge status-item exclusion, ⌘-drag reorder, drop to pin, REG-013…026) | planner approve; follow-ups below |
+| #15 | Tile accessibility (REG-040) | planner approve, gated on live cua C2/C3 |
+| #16 | No `<private>` suffix on debug lines (REG-043) | planner approve |
+
+Merge order for the candidate stack: #16 → #15 → #11 → #13 (then #12).
+
+### Deferred or routed (2026-10-15)
+
+| Item | Decision |
+|---|---|
+| Edit-mode badges (`design.md` §7.1) | deferred to M9 (DD-976) |
+| `dd.dock.style` setting; label colours re-applied on appearance change | implementer's review-followups PR |
+| `openSettings` debug command (unblocks cua C8, now SKIP) | implementer's review-followups PR |
+| Drag-out-to-remove (plan T15(3)) | deferred; #13 cancels instead |
+| #13 follow-ups: REG-021 and REG-023 rewritten to fail with the fix reverted; status-item exclusion refresh; full-screen flag on display change; probe re-check; stricter drop filter; cancel reorder on relayout | implementer's follow-ups |
+| Mid-slide relayout continues smoothly instead of snapping (DD-928) | implementer's follow-ups |
 
 ### Decisions taken today (cross-session)
 
