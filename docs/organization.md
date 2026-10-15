@@ -12,7 +12,7 @@ How the dedock repository, branches, worktrees, agents and builds are organised.
 |---|---|---|
 | Project folder | `$DEDOCK_HOME` | Holds the app repo and the reference pack side by side. |
 | **App repo root** | `$DEDOCK_HOME/Dedock app` | Everything that is part of the app (code, scripts, tests, docs) goes inside this folder. Private GitHub repo `luckysharda/dedock` (`origin`). The folder name has a space, so always quote paths. |
-| Feature worktrees | `$DEDOCK_HOME/Dedock app/.worktrees/<feature>` | One per feature, on branch `feature/<feature>`. `.worktrees/` is git-ignored. |
+| Worktrees | `$DEDOCK_HOME/Dedock app/.worktrees/<name>` | One per branch of work, on a branch named by kind (§4.1). `.worktrees/` is git-ignored. |
 | Reference pack (read-only) | `<pack>` | Research material kept outside the repo. Citations of the form `<pack>/dedock-plan/features.md` point into it. Never edited from this repo, never copied into it. |
 
 **`<pack>`** stands for the reference pack folder next to the repo on the developer machine. Its absolute location is never written into the repo.
@@ -95,8 +95,8 @@ Libraries are exposed as one library product per module (the "DedockKit" set). D
 |---|---|---|---|
 | `main` | released builds | `staging` (merge + tag `vX.Y.Z`), `hotfix/*` | no direct commits |
 | `staging` | release candidates | `develop` | full regression list (`docs/evaluation.md` §5) before the merge |
-| `develop` | integration | `feature/*` via PR | every PR green on `swift build` + `swift test` |
-| `feature/<feature>` | one feature | branched from `develop` | lives in `.worktrees/<feature>`; one owner lane |
+| `develop` | integration | `feature/*`, `fix/*`, `test/*`, `ci/*`, `docs/*` via PR | every PR green on CI |
+| `<kind>/<name>` (§4.1) | one piece of work | branched from `develop` | lives in `.worktrees/<name>`; one owner lane |
 | `hotfix/<name>` | urgent fix to a release | branched from `main` | merged to `main`, then back into `develop` |
 
 Create, list and remove a feature worktree (run from the repo root):
@@ -111,6 +111,18 @@ git worktree list
 git worktree remove ".worktrees/<feature>"
 git branch -d "feature/<feature>"
 ```
+
+### 4.1 Branch kinds
+
+| Prefix | Use | Example |
+|---|---|---|
+| `feature/` | an app feature only (a DD id ships) | `feature/edge-dock-reveal` |
+| `fix/` | bug fixes, each with a REG id and a `.regression` test (`evaluation.md` §5.1) | `fix/review-followups` |
+| `test/` | test tooling: E2E harness, fixtures, measurement scripts | `test/e2e-harness` |
+| `ci/` | pipelines, Docker, repo guards | `ci/regression-step` |
+| `docs/` | docs-only changes | `docs/arch-reconcile` |
+
+Renaming an open PR's branch closes the PR on GitHub, so an existing branch keeps its name until it merges; new work uses these prefixes.
 
 The repo-root checkout stays on `develop` and is not used for feature work. Current worktree: `.worktrees/edge-dock-reveal` on `feature/edge-dock-reveal`.
 
@@ -203,7 +215,7 @@ Computer-use tiers on this Mac (from the computer-use tool's rules): browsers ar
 | Logging | subsystem `app.dedock.Dedock`; categories from `dedock-plan/system-design.md` §10 (`edge`, `dock`, `layout`, …) | — |
 | Signposts / timing events | names match the budget rows in `system-design.md` §9 | `edge.evaluate`, `reveal.begin`, `launch.edgeReady` |
 | Motion tokens | `dd.motion.*` in code and `docs/design.md` §3; same values as `motion.*` in `dedock-inputs/animation-spec.md` §2 | `dd.motion.edge.reveal` = `motion.edge.reveal` |
-| Branches and worktrees | `feature/<kebab-case>`; worktree folder = the part after `feature/` | `feature/edge-dock-reveal` → `.worktrees/edge-dock-reveal` |
+| Branches and worktrees | `<kind>/<kebab-case>` with kind from §4.1; worktree folder = the part after the slash | `feature/edge-dock-reveal` → `.worktrees/edge-dock-reveal`; `test/e2e-harness` → `.worktrees/e2e-harness` |
 | Milestones | M1–M18 are this repo's own (`docs/plan.md` §4.1; M1 = Edge Dock reveal). The reference pack's roadmap milestones are written AP-M0…AP-M14 (`adoption-plan.md` §10) | M1 ⊂ AP-M3 |
 | Test and evidence IDs | E2E `E2E-L-<nn>` and `E2E-R-<nn>`, regression `REG-<nnn>`, M1 tasks `T0`–`T23` (`docs/plan.md` §6.1), evidence `docs/evidence/<feature>/<YYYY-MM-DD>/` | `E2E-L-06` |
 
