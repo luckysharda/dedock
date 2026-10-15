@@ -177,6 +177,10 @@ func run(_ args: [String], _ s: inout Schedule) {
         let p = currentLocation()
         print(String(format: "x=%.1f y=%.1f", p.x, p.y))
 
+    case "now": // print the mach clock only (posts nothing): external timing reference
+        let t = mach_absolute_time()
+        print("mach=\(t) ns=\(ticksToNs(t))")
+
     case "screen":
         let b = screenBounds()
         print("x=\(b.minX) y=\(b.minY) w=\(b.width) h=\(b.height)")
@@ -316,7 +320,7 @@ func run(_ args: [String], _ s: inout Schedule) {
 let help = """
 pointer — synthetic pointer driver for dedock E2E (global top-left points)
 
-  pos | screen
+  pos | screen | now                          (now: mach clock, no event posted)
   move x y                                    one move event (delta = from current point)
   glide x y ms [hz=120]                       straight line from the current point
   wait ms                                     keep still (no events)
@@ -344,7 +348,7 @@ guard let first = argv.first, first != "help", first != "-h", first != "--help" 
     print(help)
     exit(0)
 }
-if !["pos", "screen"].contains(first) && !CGPreflightPostEventAccess() {
+if !["pos", "screen", "now"].contains(first) && !CGPreflightPostEventAccess() {
     fatal("this process may not post events: grant Accessibility to the terminal host")
 }
 

@@ -89,6 +89,7 @@ fi
 log_pid=$!
 sleep 1
 
+exec_mach=$($HARNESS/build/e2e/pointer now 2>/dev/null | sed -n 's/^mach=\([0-9]*\).*/\1/p')
 env DEDOCK_E2E=1 DEDOCK_E2E_HOME=$R/data DEDOCK_FRAME_LOG=$frame $bin > $R/app-stdout.txt 2>&1 &
 app_pid=$!
 # Values shell-quoted: worktree paths contain spaces ("Dedock app").
@@ -100,6 +101,7 @@ app_pid=$!
   print -r -- "GEOM=${(q)R}/data/e2e/geometry.json"
   print -r -- "BIN=${(q)bin}"
   print -r -- "STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  print -r -- "EXEC_MACH=${exec_mach:-0}"
 } > $R/run.env
 
 deadline=$(( SECONDS + timeout ))
@@ -108,8 +110,14 @@ while (( SECONDS < deadline )); do
     echo "FAIL app exited during launch (see $R/app-stdout.txt)"; exit 1
   fi
   if grep -q '"eventMessage":"launch.edgeReady' $R/log.ndjson; then
-    ready=$(grep -o '"eventMessage":"launch.edgeReady[^"]*' $R/log.ndjson | head -1 | sed 's/.*launch.edgeReady //')
-    echo "PASS launched pid=$app_pid run=$R ($ready)"
+    line=$(grep '"eventMessage":"launch.edgeReady' $R/log.ndjson | head -1)
+    ready=$(print -r -- $line | grep -o '"eventMessage":"launch.edgeReady[^"]*' | sed 's/.*launch.edgeReady //')
+    # External cross-check: mach clock just before exec -> machTimestamp of the event (24 MHz ticks).
+    ready_mach=$(print -r -- $line | grep -o '"machTimestamp":[0-9]*' | cut -d: -f2)
+    ext=""
+    [[ -n $ready_mach && ${exec_mach:-0} -gt 0 ]] && ext=" external=$(( (ready_mach - exec_mach) / 24000 ))ms"
+    print -r -- "EDGE_READY=$ready$ext" >> $R/run.env
+    echo "PASS launched pid=$app_pid run=$R ($ready$ext)"
     exit 0
   fi
   sleep 0.1
