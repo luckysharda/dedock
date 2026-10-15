@@ -31,6 +31,8 @@ import SettingsStore
     private let launchTime = ProcessInfo.processInfo.systemUptime - EdgeDockManager.processAge()
     private var geometryWritePending = false
     private var debugCommands: DebugCommandListener?
+    /// Set by the app to open the Settings window (debug command `openSettings`).
+    public var onOpenSettings: (() -> Void)?
 
     public init(settings: SettingsModel, topology: DisplayTopology, hub: PointerHub,
                 clock: any Clock<Duration> = ContinuousClock(), dataDirectory: URL) {
@@ -250,6 +252,8 @@ import SettingsStore
             reveal(dock: nil)
         case .hide:
             hide(dock: nil, animated: true)
+        case .openSettings:
+            onOpenSettings?()
         }
     }
 

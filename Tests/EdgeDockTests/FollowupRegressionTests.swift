@@ -29,6 +29,7 @@ import Testing
     @Test(arguments: [
         ("setEdge=right", DebugCommand?.some(.setEdge(.right))), ("setEdge=top", .some(.setEdge(.top))),
         ("rebuildZones", .some(.rebuildZones)), ("reveal", .some(.reveal)), ("hide", .some(.hide)),
+        ("openSettings", .some(.openSettings)), ("openSettings=x", nil),
         ("setEdge=diagonal", nil), ("setEdge", nil), ("rm -rf", nil), ("", nil), ("reveal=1", nil),
     ])
     func parsesOnlyKnownCommands(raw: String, expected: DebugCommand?) {

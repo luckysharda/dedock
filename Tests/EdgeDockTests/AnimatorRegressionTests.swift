@@ -66,12 +66,15 @@ extension AnimatorRegressionTests {
     /// lag; x-06 R). The start is now pinned to the moment the animation is added.
     @Test("REG-039: a new slide starts at the moment it is added, not at a later commit")
     func reg039() throws {
-        let a = makeAnimator()
-        let before = CACurrentMediaTime()
+        let view = NSView(frame: CGRect(x: 0, y: 0, width: 200, height: 400))
+        let a = SlideAnimator(container: view, edge: .left, hiddenOffset: CGVector(dx: -90, dy: 0), reduceMotion: false)
+        let layer = try #require(view.layer)
+        // Compare in the layer's own time base, the one beginTime is expressed in.
+        let before = layer.convertTime(CACurrentMediaTime(), from: nil)
         a.run(AnimationRequest(target: .hidden, curve: .hideEaseIn, duration: .milliseconds(180), generation: 1)) { _ in }
-        let after = CACurrentMediaTime()
+        let after = layer.convertTime(CACurrentMediaTime(), from: nil)
         let anim = try #require(a.inFlightAnimation)
-        #expect(anim.beginTime >= before - 0.001 && anim.beginTime <= after + 0.001)
+        #expect(anim.beginTime >= before && anim.beginTime <= after)
         #expect(anim.fillMode == .backwards)
     }
 }
