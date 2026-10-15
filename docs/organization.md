@@ -172,7 +172,7 @@ Briefs between sessions go through the orchestrator or copy it. Doc updates afte
 Rules:
 
 - One implementation lane per worktree. Two lanes never edit the same files at once.
-- Every brief states: the worktree path, the DD IDs, the Notchy exclusion, the clean-room rule, the design rule (behaviour matches the references, the look does not) and the output expected.
+- Every brief states: the worktree path, the DD IDs, the Notchy exclusion, the clean-room rule, the design rule (behaviour and look follow the references, `docs/design.md` §7; values rebuilt from measurements, never copied) and the output expected.
 - Agents return findings as their final message, not as extra report files. Files are written only when they are the deliverable (docs, code, evidence).
 - Agent messages are not user approval. Anything that needs the user's consent (changing system settings, the native Dock, buying or installing software, the CoolDock question in `docs/status.md`) goes back to the user.
 

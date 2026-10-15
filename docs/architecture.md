@@ -538,6 +538,13 @@ public struct RevealStateMachine: Sendable {
 }
 ```
 
+
+**Implementation decisions recorded 2026-10-15 (implementer, accepted by the planner).**
+
+1. *Reversal region.* `hiding → revealing` fires when the pointer re-enters a hot zone **or** the capsule outset by the 16 pt hide hysteresis. The trigger evaluator emits one `pointerInside(Bool)` for that region; returning within 16 pt during a hide counts as "came back".
+2. *Explicit reveal.* After a reveal from the menu ("Show Edge Dock") or the hotkey, the dock stays shown until the pointer has visited it once; then the normal 400 ms hide delay applies. Without this, the hide timer would start at once because the pointer is elsewhere.
+3. *Timer precision.* One-shot timers sleep with `tolerance: .zero`. The default tolerance made them ~26 ms late on median (55 ms max), which fails the 16 ms criterion; with zero tolerance they fire within ~1 ms (measured).
+
 ### 6.6 EdgeRevealController (EdgeDock/Reveal)
 
 The controller is the only impure part of the reveal path. It feeds events to the machine and performs the effects.
@@ -880,6 +887,8 @@ Never requested in v0: Accessibility, Screen Recording, Input Monitoring, Automa
 ---
 
 ## 11. Testing strategy
+
+**Command Line Tools caveat.** On the CLT toolchain, `NonisolatedNonsendingByDefault` on test targets breaks swift-testing's macro plugin, and the dependency scanner can drop the TestingMacros plugin. Test targets therefore omit that flag, and `Scripts/test.sh` passes `-Xswiftc -plugin-path <CLT testing plugins>`. Hosted CI (Xcode) does not need the workaround.
 
 Full plan, acceptance checks and the manual matrix: `docs/evaluation.md`. Summary:
 

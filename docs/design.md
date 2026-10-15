@@ -4,9 +4,9 @@ Status: **skeleton**. Behaviour, motion and layout grammar are fixed. The visual
 
 Cited paths are relative to the reference pack, `<pack>/`.
 
-**User decision (binding).** dedock keeps the *features and behaviour* of DockDoor and CoolDock (timings, reveal logic, preview lifecycle). Its *visual design* is new and must not look like either app. Reference screenshots are for comparison only.
+**User decision (binding, revised 2026-10-15).** dedock keeps the *features and behaviour* of DockDoor and CoolDock **and is visually based on them**: the Edge Dock looks like CoolDock's dock (turned vertical for the side edges) and the previews, switcher and settings look like DockDoor's. The chosen variant is §7 (A2 Frosted + E1 Capsule). An earlier "visuals must be new" rule is withdrawn.
 
-**What this guide does not inherit.** `dedock-plan/design-system.md` blends DockDoor's glass language with CoolDock's capsule language (its own preamble says so). Its visual sections are therefore **not** dedock's look: §2 colours, §3 materials (Liquid Glass / Frosted / Solid styles), §4 radii (incl. the 34 / 24 / 18 panel formula and the S/M/L/XL thickness ladder derived from CoolDock's 62 pt tile), §6 elevation, and the look of every §9 component. This guide takes from the plan only behaviour, timing, layout grammar, state and accessibility rules.
+**What this guide inherits.** `dedock-plan/design-system.md` blends DockDoor's glass language with CoolDock's capsule language. Since the user's revised decision, its visual sections are the **starting point** for §7: the concentric-radius rule, the 62 pt tile, the 34 / 24 / 18 panel radii and the glass styles. §7 records the exact values chosen.
 
 Clean-room: DockDoor is GPL-3.0. Nothing here is DockDoor code; behaviour is restated as numbers. No CoolDock artwork, copy or assets are used. Notchy is out of scope: nothing from `notchy/` or `research/notchy-*` is read or used (`docs/plan.md` D-8).
 
@@ -22,7 +22,7 @@ Clean-room: DockDoor is GPL-3.0. Nothing here is DockDoor code; behaviour is res
 4. [Layout grammar (DD-903)](#4-layout-grammar-dd-903)
 5. [Component inventory per surface](#5-component-inventory-per-surface)
 6. [Accessibility](#6-accessibility)
-7. [Visual direction: PENDING USER PICK](#7-visual-direction-pending-user-pick)
+7. [Visual direction: A2 Frosted + E1 Capsule](#7-visual-direction-a2-frosted--e1-capsule-user-pick-2026-10-15)
 8. [Open conflicts carried from the plan](#8-open-conflicts-carried-from-the-plan)
 
 ---
@@ -263,37 +263,68 @@ Rules:
 
 ---
 
-## 7. Visual direction: PENDING USER PICK
+## 7. Visual direction: A2 Frosted + E1 Capsule (user pick, 2026-10-15)
 
-Pick **one app direction** (A1–A4) and **one Edge Dock sense** (E1–E4). They mix and match; the natural pairing is listed. The chosen pair replaces this section with full tokens (palette, type scale, radii, elevation, component specs, SwiftUI notes).
+The user picked from the reference-based design board: **A2 Frosted** (whole app) and **E1 Capsule** (Edge Dock). dedock looks like CoolDock's dock and DockDoor's previews: CoolDock's capsule turned vertical in its Dark Glass style, and DockDoor's previews in its Frosted style. Every value below is built from published screenshots and measurements (`<pack>/cooldock/design-system.md` §1–§7, §11; `<pack>/dockdoor/design-system.md` §2–§9). No code, artwork or assets are copied. Pt values are at the default size; everything scales with Dock Size (DD-926).
 
-### 7.1 App-wide directions
+### 7.1 Edge Dock (E1 Capsule, CoolDock grammar turned vertical)
 
-| ID | Name | Material | Shape | Type | Accent | Feel |
-|---|---|---|---|---|---|---|
-| A1 | **Folio** | paper/print: opaque matte paper, ink hairlines, no blur | small 4 pt radii, rectangular labels, "photo-mount" thumbnails | New York titles and numerals, SF Pro body, small-caps eyebrows | green ink `#1F6B4A` / `#5CC893` | calm, editorial, a printed field guide |
-| A2 | **Signal** | high-contrast graphic: flat opaque fills, 2 pt borders, no blur, no soft shadow | 0 pt radii, one 6 pt chamfered corner on containers | SF Pro Expanded uppercase labels, SF Mono numerals | acid lime `#D4FF00` (fill with black text) | bold, instrument signage, binary states |
-| A3 | **Dusk** | tinted translucent: blur under a heavy indigo/lavender tint, film grain, no refraction rim | edge-fused: square on the anchor side, 20 pt round on the free side; round plates | SF Pro Rounded | rose `#C2255C` / `#FF6B9A` | atmospheric, soft, evening |
-| A4 | **Instrument** | matte solid hardware: anodised fills, 1 pt bevel highlight, soft long shadow | machined 10 pt radii, key-shaped tiles, LEDs | SF Pro Condensed labels, SF Pro body | signal orange `#FF5F1F` (fill with dark text; as text `#A8380B`) | tactile, industrial, precise |
+| Token | Value | Source |
+|---|---|---|
+| `dd.dock.tile.thickness` (`t`) | **62 pt** (fixed width on side docks, fixed height on bottom/top) | CoolDock tile height 62 pt |
+| `dd.dock.padding` (`p`) | 8 pt | CoolDock padding 10 px at an 80 px tile, scaled to 62 pt |
+| `dd.dock.gap` | 8 pt; "Widget Spacing" overrides later (P1) | CoolDock gap = padding |
+| `dd.dock.thickness` (`T`) | `t + 2p` = **78 pt** | |
+| `dd.dock.tile.radius` | 15 pt, continuous corners | CoolDock tile 20 px at 80 px |
+| `dd.dock.capsule.radius` | `tile.radius + p` = **23 pt** (concentric rule, DD-903 AC5) | CoolDock 30 = 20 + 10 |
+| `dd.dock.edgeInset` | 8 pt from the physical edge | DD-925 default |
+| `dd.dock.hiddenOffset` | `T + edgeInset + shadowReach` = 78 + 8 + 24 = **110 pt** | design.md §4.2 rule |
+| Length | content-driven, centred on the edge (alignment Center), max = visible edge length − 48 pt | CoolDock content-width capsule |
+| Order (side dock, top → bottom) | widget tiles → 1 px divider → app tiles → folder tiles | CoolDock widgets → divider → apps |
+| `dd.dock.widget.length` | 1.0 `t` (square), 1.5 `t` (clock), 2.25 / 3.0 `t` for vertical variants (M9) | CoolDock size classes, rotated |
+| `dd.dock.app.icon` | 52 pt icon, bare (no plate), cell 54 pt along the dock axis | CoolDock bare app icons |
+| `dd.dock.divider` | 1 px, 60 % of `t`, `white @ 0.18` | CoolDock thin divider |
+| `dd.dock.indicator` | 4 pt circle, `white @ 0.9`, on the **inner** side, 1 pt outside the tile edge; hidden app = `white @ 0.45` | CoolDock running dot; DD-903 AC4 |
+| Hover | **none on tiles** (CoolDock has no hover indicator); label only | CoolDock |
+| `dd.dock.label` | native-Dock-style tooltip: fill `#202022 @ 0.92` (light: `#F6F6F6 @ 0.95`), text white 12 pt SF Pro Medium (light: `#111`), radius 6 pt, padding 4 × 9 pt, 1 px inner edge `white @ 0.08`, 10 pt from the capsule toward the screen centre; instant, one at a time | macOS Dock tooltip; CoolDock "labels appear instantly" |
+| Edit mode | red delete badge `#D85058`, 16 pt circle, "–" glyph, top-leading corner of each tile; dashed 1.5 pt `white @ 0.35` outline 3 pt outside the capsule; no jiggle, one frame | CoolDock edit badge |
 
-### 7.2 Edge Dock senses
+**Materials (CoolDock's own style options; `dd.dock.style`, default Dark Glass):**
 
-| ID | Name | Container | Tiles and indicator | Idle hint | Natural pair |
-|---|---|---|---|---|---|
-| E1 | **Drawer** | flush to the edge (inset 0), square on the edge side, 22 pt round on the free side | 56 pt plates, label as a tab on the drawer's free edge, 3 × 12 pt bar indicator on the inner side | a 3 × 48 pt lip at the edge | A3 Dusk |
-| E2 | **Spine** | no container (stated exception to DD-903 AC5): separate plates threaded on a 2 pt spine line | 52 pt plates, caption tag with a leader line, 6 pt station dot indicator | short ruler ticks along the span | A1 Folio |
-| E3 | **Rail** | flat rectangular strip, inset 4 pt, 0 pt radius with one 6 pt chamfer, 2 pt border, cells divided by hairlines | no plates; hover inverts the whole cell; 2 pt full-height bar indicator; mono index digits | a 2 pt hairline along the span | A2 Signal |
-| E4 | **Console** | raised instrument module, inset 8 pt, radius 16 = 10 + 6 | key-shaped tiles with bevel, engraved label plate, LED indicator | three dim LEDs at the edge | A4 Instrument |
+| Style | Capsule | Widget tile plate | Text | Notes |
+|---|---|---|---|---|
+| **Dark Glass** (default, A2) | behind-window blur, `.hudWindow`-class material forced `.active`, tint `#121214 @ 0.55`, saturation ≈ 1.6; 1 px inner edge `white @ 0.10`; shadow `0 8 24 black @ 0.25` | `white @ 0.09` + 1 px inner `white @ 0.08` | primary `#FFFFFF`, secondary `#A0A0A5` | wallpaper hue tints through |
+| Black | `#0A0A0A @ 0.92`, blur 10 | `white @ 0.07` + 1 px inner `white @ 0.06` | `#FFFFFF` / `#878787` | CoolDock default in marketing |
+| Light Glass | blur, tint `#EAEDF2 @ 0.55`, 1 px inner `white @ 0.68` | `white @ 0.45` + 1 px inner `white @ 0.55` | `#111111` / `#555555`; dot `black @ 0.7` | |
+| Reduce Transparency | solid `#1C1C1E` (Dark Glass, Black) / `#EAEDF2` (Light Glass) | `#2A2A2C` / `#FFFFFF` | same | forced when the macOS setting is on |
 
-All four keep §2–§3: reveal 0.22 s decelerating, no overshoot; hide 0.18 s accelerating; reverse in place; labels instant toward the centre; hover by fill/opacity (optional 2 pt lift); fixed panel frame with translating content; Reduce Motion → 0.15 s fade.
+Widget content follows CoolDock: one hero value per tile (SF Pro Semibold 20 pt, tabular digits, tracking −0.02 em), secondary caption 9 pt Medium `#A0A0A5`, data colours from system colours (`systemGreen` for the CPU ring, 4 pt stroke, round caps, track `white @ 0.15`).
 
-### 7.3 What the chosen pair must deliver
+### 7.2 Previews, switcher and settings (A2 Frosted, DockDoor grammar)
 
-1. Light and dark palettes as dynamic `NSColor` providers, plus Increase Contrast and Reduce Transparency variants.
-2. Type scale mapped to SwiftUI text styles.
-3. Container, tile, label, indicator, folder, widget, idle-hint and edit-mode specs at the default `t` = 56, with S/L variants.
-4. Preview panel, switcher and settings specs (for later milestones).
-5. An HTML mockup that matches the tokens, checked side by side with the reference screenshots for difference, not similarity.
+| Token | Value | Source |
+|---|---|---|
+| `dd.panel.material` | **Frosted**: `.ultraThinMaterial`-class blur forced `.active`, dark tint `#221E2C @ 0.62` / light `#F2F2F6 @ 0.78`; 1 px inner edge `white @ 0.08` (light: `black @ 0.06`); **no refraction rim**, no shadow by default | DockDoor Style ▸ Frosted, Material Ultra Thin |
+| `dd.panel.radius` / padding | 34 pt / 14 pt | DockDoor container 20 + 20 × 0.7 |
+| `dd.panel.header` | 22 pt app icon + app name 13 pt Medium; Close All / Minimize All accent capsules (21 pt tall, 10 pt text) appear on header hover | DockDoor header |
+| `dd.card.size` | thumbnail width 300 pt (16:10, height 188), card = thumbnail + 6 pt each side | DockDoor default 300 × 188 |
+| `dd.card.radius` / thumbnail radius | 24 pt / 18 pt continuous | DockDoor 24.2 / 18.2 |
+| `dd.card.fill` / stroke | `white @ 0.07` / 1.75 pt `white @ 0.08` (light: `black @ 0.04` / `black @ 0.07`) | DockDoor card glass |
+| `dd.card.selected` | system accent @ 0.40 fill + 2.5 pt accent ring | DockDoor selection |
+| `dd.card.pills` | traffic-light pill (Quit `#E0386B`, Close `#FF4D47`, Minimize `#FFCC33`, Full Screen `#42D65C`; 13 pt orbs, 7 pt gap, 5 pt inner padding) at 0.25 opacity until the card **and** pill are hovered; title pill 24 pt tall, 10.5 pt text, middle-truncated; pills `white @ 0.12` | DockDoor traffic-light and title pills |
+| Minimized / hidden card | thumbnail dimmed to 0.75 + `eye.slash` 32 pt + "Minimized" italic in place of the lights | DockDoor §9.6 |
+| Layout | native Dock and bottom/top Edge Dock: one row; left/right Edge Dock: cards stack top to bottom, max 2 columns | DockDoor side-Dock layout |
+| Placement | beside the hovered tile toward the screen centre, 10 pt gap, clamped to `visibleFrame` with 8 pt inset | `animation-spec.md` §3.3 |
+| Switcher | the same Frosted panel and cards in a grid, centred; selection = accent ring; cuts, no slide | DockDoor switcher |
+| Settings | DockDoor layout: full-height sidebar (~270 pt) with group labels (Features / Customization / System), accent selection row, content column with UPPERCASE 11 pt section headers and grouped cards (radius 10, dark `#1C1C1C` on `#252421`; light: white cards with a hairline), segmented controls and sliders with value fields; an **Edge Dock** pane under Features | DockDoor settings shell |
+
+Light / Dark / System appearance applies to panels (DD-704); the dock style is chosen separately (CoolDock behaviour).
+
+### 7.3 Rules that stay
+
+- Motion is §3 unchanged; the design pick does not alter any timing.
+- Clean-room: values come from screenshots and published measurements; no CoolDock or DockDoor code, strings, artwork, wallpapers or icons are copied. App icons in mocks and tests are the system's own.
+- Reference screenshots are not committed to this repo; pixel comparisons use dedock's own captures against the tokens above, plus side-by-side review with the reference pack outside the repo.
 
 ---
 
