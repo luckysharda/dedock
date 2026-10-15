@@ -19,10 +19,15 @@ import SettingsStore
     private let env = DedockEnvironment.current
     private let geometryWriter: GeometryWriter
     private var dockPrefs: DockPreferencesReader!
+    private var fullscreen: FullscreenProbe!
     private var topologyToken: ObservationToken?
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
     private var edgeReadyLogged = false
+    /// Set once edge sensing is live (end of init), independent of any pointer activity.
+    public private(set) var edgeReadyMs: Int?
+    /// Set at the first zone arming after launch.
+    public private(set) var firstArmMs: Int?
     private let launchTime = ProcessInfo.processInfo.systemUptime - EdgeDockManager.processAge()
     private var geometryWritePending = false
 
@@ -34,8 +39,18 @@ import SettingsStore
         self.clock = clock
         geometryWriter = GeometryWriter(dataDirectory: dataDirectory)
         dockPrefs = DockPreferencesReader { [weak self] _ in self?.sync(reason: "dockPrefs") }
-        topologyToken = topology.observe { [weak self] _ in self?.sync(reason: "displays") }
+        fullscreen = FullscreenProbe(clock: clock, layout: { [weak topology] in topology?.layout ?? DisplayLayout(displays: []) })
+        topologyToken = topology.observe { [weak self] _ in
+            self?.sync(reason: "displays")
+            self?.fullscreen.check()
+        }
         settingsObserver = settings.addObserver { [weak self] _ in self?.sync(reason: "settings") }
+        fullscreen.onChange = { [weak self] changed in
+            guard let self else { return }
+            for c in self.coordinators.values {
+                if let on = changed[c.display.identity] { c.controller.send(.fullscreenChanged(on)) }
+            }
+        }
         running.onChange = { [weak self] in
             guard let self else { return }
             for c in self.coordinators.values { c.refreshRunning() }
@@ -48,7 +63,8 @@ import SettingsStore
         sync(reason: "launch")
         hub.start()
         // Edge sensing is live: zones built, panels parked, monitors installed.
-        DedockLog.event(.launch, "launch.edgeReady", ["ms": msSinceProcessStart(), "docks": coordinators.count])
+        edgeReadyMs = msSinceProcessStart()
+        DedockLog.event(.launch, "launch.edgeReady", ["ms": edgeReadyMs!, "docks": coordinators.count])
     }
 
     private func msSinceProcessStart() -> Int {
@@ -80,6 +96,10 @@ import SettingsStore
                 c.onChange = { [weak self] in self?.dockChanged() }
                 c.onArmed = { [weak self] in self?.logEdgeReady() }
                 c.onRemoveTile = { [weak self] tile in self?.remove(tile: tile, from: config.profileID) }
+                c.onReorder = { [weak self] order in self?.reorder(order, in: config.profileID) }
+                c.onPin = { [weak self] urls, index in self?.pin(urls, at: index, in: config.profileID) }
+                // A dock created while its display is full screen starts with the longer dwell.
+                if fullscreen.states[display.identity] == true { c.controller.send(.fullscreenChanged(true)) }
                 coordinators[config.id] = c
             }
         }
@@ -133,7 +153,50 @@ import SettingsStore
     private func logEdgeReady() {
         guard !edgeReadyLogged else { return }
         edgeReadyLogged = true
-        DedockLog.event(.launch, "launch.firstArm", ["ms": msSinceProcessStart()])
+        firstArmMs = msSinceProcessStart()
+        DedockLog.event(.launch, "launch.firstArm", ["ms": firstArmMs!])
+    }
+
+    /// Persist a reorder at once; it survives relaunch (T15 item 5).
+    private func reorder(_ order: [TileID], in profile: ProfileID) {
+        settings.update { doc in
+            guard let i = doc.profiles.firstIndex(where: { $0.id == profile }) else { return }
+            let items = doc.profiles[i].items
+            let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            let reordered = order.compactMap { byID[$0] }
+            // Keep anything the drag did not know about (added meanwhile) at the end.
+            doc.profiles[i].items = reordered + items.filter { !order.contains($0.id) }
+        }
+        Task { await settings.flush() }
+    }
+
+    /// Pin dropped apps or folders at `index` (duplicates of an existing app are skipped).
+    private func pin(_ urls: [URL], at index: Int, in profile: ProfileID) {
+        settings.update { doc in
+            guard let i = doc.profiles.firstIndex(where: { $0.id == profile }) else { return }
+            var items = doc.profiles[i].items
+            var at = min(max(0, index), items.count)
+            for url in urls {
+                let item = Self.tileItem(for: url)
+                if let b = item.bundleID, items.contains(where: { $0.bundleID == b }) { continue }
+                if item.kind == .folder, items.contains(where: { $0.kind == .folder && $0.path == item.path }) { continue }
+                items.insert(item, at: at)
+                at += 1
+                DedockLog.event(.tiles, "tile.pin", ["id": item.id.rawValue, "kind": item.kind.rawValue, "at": at - 1])
+            }
+            doc.profiles[i].items = items
+        }
+        Task { await settings.flush() }
+    }
+
+    static func tileItem(for url: URL) -> TileItem {
+        let id = TileID("t-\(UUID().uuidString.prefix(8).lowercased())")
+        if url.pathExtension == "app" {
+            return TileItem(id: id, kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path,
+                            displayName: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
+        }
+        return TileItem(id: id, kind: .folder, path: url.path, bookmark: try? url.bookmarkData(),
+                        displayName: FileManager.default.displayName(atPath: url.path))
     }
 
     private func remove(tile: TileID, from profile: ProfileID) {

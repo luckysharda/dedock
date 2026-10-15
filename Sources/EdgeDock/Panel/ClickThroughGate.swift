@@ -12,6 +12,10 @@ import Diagnostics
     private var interactive = false
     private var hitRegion: [CGRect] = []
     private var lastIgnores: Bool?
+    /// A reorder drag keeps the panel receiving mouse events wherever the pointer goes.
+    public var dragInFlight = false {
+        didSet { if dragInFlight { apply(ignores: false) } else { pointerMoved(NSEvent.mouseLocation) } }
+    }
 
     public init(panel: NSPanel, edge: ScreenEdge) {
         self.panel = panel
@@ -30,7 +34,7 @@ import Diagnostics
     }
 
     public func pointerMoved(_ location: CGPoint) {
-        guard interactive else { return }
+        guard interactive, !dragInFlight else { return }
         apply(ignores: !hitRegion.contains { $0.contains(location) })
     }
 

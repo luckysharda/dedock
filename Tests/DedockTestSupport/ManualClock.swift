@@ -18,6 +18,9 @@ public final class ManualClock: Clock, @unchecked Sendable {
     }
 
     private let lock = NSLock()
+    private var _tolerances: [Duration?] = []
+    /// The tolerance passed to every `sleep` (to guard zero-tolerance one-shot timers).
+    public var tolerances: [Duration?] { lock.withLock { _tolerances } }
     private var _now = Instant(offset: .zero)
     private var sleepers: [Sleeper] = []
     private var nextID: UInt64 = 0
@@ -32,6 +35,7 @@ public final class ManualClock: Clock, @unchecked Sendable {
 
     public func sleep(until deadline: Instant, tolerance: Duration? = nil) async throws {
         let id: UInt64 = lock.withLock {
+            _tolerances.append(tolerance)
             nextID += 1
             return nextID
         }

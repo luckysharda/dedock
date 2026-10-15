@@ -25,6 +25,9 @@ import AppKit
         refresh()
     }
 
+    /// Apps currently observed for a policy change (each held strongly while observed).
+    var watchedApps: [NSRunningApplication] { watched.values.map(\.app) }
+
     public func state(for bundleID: String?) -> TileModel.Running {
         bundleID.flatMap { states[$0] } ?? .none
     }

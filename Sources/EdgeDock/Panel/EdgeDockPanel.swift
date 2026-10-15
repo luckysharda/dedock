@@ -1,6 +1,7 @@
 import AppKit
 import DedockCore
 import DesignSystem
+import Diagnostics
 import SwiftUI
 
 /// The Edge Dock window: placed once at its fully shown frame; only the content slides.
@@ -41,6 +42,21 @@ import SwiftUI
     var accepts: ((CGPoint) -> Bool)?
     var onTileClick: ((TileID) -> Void)?
     var onTileRightClick: ((TileID, NSEvent) -> Void)?
+    /// Reorder drag (DD-975), in screen coordinates.
+    var onDragBegan: ((TileID, CGPoint) -> Void)?
+    var onDragMoved: ((CGPoint) -> Void)?
+    var onDragEnded: ((CGPoint) -> Void)?
+    /// Apps or folders dropped from Finder (DD-975 item 4), with the screen drop point.
+    var onDropURLs: (([URL], CGPoint) -> Void)?
+    /// Raised while a Finder drag hovers the dock, so it stays shown.
+    var onDropHover: ((Bool) -> Void)?
+    /// Whether a plain (no ⌘) drag reorders ("Drag to rearrange").
+    var plainDragReorders: () -> Bool = { false }
+
+    private var downPoint: CGPoint?
+    private var downWithCommand = false
+    private var dragging = false
+    private static let dragThreshold: CGFloat = 3
 
     init(frame: CGRect, model: DockViewModel) {
         self.model = model
@@ -54,6 +70,7 @@ import SwiftUI
         container.autoresizingMask = [.width, .height]
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
+        registerForDraggedTypes([.fileURL])
         container.addSubview(capsule)
         container.addSubview(hosting)
         addSubview(container)
@@ -83,17 +100,80 @@ import SwiftUI
 
     override public func mouseDown(with event: NSEvent) {
         model.pressedTile = tile(at: event)
+        DedockLog.debug(.tiles, "mouse.down", ["tile": model.pressedTile?.rawValue ?? "-", "cmd": event.modifierFlags.contains(.command)])
+        downPoint = screenPoint(event)
+        downWithCommand = event.modifierFlags.contains(.command)
+        dragging = false
+    }
+
+    override public func mouseDragged(with event: NSEvent) {
+        guard let start = downPoint, let id = model.pressedTile, model.tiles.first(where: { $0.id == id })?.kind != .separator
+        else { return }
+        let p = screenPoint(event)
+        if !dragging {
+            guard downWithCommand || plainDragReorders(),
+                  hypot(p.x - start.x, p.y - start.y) >= Self.dragThreshold else { return }
+            dragging = true
+            DedockLog.debug(.tiles, "mouse.dragBegan", ["tile": id.rawValue])
+            onDragBegan?(id, p)
+        }
+        onDragMoved?(p)
     }
 
     override public func mouseUp(with event: NSEvent) {
-        defer { model.pressedTile = nil }
+        defer {
+            model.pressedTile = nil
+            downPoint = nil
+            dragging = false
+        }
+        if dragging {
+            onDragEnded?(screenPoint(event))
+            return
+        }
         guard let id = tile(at: event), id == model.pressedTile else { return }
         onTileClick?(id)
+    }
+
+    private func screenPoint(_ event: NSEvent) -> CGPoint {
+        window?.convertPoint(toScreen: event.locationInWindow) ?? NSEvent.mouseLocation
     }
 
     override public func rightMouseDown(with event: NSEvent) {
         guard let id = tile(at: event) else { return }
         onTileRightClick?(id, event)
+    }
+
+    // MARK: Drop to pin (NSDraggingDestination)
+
+    /// Accept only applications and folders; anything else (documents, text) is refused.
+    static func pinnableURLs(_ info: any NSDraggingInfo) -> [URL] {
+        let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                                                       options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        return urls.filter { url in
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
+            return url.pathExtension == "app" || isDir.boolValue
+        }
+    }
+
+    override public func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        guard !Self.pinnableURLs(sender).isEmpty else { return [] }
+        onDropHover?(true)
+        return .link
+    }
+
+    override public func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        Self.pinnableURLs(sender).isEmpty ? [] : .link
+    }
+
+    override public func draggingExited(_ sender: (any NSDraggingInfo)?) { onDropHover?(false) }
+
+    override public func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        defer { onDropHover?(false) }
+        let urls = Self.pinnableURLs(sender)
+        guard !urls.isEmpty, let window else { return false }
+        onDropURLs?(urls, window.convertPoint(toScreen: sender.draggingLocation))
+        return true
     }
 
     private func tile(at event: NSEvent) -> TileID? {

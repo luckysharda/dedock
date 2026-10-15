@@ -31,7 +31,13 @@ import Observation
                             nativeDockEdge: ScreenEdge? = .bottom) async throws
         -> (model: SettingsModel, result: LayoutFile.LoadResult) {
         let result = try await file.load(nativeDockEdge: nativeDockEdge)
-        return (SettingsModel(file: file, clock: clock, document: result.document), result)
+        let model = SettingsModel(file: file, clock: clock, document: result.document)
+        // First launch: write the seeded default at once, so the file exists from now on.
+        // (`update` would not save it: an unchanged document is a no-op.)
+        if result.source == .defaultSeed {
+            do { try await file.save(result.document) } catch { model.lastSaveError = "\(error)" }
+        }
+        return (model, result)
     }
 
     /// Mutates the document, notifies observers and schedules the debounced save.
