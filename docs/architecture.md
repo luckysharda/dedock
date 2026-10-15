@@ -369,6 +369,16 @@ Zones are built only when the display layout, the dock's settings, its content l
 
 The settings pane marks an edge "shared" and warns when a dock's whole span is shared and the policy is "Wall parts only".
 
+**Pointer-sharing edges (DD-934, open).** macOS can pass the pointer to a nearby Mac or iPad when it is pushed through a display edge that has no neighbouring display. To Dedock that edge looks like a **wall**, so both features answer the same gesture: contact plus dwell reveals the dock, and a continued push (push-through, 40 pt) also starts the hand-off. The pointer can then leave in the middle of a reveal, and the dock stays open with a pointer "in the zone" that is actually parked while the user works on the other device. There is no public API that reports whether pointer sharing is on or which edge it uses *(inferred; the M2 spike confirms it)*. Options:
+
+| Option | Rule | Cost |
+|---|---|---|
+| (a) Leave as is | Dwell (120 ms) normally reveals before the system's push threshold; document the overlap | none; the hand-off still wins on a hard push |
+| (b) Per-edge setting (proposed) | "Pointer sharing uses this edge" switches the edge to the DD-931 shared-edge policy: dwell only, no push-through, optional ⌥ modifier | small: reuses `SharedEdgePolicy` |
+| (c) Detect | a heuristic for "the pointer left this Mac" (cursor parked at the edge with no events while a push was in progress) switches the edge to (b) automatically | spike first; risk of false positives |
+
+Whichever option wins, a **hand-off hide** applies: if the pointer stops reporting while parked in the zone after a push, the dock hides after the normal hide delay, and the edge re-arms only after the pointer moves inward again (the 500 ms re-arm cooldown still holds). The E2E harness keeps the feature off during candidate runs (harness REG-055).
+
 **Native Dock coexistence without Accessibility.** v0 reads `com.apple.dock` (`orientation`, `autohide`, `tilesize`) through `CFPreferencesCopyAppValue` after `CFPreferencesAppSynchronize`, and the Hot Corner keys `wvous-tl-corner`, `wvous-tr-corner`, `wvous-bl-corner`, `wvous-br-corner`. Changes are picked up from the distributed `com.apple.dock.prefchanged` notification *(inferred)*, the Dock process relaunching, and `NSApplication.didChangeScreenParametersNotification` (a Dock change moves `visibleFrame`).
 
 | Native Dock | Footprint | dedock behaviour |
