@@ -6,9 +6,9 @@ import AppKit
     public private(set) var states: [String: TileModel.Running] = [:]
     public var onChange: (() -> Void)?
     private var observers: [any NSObjectProtocol] = []
-    /// Apps that are not `.regular` yet, observed for a later policy change. The app object is
-    /// held strongly so it outlives its KVO observation.
-    private var watched: [pid_t: (app: NSRunningApplication, observation: NSKeyValueObservation)] = [:]
+    /// Apps that are not `.regular` yet, observed for a later policy change. Each app object is
+    /// held strongly so it outlives its KVO observation (REG-021).
+    private let watched = KeptObservations<pid_t, NSRunningApplication>()
 
     public init() {
         let nc = NSWorkspace.shared.notificationCenter
@@ -24,9 +24,6 @@ import AppKit
         }
         refresh()
     }
-
-    /// Apps currently observed for a policy change (each held strongly while observed).
-    var watchedApps: [NSRunningApplication] { watched.values.map(\.app) }
 
     public func state(for bundleID: String?) -> TileModel.Running {
         bundleID.flatMap { states[$0] } ?? .none
@@ -63,18 +60,15 @@ import AppKit
     /// Apps that change their activation policy after launch (e.g. accessory → regular).
     private func watchPolicy(_ app: NSRunningApplication) {
         let pid = app.processIdentifier
-        guard app.activationPolicy != .regular, !app.isTerminated, watched[pid] == nil else { return }
+        guard app.activationPolicy != .regular, !app.isTerminated, !watched.contains(pid) else { return }
         let observation = app.observe(\.activationPolicy) { [weak self] _, _ in
             Task { @MainActor in self?.refresh() }
         }
-        watched[pid] = (app, observation)
+        watched.insert(app, for: pid, observation: observation)
     }
 
     /// Stop watching apps that quit or became regular.
     private func pruneWatched() {
-        for (pid, entry) in watched where entry.app.isTerminated || entry.app.activationPolicy == .regular {
-            entry.observation.invalidate()
-            watched[pid] = nil
-        }
+        watched.removeAll { $0.isTerminated || $0.activationPolicy == .regular }
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import Diagnostics
+import SettingsStore
 
 /// What a click on a tile does (architecture §6.9).
 @MainActor public enum TileActions {
@@ -23,6 +24,22 @@ import Diagnostics
             }
             return log(tile, running ? "activated" : "launched")
         }
+    }
+
+    /// What a dropped item can be pinned as: an application bundle, a plain folder, or nothing.
+    /// Documents, packages (`.rtfd`, `.bundle`, libraries) and anything named `.app` that is not
+    /// an application bundle (a plain file, an empty folder) are refused (REG-047).
+    static func pinKind(_ url: URL) -> TileItem.Kind? {
+        var isDir: ObjCBool = false
+        guard url.isFileURL, FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else {
+            return nil
+        }
+        if url.pathExtension.lowercased() == "app" {
+            guard let bundle = Bundle(url: url), bundle.bundleIdentifier != nil else { return nil }
+            let type = bundle.infoDictionary?["CFBundlePackageType"] as? String
+            return type == nil || type == "APPL" ? .app : nil
+        }
+        return NSWorkspace.shared.isFilePackage(atPath: url.path) ? nil : .folder
     }
 
     public static func appURL(_ tile: TileModel) -> URL? {

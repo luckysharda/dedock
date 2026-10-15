@@ -11,6 +11,10 @@ public struct DockSurroundings: Sendable, Equatable {
     public var layout: DisplayLayout
     public var nativeDock: NativeDockPreferences
     public var reduceMotion: Bool
+    /// Menu-bar status-item rects per display (AppKit global), from `FullscreenProbe` (REG-044).
+    public var statusItems: [DisplayIdentity: [CGRect]] = [:]
+    /// Displays showing a full-screen window, from `FullscreenProbe` (REG-045).
+    public var fullscreen: [DisplayIdentity: Bool] = [:]
 }
 
 /// One enabled dock instance: layout, zones, panel, animator, gate and reveal controller
@@ -85,6 +89,8 @@ public struct DockSurroundings: Sendable, Equatable {
         panel.root.applyCapsule()
         rebuildZones(surroundings)
         gate.updateHitRegion(hitRegion)
+        // A dock created on a full-screen display starts with the longer dwell.
+        if surroundings.fullscreen[display.identity] == true { controller.send(.fullscreenChanged(true)) }
 
         panel.root.accepts = { [weak self] p in self?.gate.accepts(p) ?? false }
         panel.root.onTileClick = { [weak self] id in self?.click(id) }
@@ -132,13 +138,19 @@ public struct DockSurroundings: Sendable, Equatable {
     /// Apply a new configuration, profile or surroundings. Re-lays out only when an input changed.
     func update(config new: DockConfig, profile: Profile?, display newDisplay: DisplaySnapshot, surroundings: DockSurroundings) {
         let oldConfig = config
+        let movedDisplay = newDisplay.identity != display.identity
         config = new
         display = newDisplay
         tiles = Self.tileModels(profile, running: running)
         let newLayout = Self.layout(new, tiles: profile?.items ?? [], display: newDisplay, surroundings: surroundings)
-        specs = (profile?.items ?? []).map(\.tileSpec)
+        let newSpecs = (profile?.items ?? []).map(\.tileSpec)
         model.tokens = new.tokens
         let geometryChanged = newLayout != layout || oldConfig.edge != new.edge
+        // The drag's frozen layout and order no longer match the dock (REG-048).
+        if geometryChanged || newSpecs != specs { cancelReorder(reason: "relayout") }
+        specs = newSpecs
+        // The flag belongs to the display, not the dock: take the new display's (REG-045).
+        if movedDisplay { controller.send(.fullscreenChanged(surroundings.fullscreen[newDisplay.identity] ?? false)) }
         if geometryChanged {
             layout = newLayout
             panel.place(layout.panelFrame)
@@ -189,9 +201,8 @@ public struct DockSurroundings: Sendable, Equatable {
     private func rebuildZones(_ s: DockSurroundings) {
         let footprint = s.nativeDock.orientation == config.edge
             ? NativeDockPreferences.footprint(prefs: s.nativeDock, display: display) : nil
-        let items = config.edge == .top
-            ? StatusItemGeometry.rects(FullscreenProbe.onScreenWindows(), display: display, primaryHeight: s.layout.primaryHeight)
-            : []
+        // Status items come from the probe, refreshed as they change (REG-044).
+        let items = config.edge == .top ? s.statusItems[display.identity] ?? [] : []
         let env = EdgeEnvironment(layout: s.layout, display: display.identity, edge: config.edge,
                                   contentSpan: layout.contentSpan, nativeDock: footprint,
                                   hotCorners: s.nativeDock.hotCorners, statusItemRects: items)
@@ -304,10 +315,7 @@ public struct DockSurroundings: Sendable, Equatable {
 
     private func endReorder(at p: CGPoint) {
         guard let session = reorder else { return }
-        reorder = nil
-        model.draggedTile = nil
-        gate.dragInFlight = false
-        controller.send(.hold(.dragging, false))
+        endDrag()
         // Dropping outside the capsule (plus hysteresis) cancels in M1.
         let hysteresis = config.triggerParameters.hysteresis
         let inside = session.frozen.capsuleFrame.insetBy(dx: -hysteresis, dy: -hysteresis).contains(p)
@@ -319,6 +327,20 @@ public struct DockSurroundings: Sendable, Equatable {
         let order = Self.reordered(session.order, moving: session.tile, to: session.index)
         DedockLog.event(.tiles, "tile.reorder", ["id": session.tile.rawValue, "from": from, "to": session.index])
         onReorder?(order)
+    }
+
+    /// A relayout during the drag ends it without a reorder; the tiles snap to the new layout.
+    private func cancelReorder(reason: String) {
+        guard let session = reorder else { return }
+        endDrag()
+        DedockLog.event(.tiles, "tile.reorderCancelled", ["id": session.tile.rawValue, "reason": reason])
+    }
+
+    private func endDrag() {
+        reorder = nil
+        model.draggedTile = nil
+        gate.dragInFlight = false
+        controller.send(.hold(.dragging, false))
     }
 
     /// `order` with `moving` removed and reinserted at `index` among the others.
