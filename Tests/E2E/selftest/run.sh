@@ -88,6 +88,20 @@ check "processes stopped" "! pgrep -f 'fake-dock serve|runs/selftest-launch' >/d
 check "x-06 refuses a run without hideDelay 0" "Scripts/e2e/launch.sh selftest-x06 --bin $B/fake-dock >/dev/null && ! Scripts/e2e/scenario.sh selftest-x06 L x-06 dry=1 >/dev/null 2>&1; Scripts/e2e/teardown.sh selftest-x06 >/dev/null"
 check "x-06 accepts hideDelayMs 0 from the seed" "Scripts/e2e/launch.sh selftest-x06ok --bin $B/fake-dock --seed $T/seed.json --set 'docks[0].reveal.hideDelayMs=0' >/dev/null && Scripts/e2e/scenario.sh selftest-x06ok L x-06 dry=1 | grep -q 'hide=0'; Scripts/e2e/teardown.sh selftest-x06ok >/dev/null"
 check "scenario refuses a lock held by someone else" "Scripts/e2e/launch.sh selftest-lock --bin $B/fake-dock >/dev/null && DEDOCK_LOCKS=$T/locks Scripts/e2e/desktop-lock.sh acquire someone-else e2e test >/dev/null && DEDOCK_LOCKS=$T/locks DEDOCK_LOCK_OWNER=dedock-app-f1 Scripts/e2e/scenario.sh selftest-lock L x-01 n=1 2>&1 | grep -q \"held by 'someone-else'\"; DEDOCK_LOCKS=$T/locks Scripts/e2e/desktop-lock.sh release someone-else >/dev/null; Scripts/e2e/teardown.sh selftest-lock >/dev/null"
+# quit-refs: a FAKE CoolDock.app (the listener binary in a bundle) and a private lock dir;
+# the pattern override keeps the real reference apps out of reach.
+mkdir -p $T/Fake/CoolDock.app/Contents/MacOS $T/qlocks $B/runs/selftest-refs
+cp $B/listen $T/Fake/CoolDock.app/Contents/MacOS/CoolDock
+printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>CoolDock</string><key>CFBundleIdentifier</key><string>app.dedock.selftest.fakeref</string><key>LSUIElement</key><true/></dict></plist>' > $T/Fake/CoolDock.app/Contents/Info.plist
+$T/Fake/CoolDock.app/Contents/MacOS/CoolDock 30 >/dev/null & fakepid=$!
+sleep 1.5
+QP="selftest/Fake/CoolDock\\.app/Contents/MacOS/"
+DEDOCK_LOCKS=$T/qlocks DEDOCK_REFS_PATTERN=$QP Scripts/e2e/quit-refs.sh selftest-refs > $T/qr-nolock.txt 2>&1
+check "quit-refs refuses without the lock" "grep -q '^refusing: desktop lock' $T/qr-nolock.txt && kill -0 $fakepid"
+DEDOCK_LOCKS=$T/qlocks Scripts/e2e/desktop-lock.sh acquire dedock-app-f1 e2e selftest >/dev/null
+check "quit-refs quits a running reference app politely and logs it" "DEDOCK_LOCKS=$T/qlocks DEDOCK_REFS_PATTERN=$QP Scripts/e2e/quit-refs.sh selftest-refs >/dev/null && ! kill -0 $fakepid 2>/dev/null && grep -q 'not relaunched' $B/runs/selftest-refs/refs-quit.txt"
+DEDOCK_LOCKS=$T/qlocks Scripts/e2e/desktop-lock.sh release dedock-app-f1 >/dev/null
+kill $fakepid 2>/dev/null
 check "scenario dry run" "Scripts/e2e/launch.sh selftest-dry --bin $B/fake-dock >/dev/null && Scripts/e2e/scenario.sh selftest-dry L x-01 n=2 dry=1 | grep -q 'edge left' ; Scripts/e2e/teardown.sh selftest-dry >/dev/null"
 
 echo

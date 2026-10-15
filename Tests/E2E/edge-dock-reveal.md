@@ -11,7 +11,7 @@ Drivers: **SYN** = `Scripts/e2e/scenario.sh` (synthetic pointer + log analysis),
 1. Harness self-test is green: `Tests/E2E/selftest/run.sh` (builds every tool; no app, no cursor).
 2. **Contract shakedown first.** On a new build, run a short x-01 (`n=2`) and read `analyze events` plus any `WARN unrecognized …` lines before trusting any verdict: a renamed log value makes gates silently absent.
 3. App built in the app worktree: `Scripts/make-app.sh debug` (always with its own `--scratch-path` if the harness builds it; never share e7's `.build`).
-4. **Reference apps.** CoolDock and DockDoor compete for the screen edges. `launch.sh` records and warns but never quits them; quitting is the user's decision (open question in `docs/status.md`). Edge scenarios run only when neither is running.
+4. **Reference apps** (user decision 2026-10-15). CoolDock and DockDoor compete for the screen edges. Before each edge run, **inside the desktop lock**, run `Scripts/e2e/quit-refs.sh <run>`: it politely quits only processes already running (by pid), logs it in `<run>/refs-quit.txt`, and refuses without the lock. Never relaunch them (the user does), never observe or time them; comparisons with them are screenshot-only, and their captures are never committed.
 5. **Desktop lock.** Tell the orchestrator (and through it the user: hands off the mouse) before any run longer than about 10 s, then
    `Scripts/e2e/desktop-lock.sh acquire dedock-app-f1 e2e "<scenario list>"`. Touch every 5 min; `release` at the end; message again.
 6. Launch: `Scripts/e2e/launch.sh <run> --app <app worktree> [--set 'docks[0].edge="right"'] [--frame-log]`.
