@@ -103,17 +103,17 @@ import Foundation
             case .orderOut:
                 onOrder?(false)
             case .trace(let t):
+                // Logged in effect order: the machine emits the trace before the gate and the
+                // animation it causes, so `reveal.transition` precedes `reveal.begin`.
+                let inh = machine.holds.map(\.rawValue).sorted().joined(separator: ",")
+                DedockLog.event(.reveal, "reveal.transition", [
+                    "edge": edge.rawValue, "from": t.from.name, "to": t.to.name,
+                    "cause": t.cause.rawValue, "inh": inh.isEmpty ? "-" : inh,
+                ])
                 transitions.append(t)
             }
         }
-        for t in transitions {
-            let inh = machine.holds.map(\.rawValue).sorted().joined(separator: ",")
-            DedockLog.event(.reveal, "reveal.transition", [
-                "edge": edge.rawValue, "from": t.from.name, "to": t.to.name,
-                "cause": t.cause.rawValue, "inh": inh.isEmpty ? "-" : inh,
-            ])
-            onTransition?(t)
-        }
+        for t in transitions { onTransition?(t) }
     }
 
     /// One-shot timer: a task that sleeps once on the clock, then fires. A token guards against

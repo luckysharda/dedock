@@ -69,10 +69,12 @@ public struct TriggerEvaluator: Sendable {
             currentZone = hit
         }
 
+        // The entry sample's delta is travel toward the edge, not push: count from the next one.
+        let justEntered = hit != nil && events.contains(.zoneEntered(hit!.kind))
         if let z = hit {
             switch z.kind {
             case .wall:
-                if let threshold = parameters.pushThrough, !pushFired {
+                if let threshold = parameters.pushThrough, !pushFired, !justEntered {
                     pushAccumulated = max(0, pushAccumulated + s.push(toward: edge))
                     if pushAccumulated >= threshold {
                         pushFired = true

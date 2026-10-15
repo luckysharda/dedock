@@ -39,6 +39,13 @@ import Testing
 
     /// Coalesced moves (one event per display frame) carry summed deltas; the accumulator must
     /// sum deltas, not count events.
+    /// A fast approach carries a big delta on the entry sample; that is travel, not push.
+    @Test func entrySampleDeltaDoesNotCountAsPush() {
+        var e = TriggerEvaluator()
+        #expect(!eval(&e, s(0, 500, dx: -60)).contains(.pushThrough))
+        #expect(eval(&e, s(0, 500, dx: -40)).contains(.pushThrough))
+    }
+
     @Test func pushThroughWithCoalescedDeltas() {
         var e = TriggerEvaluator()
         _ = eval(&e, s(0, 500))

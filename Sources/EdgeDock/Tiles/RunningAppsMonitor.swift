@@ -7,7 +7,9 @@ import Diagnostics
     public private(set) var states: [String: TileModel.Running] = [:]
     public var onChange: (() -> Void)?
     private var observers: [any NSObjectProtocol] = []
-    private var policyObservations: [pid_t: NSKeyValueObservation] = [:]
+    /// Apps that are not `.regular` yet, observed for a later policy change. The app object is
+    /// held strongly so it outlives its KVO observation.
+    private var watched: [pid_t: (app: NSRunningApplication, observation: NSKeyValueObservation)] = [:]
 
     public init() {
         let nc = NSWorkspace.shared.notificationCenter
@@ -29,6 +31,7 @@ import Diagnostics
     }
 
     public func refresh() {
+        pruneWatched()
         var next: [String: TileModel.Running] = [:]
         let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier
         for app in NSWorkspace.shared.runningApplications {
@@ -57,12 +60,21 @@ import Diagnostics
         }
     }
 
-    /// Apps that change their activation policy after launch.
+    /// Apps that change their activation policy after launch (e.g. accessory → regular).
     private func watchPolicy(_ app: NSRunningApplication) {
         let pid = app.processIdentifier
-        guard policyObservations[pid] == nil, !app.isTerminated else { return }
-        policyObservations[pid] = app.observe(\.activationPolicy) { [weak self] _, _ in
+        guard app.activationPolicy != .regular, !app.isTerminated, watched[pid] == nil else { return }
+        let observation = app.observe(\.activationPolicy) { [weak self] _, _ in
             Task { @MainActor in self?.refresh() }
+        }
+        watched[pid] = (app, observation)
+    }
+
+    /// Stop watching apps that quit or became regular.
+    private func pruneWatched() {
+        for (pid, entry) in watched where entry.app.isTerminated || entry.app.activationPolicy == .regular {
+            entry.observation.invalidate()
+            watched[pid] = nil
         }
     }
 }

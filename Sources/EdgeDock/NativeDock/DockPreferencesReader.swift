@@ -159,3 +159,8 @@ public struct NativeDockPreferences: Sendable, Hashable {
         return NativeDockPreferences.parse(values)
     }
 }
+
+extension DockPreferencesReader {
+    /// The native Dock's edge right now (for seeding a default layout before a reader exists).
+    public static func readOrientation() -> ScreenEdge { read().orientation }
+}
