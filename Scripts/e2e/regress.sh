@@ -242,6 +242,11 @@ cua() {  # cua <sub-run> <L|R>
   local sub=$1 side=$2 R=$B/runs/$1
   local pid=$(sed -n 's/^APP_PID=//p' $R/run.env)
   local C=$R/cua; mkdir -p $C
+  # Runs after the scenarios: wait (≤ 3 s) for the dock to be hidden again before the hidden-state checks.
+  for k in {1..30}; do
+    [[ $(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['docks'][0]['state'])" $R/data/e2e/geometry.json 2>/dev/null) == hidden ]] && break
+    sleep 0.1
+  done
   # The window list and AX tree are compared with GEOM (C1, C3): snapshot them as a PAIR with GEOM.
   # A relayout between the two (a display change mid-step, e.g. the visibleFrame moving) compared an
   # old window frame with a new GEOM (a726ee1 R). Copy GEOM before and after the snapshot; if it
@@ -465,12 +470,14 @@ for tag in $edge_list; do
     # fail closed: a crashed or empty geom-check has no PASS lines
     check "geom $tag (REG-013 …)" $(( gf == 0 && gp > 0 )) "$gp pass, $gf fail$( (( gf )) && print -r -- ": $(grep '^FAIL' $B/runs/$sub/geom.txt | head -2 | cut -c6-90 | tr '\n' ';')")"
     rmetric geom.${tag}_fails $gf
-    cua $sub $side
     run_scn $sub $side x-01 n=4
     run_scn $sub $side x-02 n=4
     run_scn $sub $side x-03 n=3
     run_scn $sub $side x-04 n=3
     run_scn $sub $side x-05a n=3
+    # cua checks AFTER the scenarios: C8 opens Settings, which switches Dedock to a regular
+    # (activating) app; nothing timed may run after that in this launch (review of #27: C5 before C8).
+    cua $sub $side
     contract $sub $tag
     teardown_check $sub; check "REG-006 $tag" $(( $? == 0 )) "native Dock prefs unchanged"
   else

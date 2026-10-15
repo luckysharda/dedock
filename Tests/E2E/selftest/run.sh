@@ -201,6 +201,8 @@ g = json.load(open(sys.argv[1])); g['docks'][0].update(style='lightGlass', mater
 python3 Scripts/e2e/cua-eval.py $T/cua-c8 Tests/E2E/selftest/cua-geom.json 99 L > $T/c9-switch.txt
 check "cua-eval: C9 style switch SKIPs without a switch, passes when the log and GEOM agree" "grep -q \$'^cua C9 style switch in Settings reaches GEOM L\tskip' $T/cua.txt && grep -q \$'^cua C9 style switch in Settings reaches GEOM L\t1' $T/c9-switch.txt"
 check "cua-eval: C9 style SKIP without GEOM style, PASS darkGlass/hudWindow, FAIL otherwise" "grep -q \$'^cua C9 dock style tokens L\tskip' $T/cua.txt && grep -q \$'^cua C9 dock style tokens L\t1' $T/c9-good.txt && grep -q \$'^cua C9 dock style tokens L\t0' $T/c9-bad.txt"
+# axpress (REG-051): refuses without the REAL lock, even for the harness-owned fake bundle; the
+# bundle refusal is then the second guard. (The real lock is free here: the self-test refused otherwise.)
 check "axpress refuses a process that is not a harness-owned Dedock build" "! $B/axpress close $$ 'Dedock Settings' 2> $T/axpress.err && grep -q 'refusing' $T/axpress.err"
 # REG-061 gates (DEDOCK_REG061=1): C3 = whole cell; C7 cell edge = AXButton with the tile label
 DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py Tests/E2E/selftest/cua-fixture Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061.txt
@@ -314,6 +316,15 @@ FA=$T/fakeapp; mkdir -p $FA/build/Dedock.app/Contents/MacOS; cp $B/fake-dock $FA
 # Fake bundle id: launch.sh treats it as a non-real app, regress.sh runs it in self-test mode
 # (no input, no tccutil, no scenarios), so this is safe even while a real Dedock or a demo runs.
 printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>FakeDock</string><key>CFBundleIdentifier</key><string>app.dedock.Fake</string><key>LSUIElement</key><true/></dict></plist>' > $FA/build/Dedock.app/Contents/Info.plist
+$FA/build/Dedock.app/Contents/MacOS/FakeDock good > /dev/null 2>&1 & fpid=$!
+sleep 0.5
+if kill -0 $fpid 2>/dev/null && [[ $(lsappinfo info -only bundleid -app $fpid 2>/dev/null) == *app.dedock.Fake* || -n $(ps -o comm= -p $fpid) ]]; then
+  DEDOCK_LOCK_OWNER=selftest-owner $B/axpress close $fpid 'Dedock Settings' > /dev/null 2> $T/axpress-lock.err; echo $? > $T/axpress-lock.rc
+  check "REG-051 axpress refuses the fake bundle without the REAL lock (exit 2, nothing pressed)" "[[ \$(cat $T/axpress-lock.rc) == 2 ]] && grep -q 'does not hold the REAL desktop lock' $T/axpress-lock.err"
+else
+  skip "REG-051 axpress refuses the fake bundle without the REAL lock" "the fake app did not start"
+fi
+kill $fpid 2>/dev/null; wait $fpid 2>/dev/null
 export DEDOCK_LOCKS=$T/rlocks; Scripts/e2e/desktop-lock.sh acquire $DEDOCK_LOCK_OWNER e2e selftest > /dev/null
 rm -rf $B/runs/selftest-trap*
 # Synthetic events are tagged by the driver: the listener tells "the harness posted input" apart

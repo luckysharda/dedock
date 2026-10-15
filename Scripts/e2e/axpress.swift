@@ -1,7 +1,8 @@
 // Presses a control in one of the APP UNDER TEST's own windows through accessibility: its close button
 // (C8: closing Settings releases the dock's hold) or a named control (C9: the Style segment). Harness-
-// owned targets only: it refuses any process that is not a Dedock debug or self-test build. regress.sh
-// runs it under the real desktop lock.
+// owned targets only: it refuses any process that is not a Dedock debug or self-test build, and
+// (REG-051) it refuses unless DEDOCK_LOCK_OWNER holds the REAL desktop lock, checked through
+// Scripts/e2e/desktop-lock.sh require (the one place the real lock path is defined).
 //
 // Build: swiftc -O Scripts/e2e/axpress.swift -o build/e2e/axpress
 // Run:   build/e2e/axpress close <pid> <window title>
@@ -16,6 +17,22 @@ let a = Array(CommandLine.arguments.dropFirst())
 guard (a.count == 3 && a[0] == "close") || (a.count == 4 && a[0] == "press"), let pid = Int32(a[1]) else {
     fail("usage: axpress close <pid> <window title> | press <pid> <window title> <control>")
 }
+// REG-051: acting on a live app needs the REAL lock, checked here and not only by the caller.
+// The tool lives at <worktree>/build/e2e/axpress; the lock script at <worktree>/Scripts/e2e/.
+let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+let lockScript = exe.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    .appendingPathComponent("Scripts/e2e/desktop-lock.sh").path
+guard let owner = ProcessInfo.processInfo.environment["DEDOCK_LOCK_OWNER"], !owner.isEmpty else {
+    fail("refusing: set DEDOCK_LOCK_OWNER (REG-051: needs the REAL desktop lock)")
+}
+guard FileManager.default.isExecutableFile(atPath: lockScript) else { fail("refusing: cannot find \(lockScript) to check the lock") }
+let lock = Process()
+lock.executableURL = URL(fileURLWithPath: lockScript)
+lock.arguments = ["require", owner]
+lock.standardOutput = FileHandle.nullDevice; lock.standardError = FileHandle.nullDevice
+do { try lock.run(); lock.waitUntilExit() } catch { fail("refusing: lock check did not run") }
+guard lock.terminationStatus == 0 else { fail("refusing: '\(owner)' does not hold the REAL desktop lock (REG-051)") }
+
 let owned: Set<String> = ["app.dedock.Dedock.debug", "app.dedock.Fake"]
 guard let bid = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier, owned.contains(bid) else {
     fail("refusing: pid \(pid) is not a harness-owned Dedock build")
