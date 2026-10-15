@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "app": { "showStatusItem": true, "reduceMotionOverride": null },
+  "profiles": [
+    {
+      "id": "e2e",
+      "name": "E2E",
+      "items": [
+        { "id": "t-calculator", "kind": "app", "bundleID": "com.apple.calculator", "path": "/System/Applications/Calculator.app" },
+        { "id": "t-textedit", "kind": "app", "bundleID": "com.apple.TextEdit", "path": "/System/Applications/TextEdit.app" },
+        { "id": "t-notes", "kind": "app", "bundleID": "com.apple.Notes", "path": "/System/Applications/Notes.app" },
+        { "id": "t-downloads", "kind": "folder", "path": "~/Downloads", "displayName": "Downloads" }
+      ]
+    }
+  ],
+  "docks": [
+    {
+      "id": "dock-0",
+      "enabled": true,
+      "edge": "left",
+      "mode": "reveal",
+      "scenario": "revealLeft",
+      "display": { "role": "main", "fallbackToBuiltin": true },
+      "profileID": "e2e",
+      "reveal": {
+        "showDwellMs": 120,
+        "fullscreenDwellMs": 400,
+        "hideDelayMs": 400,
+        "triggerThicknessPt": 3,
+        "spanMode": "content",
+        "cornerExclusionPt": 24,
+        "pushThroughPt": 40,
+        "hysteresisPt": 16,
+        "sharedEdgePolicy": "slowDwell",
+        "hideInFullscreen": false
+      },
+      "placement": { "alignment": "center", "edgeGapPt": 6 },
+      "appearance": { "size": "m", "dragToRearrange": false }
+    }
+  ],
+  "displays": []
+}
