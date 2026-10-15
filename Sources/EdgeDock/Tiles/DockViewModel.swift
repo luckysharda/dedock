@@ -42,6 +42,9 @@ public struct TileModel: Identifiable, Sendable, Equatable {
     public var panelOrigin: CGPoint = .zero
 
     @ObservationIgnored let icons: IconCache
+    /// The tile's press action for accessibility (AXPress); the coordinator routes it to the
+    /// same path as a click.
+    @ObservationIgnored public var activate: ((TileID) -> Void)?
 
     public init(tokens: DockTokens, icons: IconCache) {
         self.tokens = tokens

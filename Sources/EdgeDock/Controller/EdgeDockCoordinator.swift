@@ -70,6 +70,7 @@ public struct DockSurroundings: Sendable, Equatable {
 
         panel.root.accepts = { [weak self] p in self?.gate.accepts(p) ?? false }
         panel.root.onTileClick = { [weak self] id in self?.click(id) }
+        model.activate = { [weak self] id in self?.click(id) }   // AXPress = click (REG-040)
         panel.root.onTileRightClick = { [weak self] id, event in self?.contextMenu(for: id, event: event) }
         controller.onOrder = { [weak self] on in
             guard let self else { return }
