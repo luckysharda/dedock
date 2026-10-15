@@ -40,6 +40,9 @@ struct TileAccessibilitySpec: Equatable {
 
 struct DockTileAccessibility: ViewModifier {
     let tile: TileModel
+    /// The tile's whole cell (the click target, `DockLayout.tileFrames`). The element covers all
+    /// of it, not just the icon, so a click and VoiceOver agree at the cell edge (REG-061).
+    let cell: CGSize
     let activate: (TileID) -> Void
 
     var spec: TileAccessibilitySpec { TileAccessibilitySpec(tile) }
@@ -53,6 +56,8 @@ struct DockTileAccessibility: ViewModifier {
             content.accessibilityHidden(true)
         } else {
             content
+                .frame(width: cell.width, height: cell.height)
+                .contentShape([.interaction, .accessibility], Rectangle())
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(spec.label)
                 .accessibilityAddTraits(spec.isButton ? .isButton : [])
@@ -63,8 +68,3 @@ struct DockTileAccessibility: ViewModifier {
     }
 }
 
-extension View {
-    func dockTileAccessibility(_ tile: TileModel, model: DockViewModel) -> some View {
-        modifier(DockTileAccessibility(tile: tile) { [weak model] id in model?.activate?(id) })
-    }
-}

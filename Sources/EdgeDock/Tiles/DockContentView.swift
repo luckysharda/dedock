@@ -88,7 +88,12 @@ struct TileView: View {
         }
         .frame(width: size.width, height: size.height)
         .overlay(alignment: indicatorAlignment) { indicator }
-        .dockTileAccessibility(tile, model: model)
+        .modifier(accessibility)
+    }
+
+    /// The tile's accessibility element: the whole cell `size` (REG-061).
+    var accessibility: DockTileAccessibility {
+        DockTileAccessibility(tile: tile, cell: size) { [weak model] id in model?.activate?(id) }
     }
 
     /// Running dot on the inner side, `indicatorOffset` outside the tile edge (DD-903 item 4).
