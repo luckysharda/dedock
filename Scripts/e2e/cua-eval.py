@@ -29,7 +29,7 @@ tl = [e for e in tree if e.get("label") in tiles and e.get("depth", 0) >= 1]
 # lie inside the GEOM tile frame and be centred on it (±2 pt), and report the size difference. Lower
 # bound: at least MIN_FRAC of the cell in each dimension, so a degenerate (e.g. 1x1 or 0x0) AX frame
 # at the centre does not pass.
-MIN_FRAC = 0.6
+MIN_FRAC = 0.8   # E1: 52/62 = 0.84 passes; a half-size frame does not (review of #22)
 def inside_centred(e, f):
     x, y, w, h = f; ex, ey, ew, eh = (e.get(k, -999) for k in ("x", "y", "w", "h"))
     return ex >= x - 1 and ey >= y - 1 and ex + ew <= x + w + 1 and ey + eh <= y + h + 1 \

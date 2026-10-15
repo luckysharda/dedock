@@ -22,7 +22,9 @@ import sys
 
 DRIFT = 0.20
 # Absolute noise floors by metric suffix: 20 % of a 1.2 ms latency is 0.24 ms, which is noise.
-DEFAULT_FLOORS = {"_ms": 2.0, "_pt": 1.0, "cpu_pct": 0.05, "wakeups_per_s": 0.2, "_mb": 5.0}
+# rss_mb comes first (first match wins): RSS swings ~25 MB run to run (90.0 / 89.8 / 65.9 / 89.7 MB on
+# 7e7ae7e…af3a80e) while phys_footprint (the NFR-2 metric) stays within a few MB.
+DEFAULT_FLOORS = {"rss_mb": 30.0, "_ms": 2.0, "_pt": 1.0, "cpu_pct": 0.05, "wakeups_per_s": 0.2, "_mb": 5.0}
 # Counts describe the run, not the app's quality: never drift-checked.
 # Harness checks (Tests/E2E/regressions.md "gates: harness") never decide an app PR's verdict.
 HARNESS_IDS = ("REG-015", "REG-016", "REG-017", "REG-041", "REG-042", "REG-049", "REG-050", "REG-051", "REG-052", "REG-053")

@@ -261,8 +261,11 @@ for t in g['docks'][0]['tiles']:
   $B/pointer -q script $C/reveal.txt
   $B/axprobe at ${first[2]} ${first[3]} only=$pid > $C/hit-shown-tile.json
   # C7 cell edge: inside the first tile's GEOM cell but outside its (smaller) icon/AX frame, 2 pt in
-  # from the cell's edge on the side away from the screen edge: still the dock, never the window under it.
-  local cell=($(python3 -c "import json;d=json.load(open('$R/data/e2e/geometry.json'))['docks'][0];x,y,w,h=d['tiles'][0]['frame']['topLeft'];print(x+w-2 if d['edge']=='left' else x+2, y+h/2)"))
+  # from the cell's edge on the side away from the screen edge (along x on left/right docks, along y on
+  # bottom/top docks): still the dock, never the window under it.
+  local cell=($(python3 -c "
+import json; d = json.load(open('$R/data/e2e/geometry.json'))['docks'][0]; x, y, w, h = d['tiles'][0]['frame']['topLeft']
+print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (x + w / 2, y + 2), 'top': (x + w / 2, y + h - 2)}[d['edge']])"))
   $B/pointer -q move ${cell[1]} ${cell[2]}; sleep 0.15
   $B/axprobe at ${cell[1]} ${cell[2]} only=$pid > $C/hit-shown-cell.json
   $B/pointer -q move $outside ${first[3]}; sleep 0.15

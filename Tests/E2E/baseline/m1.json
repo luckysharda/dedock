@@ -15,6 +15,7 @@
  },
  "rule": "WARN when |now - baseline| > 20 % of baseline AND > the floor for the metric's suffix; counts are not drift-checked",
  "floors": {
+  "rss_mb": 30.0,
   "_ms": 2.0,
   "_pt": 1.0,
   "cpu_pct": 0.05,
