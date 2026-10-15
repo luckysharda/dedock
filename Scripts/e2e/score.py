@@ -114,6 +114,7 @@ def write_scorecard(root, baseline_path):
     failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in live if not c["ok"] and not is_harness(c)]
     void = [s for s in scenarios if s["verdict"] == "VOID"]
     verdict = "FAIL" if failed else ("VOID" if void else "PASS")
+    res = lambda c: "SKIP" if c.get("skip") else ("PASS" if c["ok"] else "FAIL")
     if not scenarios and not checks:
         verdict = "FAIL"
 
@@ -137,12 +138,16 @@ def write_scorecard(root, baseline_path):
              f"run checks: {sum(c['ok'] for c in live)}/{len(live)} pass ({len(checks) - len(live)} skipped); drift warnings: {len(warns)}"
              + (f"; HARNESS checks failing: {', '.join(c['id'] for c in harness_failed)} (harness bug, not an app result)" if harness_failed else ""))
     L.append("")
+    key = [c for c in checks if "REG-040" in c["id"] or c["id"].startswith("cua C2")]
+    if key:
+        L.append("Key gates (REG-040, tile accessibility: AXButton role, AXPress, cua-driver sees the tiles): "
+                 + ", ".join(f"{c['id']} **{res(c)}**" for c in key))
+        L.append("")
     L.append("| Scenario | Verdict | Failed gates | Report |")
     L.append("|---|---|---|---|")
     for s in scenarios:
         L.append(f"| {s['key']} | {s['verdict']} | {'; '.join(s['fails'])[:200] or '—'} | `{s['report']}` |")
     L.append("")
-    res = lambda c: "SKIP" if c.get("skip") else ("PASS" if c["ok"] else "FAIL")
     for title, group in (("Check", [c for c in checks if not c["id"].startswith("cua ")]),
                          ("cua check (window list, AX tree, hit tests)", [c for c in checks if c["id"].startswith("cua ")])):
         if not group:

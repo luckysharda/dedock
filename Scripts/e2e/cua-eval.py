@@ -24,6 +24,8 @@ frames_ok = all(any(abs(e.get("x", -9) - tiles[e["label"]][0]) <= 1 and abs(e.ge
 chk("C3 tiles in AX tree", len({e["label"] for e in tl}) == len(tiles) and frames_ok, f"{len({e['label'] for e in tl})}/{len(tiles)} tiles labelled with their app name, frames = GEOM: {frames_ok}")
 roles = sorted({e.get("role") for e in tl})
 chk("C3 REG-040 tiles are buttons", tl and all(e.get("role") == "AXButton" for e in tl), f"tile roles: {roles} (exp AXButton)")
+acts = sorted({a for e in tl for a in e.get("actions", [])})
+chk("C3 REG-040 tiles pressable", tl and all("AXPress" in e.get("actions", []) for e in tl), f"tile AX actions: {acts or 'none'} (exp AXPress on every tile)")
 try:
     st = json.load(open(f"{C}/cua-state.json")); els = (st.get("structuredContent") or st).get("elements", [])
     seen = {e.get("label") for e in els} & set(tiles)

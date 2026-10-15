@@ -25,7 +25,7 @@ trap cleanup EXIT
 check() { if eval "$2"; then echo "PASS $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi }
 
 echo "-- build"
-for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
+for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/e2e/backdrop.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
   out=$B/${${src:t}%.swift}
   check "compile ${src:t}" "swiftc -O $src -o $out 2>$T/${src:t}.err"
 done

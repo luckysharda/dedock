@@ -1,7 +1,12 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=6] [gap=8] [dry=1]
+#       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
+#       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
+#       (never committed; no user window is ever in the frame).
+#       padding/gap: the design tokens geom-check expects (E1 Capsule: padding=8 gap=8); the inset
+#       always comes from the seeded layout's edgeGapPt.
 #       The whole M1 set in ONE desktop-lock take (the caller holds the lock and has announced
 #       it): x-00 + REG-026 on an empty data dir, then per edge geom-check, log-contract checks
 #       and x-01…x-05a, then x-05b and x-06 in a hide-delay-0 run, then 60 s idle; post-run
@@ -51,8 +56,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds=
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=6 gap=8 shots=0
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -61,10 +66,10 @@ bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/In
 edge_list=(${(s:,:)edges})
 # Calibrated on the first full run (2026-10-15: 489 s for edges L,R + idle): launches, settle
 # waits and VOID re-runs make each edge ~200 s; each extra x-06 seed ~15 s.
-est=$(( 15 + ${#edge_list} * (200 + ${#extra_seeds} * 15) + (idle ? 75 : 0) ))
+est=$(( 15 + ${#edge_list} * (200 + ${#extra_seeds} * 15 + 25 + (shots ? 15 : 0)) + (idle ? 75 : 0) ))
 echo "regress $id: app $(git -C $app rev-parse --short HEAD) edges=$edges idle=$idle — moves the cursor for about $est s"
 if (( dry )); then
-  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}; idle 60 s; post checks"
+  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}; idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
   exit 0
 fi
 
@@ -240,7 +245,7 @@ for tag in $edge_list; do
     print -r -- "$tag $sub" >> $root/index.txt
     sleep 1
     rmetric launch.${tag}_ms $(edge_ready_ms $sub)
-    $E/geom-check.py $B/runs/$sub/data/e2e/geometry.json layout=$B/runs/$sub/data/layout.json > $B/runs/$sub/geom.txt
+    $E/geom-check.py $B/runs/$sub/data/e2e/geometry.json layout=$B/runs/$sub/data/layout.json padding=$padding gap=$gap > $B/runs/$sub/geom.txt
     gf=$(grep -c '^FAIL' $B/runs/$sub/geom.txt); gp=$(grep -c '^PASS' $B/runs/$sub/geom.txt)
     check "geom $tag (REG-013 …)" $(( gf == 0 )) "$gp pass, $gf fail$( (( gf )) && print -r -- ": $(grep '^FAIL' $B/runs/$sub/geom.txt | head -2 | cut -c6-90 | tr '\n' ';')")"
     rmetric geom.${tag}_fails $gf
@@ -299,6 +304,28 @@ if (( idle )); then
   else
     check "launch I" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-I.txt)"
   fi
+fi
+
+if (( shots )); then
+  echo "shots"
+  mkdir -p $root/shots
+  for tag in $edge_list; do
+    [[ $tag == R ]] && set_edge=(--set 'docks[0].edge="right"') || set_edge=()
+    sub=$id-S$tag
+    if $E/launch.sh $sub --app $app $set_edge --set 'docks[0].mode="pinned"' --timeout 8 > $root/launch-S$tag.txt 2>&1 && launched $root/launch-S$tag.txt; then
+      sleep 1
+      rect=($(python3 -c "import json;g=json.load(open('$B/runs/$sub/data/e2e/geometry.json'));d=g['docks'][0];x,y,w,h=d['capsule']['topLeft'];sx,sy,sw,sh=g['screens'][0]['frame']['topLeft'];m=40;X=max(sx,x-m);Y=max(sy,y-m);print(int(X),int(Y),int(min(sx+sw,x+w+m)-X),int(min(sy+sh,y+h+m)-Y))"))
+      $B/backdrop ${rect[1]} ${rect[2]} ${rect[3]} ${rect[4]} 15 > /dev/null &
+      local_bd=$!
+      sleep 1
+      screencapture -x -R ${rect[1]},${rect[2]},${rect[3]},${rect[4]} $root/shots/E1-$tag.png
+      kill $local_bd 2>/dev/null
+      check "shot $tag" $([[ -s $root/shots/E1-$tag.png ]] && echo 1 || echo 0) "pinned dock over a neutral backdrop, ${rect[3]}×${rect[4]} at ${rect[1]},${rect[2]} (local only)"
+      teardown_check $sub; check "REG-006 S$tag" $(( $? == 0 )) "native Dock prefs unchanged"
+    else
+      check "shot $tag" 0 "pinned launch failed"
+    fi
+  done
 fi
 
 # Post-run harness checks (they gate the harness, not the app).
