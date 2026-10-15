@@ -22,6 +22,12 @@ cleanup() {
   done
 }
 trap cleanup EXIT
+# Never alongside a real run: the self-test launches fake apps and listens to input, which would
+# muddle an E2E run's logs and process checks (2026-10-15). Refuse while ANYONE holds the real lock.
+if [[ -d $HOME/dedock/.locks/desktop.lock ]]; then
+  echo "selftest: refusing — the real desktop lock is held ($(sed -n 's/^owner=//p' $HOME/dedock/.locks/desktop.lock/info 2>/dev/null || echo '?')); run it when the desktop is free"
+  exit 2
+fi
 export DEDOCK_LOCK_OWNER=selftest-owner   # no default owner anywhere (review of #12)
 export DEDOCK_SELFTEST=1                  # fake bundle ids and private locks only; never posts input
 check() { if eval "$2"; then echo "PASS $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi }
@@ -187,6 +193,12 @@ check "REG-049 score: a crashed tool is FAIL" "[[ \$(cat $T/s-tool.rc) == 1 ]] &
 print '{"tool":"geom-check L","rc":0,"ok":true}' > $SR/selftest-sexp/tools.jsonl
 python3 Scripts/e2e/score.py $SR/selftest-sexp > $T/s-ok.txt; echo $? > $T/s-ok.rc
 check "score: complete rows + healthy tools PASS" "[[ \$(cat $T/s-ok.rc) == 0 ]] && grep -q 'Tool health: \*\*OK' $T/s-ok.txt"
+# --retool (REG-052): re-derive tool health from raw exit codes; original scorecard untouched
+print -l "REG-006 L" "L.x-01-L" > $SR/selftest-sexp/expected.txt
+print '{"tool":"analyze X","rc":1,"ok":false}' > $SR/selftest-sexp/tools.jsonl
+python3 Scripts/e2e/score.py $SR/selftest-sexp > /dev/null; cp $SR/selftest-sexp/scorecard.md $T/orig-card.md
+python3 Scripts/e2e/score.py --retool abc1234 $SR/selftest-sexp > $T/retool.txt; echo $? > $T/retool.rc
+check "REG-052 --retool accepts analyze exit 1, says so, keeps the original" "[[ \$(cat $T/retool.rc) == 0 ]] && grep -q 'Re-scored with harness .abc1234.: tool() ok-codes fix (REG-052); raw data unchanged' $SR/selftest-sexp/scorecard-rescored.md && grep -q 'Tool health: \*\*NOT OK' $SR/selftest-sexp/scorecard.md && cmp -s $T/orig-card.md $SR/selftest-sexp/scorecard.md"
 rm -rf $SR/selftest-sexp $SR/selftest-sexp-L
 # measure-idle: no top samples → FAIL (not zeros that pass)
 : > $T/empty-top.txt
@@ -197,21 +209,32 @@ FAKE_NO_READY=1 Scripts/e2e/launch.sh selftest-noready --bin $B/fake-dock --time
 nr_app=$(sed -n 's/^APP_PID=//p' $B/runs/selftest-noready/run.env); nr_log=$(sed -n 's/^LOG_PID=//p' $B/runs/selftest-noready/run.env)
 check "REG-050 failed launch leaves nothing running" "grep -q '^FAIL no launch.edgeReady' $T/noready.txt && ! kill -0 $nr_app 2>/dev/null && ! kill -0 $nr_log 2>/dev/null"
 # regress.sh killed mid-run: the trap tears down what it launched (fake debug bundle, private lock)
-FA=$T/fakeapp; mkdir -p $FA/build/Dedock.app/Contents/MacOS; cp $B/fake-dock $FA/build/Dedock.app/Contents/MacOS/Dedock
+FA=$T/fakeapp; mkdir -p $FA/build/Dedock.app/Contents/MacOS; cp $B/fake-dock $FA/build/Dedock.app/Contents/MacOS/FakeDock
 # Fake bundle id: launch.sh treats it as a non-real app, regress.sh runs it in self-test mode
 # (no input, no tccutil, no scenarios), so this is safe even while a real Dedock or a demo runs.
-printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Dedock</string><key>CFBundleIdentifier</key><string>app.dedock.Fake</string><key>LSUIElement</key><true/></dict></plist>' > $FA/build/Dedock.app/Contents/Info.plist
+printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>FakeDock</string><key>CFBundleIdentifier</key><string>app.dedock.Fake</string><key>LSUIElement</key><true/></dict></plist>' > $FA/build/Dedock.app/Contents/Info.plist
 export DEDOCK_LOCKS=$T/rlocks; Scripts/e2e/desktop-lock.sh acquire $DEDOCK_LOCK_OWNER e2e selftest > /dev/null
 rm -rf $B/runs/selftest-trap*
-c0=$($B/pointer pos)
+# Synthetic events are tagged by the driver: the listener tells "the harness posted input" apart
+# from "the user moved the mouse" (a cursor-position comparison cannot, e.g. during a demo).
+$B/listen 12 > $T/trap-listen.txt & tl=$!
+sleep 0.3
 Scripts/e2e/regress.sh run $FA id=selftest-trap edges= idle=0 > $T/trap.txt 2>&1 &
 rp=$!
 for i in {1..80}; do [[ -f $B/runs/selftest-trap-X/run.env ]] && break; sleep 0.1; done
 sleep 0.5; kill -TERM $rp; wait $rp 2>/dev/null
 tr_app=$(sed -n 's/^APP_PID=//p' $B/runs/selftest-trap-X/run.env 2>/dev/null)
 check "REG-050 regress trap tears down on interrupt" "[[ -n '$tr_app' ]] && ! kill -0 ${tr_app:-0} 2>/dev/null && [[ -f $B/runs/selftest-trap-X/teardown.txt ]]"
-check "REG-051 self-test mode posted no input (cursor untouched)" "[[ \"\$($B/pointer pos)\" == '$c0' ]]"
+sleep 1; kill $tl 2>/dev/null; wait $tl 2>/dev/null
+check "REG-051 self-test mode posted no input" "! grep -q ' syn=1' $T/trap-listen.txt"
 DEDOCK_SELFTEST=0 Scripts/e2e/regress.sh run ../e2e-target id=selftest-nolock edges= idle=0 > $T/nolock.txt 2>&1   # exits 2 by design
+# REG-052: a complete self-test-mode run; the contract's analyze legitimately exits 1 on a
+# launch-only log, which must be recorded as a healthy tool run, not a tool failure.
+rm -rf $B/runs/selftest-full*
+Scripts/e2e/regress.sh run $FA id=selftest-full edges= idle=0 > $T/full.txt 2>&1
+check "REG-052 exit code 1 (gate failed) is a healthy tool run" "grep -q '\"tool\":\"analyze X\",\"rc\":1,\"ok\":true' $B/runs/selftest-full/tools.jsonl && ! grep -q 'FAIL tool analyze' $T/full.txt"
+check "REG-050 a completed run leaves nothing running" "! kill -0 \$(sed -n 's/^APP_PID=//p' $B/runs/selftest-full-X/run.env) 2>/dev/null"
+rm -rf $B/runs/selftest-full*
 check "REG-051 regress refuses a real build without the REAL lock" "grep -q 'does not hold the REAL desktop lock' $T/nolock.txt && [[ ! -e $B/runs/selftest-nolock ]]"
 Scripts/e2e/desktop-lock.sh release $DEDOCK_LOCK_OWNER > /dev/null; unset DEDOCK_LOCKS
 rm -rf $B/runs/selftest-trap*

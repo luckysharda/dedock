@@ -97,8 +97,21 @@ case "at":
     // other app just the fact that it, not the dock, would receive the click.
     let only = a.count > 3 ? Int32(a[3].replacingOccurrences(of: "only=", with: "")) : nil
     let mine = only == nil || only == pid
-    out(["pid": Int(pid), "role": mine ? ((attr(e, kAXRoleAttribute) as String?) ?? "") : "",
-         "label": mine ? label(e) : "", "other_app": !mine])
+    var d: [String: Any] = ["pid": Int(pid), "role": mine ? ((attr(e, kAXRoleAttribute) as String?) ?? "") : "",
+                            "label": mine ? label(e) : "", "other_app": !mine]
+    if mine {  // the hit element and its parent chain up to the window (for findings like REG-054)
+        var chain: [[String: Any]] = []
+        var cur: AXUIElement? = e
+        while let c = cur, chain.count < 8 {
+            var row = element(c, depth: chain.count)
+            row["subrole"] = (attr(c, kAXSubroleAttribute) as String?) ?? ""
+            chain.append(row)
+            cur = attr(c, kAXParentAttribute)
+            if (row["role"] as? String) == "AXWindow" || (row["role"] as? String) == "AXApplication" { break }
+        }
+        d["chain"] = chain
+    }
+    out(d)
 case "front":
     let f = NSWorkspace.shared.frontmostApplication
     out(["pid": Int(f?.processIdentifier ?? -1), "app": f?.localizedName ?? "", "bundle": f?.bundleIdentifier ?? ""])

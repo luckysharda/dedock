@@ -3,6 +3,8 @@
 
     Scripts/e2e/score.py <root-run-dir> [baseline.json]          -> scorecard.md, metrics.json, exit 0/1/3
     Scripts/e2e/score.py --write-baseline <root-run-dir> <out.json>  (after the user reviewed a clean run)
+    Scripts/e2e/score.py --retool <harness-sha> <root-run-dir> [baseline]  re-derive tool health from the
+        recorded raw exit codes (REG-052) into scorecard-rescored.md; the original scorecard stays
 
 The root run dir holds index.txt ("<tag> <sub-run-id>" per line, e.g. "L L-run"), checks.jsonl
 (run-level checks: {"id","ok","detail"}), env.json (provenance) and sub-run dirs under
@@ -23,7 +25,7 @@ DRIFT = 0.20
 DEFAULT_FLOORS = {"_ms": 2.0, "_pt": 1.0, "cpu_pct": 0.05, "wakeups_per_s": 0.2, "_mb": 5.0}
 # Counts describe the run, not the app's quality: never drift-checked.
 # Harness checks (Tests/E2E/regressions.md "gates: harness") never decide an app PR's verdict.
-HARNESS_IDS = ("REG-015", "REG-016", "REG-017", "REG-041", "REG-042", "REG-049", "REG-050", "REG-051")
+HARNESS_IDS = ("REG-015", "REG-016", "REG-017", "REG-041", "REG-042", "REG-049", "REG-050", "REG-051", "REG-052", "REG-053")
 COUNTS = ("_trials", "reversals", "foreign_events", "leave_before_dwell", "hide_cancelled", "_n")
 
 
@@ -86,9 +88,27 @@ def collect(root):
     return scenarios, metrics, checks
 
 
+# Acceptable exit codes per tool, as regress.sh's tool() calls intend them (REG-052: a parsing bug
+# in harness ba01a50 turned the default "0 1" into one word, so exit 1 was recorded as a failure).
+TOOL_OK = [("contract-parser", {0}), ("axprobe", {0}), ("cua-driver", {0}), ("cua-eval", {0}),
+           ("scenario", {0, 1, 3}), ("analyze", {0, 1}), ("geom-check", {0, 1}), ("measure-idle", {0, 1})]
+RETOOL = None  # harness sha when re-scoring with --retool
+
+
+def tool_ok(t):
+    if RETOOL is None:
+        return bool(t.get("ok"))
+    for prefix, okset in TOOL_OK:
+        if t["tool"].startswith(prefix):
+            return t["rc"] in okset
+    return bool(t.get("ok"))
+
+
 def tool_health(root, checks):
     """(ok, line) for the scorecard: every tool exited 0/1 and every expected row is present."""
     tools = load_jsonl(os.path.join(root, "tools.jsonl"))
+    for t in tools:
+        t["ok"] = tool_ok(t)
     bad = [t for t in tools if not t.get("ok")]
     missing = [c for c in checks if str(c.get("detail", "")).startswith("MISSING:")]
     has_expected = os.path.exists(os.path.join(root, "expected.txt"))
@@ -145,6 +165,11 @@ def write_scorecard(root, baseline_path):
     L = []
     L.append(f"## Regression scorecard: M1 Edge Dock — {verdict}")
     L.append("")
+    if RETOOL:
+        L.append(f"**Re-scored with harness `{RETOOL}`: tool() ok-codes fix (REG-052); raw data unchanged.** "
+                 "Only whether each tool's recorded exit code counts as healthy was re-derived; no scenario, check "
+                 "or metric was regenerated. The original scorecard of this run is kept next to it as `scorecard.md`.")
+        L.append("")
     L.append(f"App: `{env.get('app_commit', '?')}` ({env.get('config', '?')}) · Harness: `{env.get('harness_commit', '?')}` · "
              f"Date: {env.get('date', '?')} · Run: `{rel(root)}`")
     L.append(f"Machine: macOS {env.get('macos', '?')}, {env.get('display', '?')}, native Dock {env.get('native_dock', '?')}, "
@@ -205,8 +230,9 @@ def write_scorecard(root, baseline_path):
         L.append("")
         L.append("</details>")
     out = "\n".join(L) + "\n"
-    open(os.path.join(root, "scorecard.md"), "w").write(out)
-    json.dump({"verdict": verdict, "metrics": metrics, "env": env}, open(os.path.join(root, "metrics.json"), "w"), indent=1, sort_keys=True)
+    open(os.path.join(root, "scorecard-rescored.md" if RETOOL else "scorecard.md"), "w").write(out)
+    if not RETOOL:
+        json.dump({"verdict": verdict, "metrics": metrics, "env": env}, open(os.path.join(root, "metrics.json"), "w"), indent=1, sort_keys=True)
     print(out)
     return {"PASS": 0, "FAIL": 1, "VOID": 3}[verdict]
 
@@ -238,6 +264,9 @@ def write_baseline(root, out_path):
 if __name__ == "__main__":
     if len(sys.argv) >= 4 and sys.argv[1] == "--write-baseline":
         sys.exit(write_baseline(sys.argv[2], sys.argv[3]))
+    if len(sys.argv) >= 3 and sys.argv[1] == "--retool":
+        RETOOL = sys.argv[2]
+        sys.argv = [sys.argv[0]] + sys.argv[3:]
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(2)

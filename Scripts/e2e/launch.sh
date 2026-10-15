@@ -40,7 +40,8 @@ done
 
 if [[ -z $bin ]]; then
   [[ -n $app ]] || { echo "need --app <worktree> or DEDOCK_APP_WORKTREE" >&2; exit 2 }
-  bin=$app/build/Dedock.app/Contents/MacOS/Dedock
+  exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" $app/build/Dedock.app/Contents/Info.plist 2>/dev/null || echo Dedock)
+  bin=$app/build/Dedock.app/Contents/MacOS/$exe
   [[ -z $seed && $noseed == 0 && -f $app/Tests/E2E/fixtures/layout-seed.json ]] && seed=$app/Tests/E2E/fixtures/layout-seed.json
 fi
 [[ -x $bin ]] || { echo "not executable: $bin (run Scripts/make-app.sh debug in the app worktree)" >&2; exit 2 }

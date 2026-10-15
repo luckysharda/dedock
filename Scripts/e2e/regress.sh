@@ -114,7 +114,8 @@ mkdir -p $root
 } > $root/expected.txt
 
 tool() {  # tool <name> <rc> [ok-rcs…]: record a tool's exit code (default ok: 0 and 1 = "ran, gate failed")
-  local name=$1 rc=$2; shift 2; local okrcs=(${@:-0 1})
+  local name=$1 rc=$2; shift 2
+  local okrcs=("$@"); (( ${#okrcs} )) || okrcs=(0 1)   # NOT (${@:-0 1}): that is ONE word "0 1" (REG-052)
   local ok=0; (( ${okrcs[(Ie)$rc]} )) && ok=1
   print -r -- "{\"tool\":\"$name\",\"rc\":$rc,\"ok\":$( (( ok )) && echo true || echo false)}" >> $root/tools.jsonl
   (( ok )) || print -r -- "FAIL tool $name exited $rc"

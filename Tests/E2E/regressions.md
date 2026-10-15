@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-052.**
+Ask the E2E lane for the next free id. **Next free: REG-055.**
 
 ## How the suite runs
 
@@ -70,6 +70,9 @@ Ask the E2E lane for the next free id. **Next free: REG-052.**
 | REG-049 | Gates failed OPEN: a crashed geom-check / analyze / contract parser / cua-eval, or a `top` with no samples, recorded PASS or silently dropped rows (#12 review) | every tool's exit code goes to `tools.jsonl`; `judge.sh` FAILs a scenario whose `analyze` did not exit 0/1 or that evaluated no gate; geom needs PASS lines; `measure-idle.sh` needs ≥ secs−1 samples; `regress.sh` writes `expected.txt` and `score.py` FAILs every missing row; scorecard "Tool health" line | regress.sh, self-test | **harness** |
 | REG-050 | A failed launch left Dedock and its log stream running, so the next run tripped REG-015 (#12 review) | `launch.sh` stops the app and the log stream on every failure path; `regress.sh` EXIT/INT/TERM trap tears down every launched sub-run and releases held input | regress.sh, launch.sh, self-test | **harness** |
 | REG-051 | A harness step could post input, restore the cursor, run `tccutil` or launch a real-bundle-id app under a private (self-test) lock while someone else held the real one (found 2026-10-15; the test was skipped, so nothing happened) | HARD RULE: such steps call `desktop-lock.sh require <owner>`, which checks the **real** lock path only (a `DEDOCK_LOCKS` override never counts). Self-tests use the fake bundle id `app.dedock.Fake` with `DEDOCK_SELFTEST=1` (no input, no tccutil, no scenarios); the cursor is restored only if the run moved it; skipped self-tests print SKIP, never PASS | self-test | **harness** |
+| REG-052 | `regress.sh tool()` parsed its default acceptable exit codes `(${@:-0 1})` as ONE word "0 1", so an ordinary exit 1 ("ran, a gate failed") was recorded as a tool failure and Tool health read NOT OK (found in the db65db3 candidate run) | self-test: a complete self-test-mode run records the contract's `analyze` exit 1 as `ok: true` | self-test | **harness** |
+| REG-053 | The harness self-test ran during a candidate window: its fake app (executable named `Dedock`) showed up as a second Dedock, three scenarios logged another Dedock process, and it added CPU noise (2026-10-15, db65db3 run) | the self-test refuses while ANYONE holds the real desktop lock; the fake bundle's executable is `FakeDock` (never matches `MacOS/Dedock`). Rule: nothing else runs on the Mac during a candidate window | self-test | **harness** |
+| REG-054 | With the pointer on a shown tile, the system-wide AX hit test returns Dedock's `AXWindow` (empty label), not the tile's `AXButton`, even at the tile centre inside the button's AX frame: point-based assistive tech (VoiceOver mouse-follow, hover speech) cannot find the tile (db65db3, both edges; blocks #15 per the orchestrator) | cua check C7 "shown tile takes the hit" (`axprobe at … only=<pid>`, now with the parent chain) | regress.sh (cua checks) | app |
 
 ## Adding an entry
 
