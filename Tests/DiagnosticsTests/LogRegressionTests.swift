@@ -18,6 +18,24 @@ import Testing
         // Debug builds keep the full E2E grammar public, in field order.
         let debug = DedockLog.format("tile.activate", ["id": "t-1", "ms": 486], redactStrings: false)
         #expect(debug.public == "tile.activate id=t-1 ms=486")
-        #expect(debug.private.isEmpty)
+        #expect(debug.private == nil)
+    }
+
+    /// REG-043: every event line ended in a literal `<private>` because the empty private part
+    /// was still interpolated with `.private`, corrupting the last field (`docks=1<private>`).
+    @Test("REG-043: no private segment when nothing is redacted")
+    func reg043() {
+        let debug = DedockLog.format("launch.edgeReady", ["ms": 687, "docks": 1, "edge": "left"], redactStrings: false)
+        #expect(debug.public == "launch.edgeReady ms=687 docks=1 edge=left")
+        #expect(debug.private == nil)
+
+        // Release lines with only numeric/boolean fields carry no private segment either.
+        let numeric = DedockLog.format("gate.mouse", ["ignores": true, "x": DedockLog.pt(3)], redactStrings: true)
+        #expect(numeric.public == "gate.mouse ignores=true x=3.00")
+        #expect(numeric.private == nil)
+
+        let bare = DedockLog.format("settings.notice", [:], redactStrings: true)
+        #expect(bare.public == "settings.notice")
+        #expect(bare.private == nil)
     }
 }

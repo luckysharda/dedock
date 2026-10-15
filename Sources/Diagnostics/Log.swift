@@ -27,13 +27,21 @@ public enum DedockLog {
     /// Logs `event k1=v1 k2=v2`. Values are sanitised (spaces → `_`, empty → `-`).
     public static func event(_ category: LogCategory, _ name: String, _ fields: KeyValuePairs<String, any CustomStringConvertible> = [:]) {
         let line = format(name, fields, redactStrings: redactsStrings)
-        loggers[category]!.log("\(line.public, privacy: .public)\(line.private, privacy: .private)")
+        if let hidden = line.private {
+            loggers[category]!.log("\(line.public, privacy: .public)\(hidden, privacy: .private)")
+        } else {
+            loggers[category]!.log("\(line.public, privacy: .public)")
+        }
     }
 
     /// Debug-level variant for chatty events (edge trace, edge.push).
     public static func debug(_ category: LogCategory, _ name: String, _ fields: KeyValuePairs<String, any CustomStringConvertible> = [:]) {
         let line = format(name, fields, redactStrings: redactsStrings)
-        loggers[category]!.debug("\(line.public, privacy: .public)\(line.private, privacy: .private)")
+        if let hidden = line.private {
+            loggers[category]!.debug("\(line.public, privacy: .public)\(hidden, privacy: .private)")
+        } else {
+            loggers[category]!.debug("\(line.public, privacy: .public)")
+        }
     }
 
     /// Error text can contain paths and user data: public only in debug builds.
@@ -46,16 +54,18 @@ public enum DedockLog {
     }
 
     /// Splits a log line into its public and private parts. Without redaction everything is
-    /// public, in field order; with it, string-valued fields move to the private part.
+    /// public, in field order; with it, string-valued fields move to the private part. The
+    /// private part is nil when nothing is redacted: os_log renders even an empty `.private`
+    /// interpolation as `<private>`, which corrupted the last field of every line (REG-043).
     static func format(_ name: String, _ fields: KeyValuePairs<String, any CustomStringConvertible>,
-                       redactStrings: Bool) -> (public: String, private: String) {
+                       redactStrings: Bool) -> (public: String, private: String?) {
         var pub = name
         var priv = ""
         for (key, value) in fields {
             let text = " \(key)=\(sanitise(value.description))"
             if redactStrings && !isNumericOrBool(value) { priv += text } else { pub += text }
         }
-        return (pub, priv)
+        return (pub, priv.isEmpty ? nil : priv)
     }
 
     /// Numbers, booleans and numeric strings (e.g. `DedockLog.pt(_:)` output) are safe to keep public.
