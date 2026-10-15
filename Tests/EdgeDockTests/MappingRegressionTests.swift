@@ -1,5 +1,9 @@
 import DedockCore
 import Foundation
+import AppKit
+import DedockTestSupport
+import DisplayTopology
+import EventTapKit
 import SettingsStore
 import Testing
 @testable import EdgeDock
@@ -28,4 +32,48 @@ import Testing
         d.reveal.pushThroughPt = nil
         #expect(d.triggerParameters.pushThrough == nil)
     }
+}
+
+/// Regression guards for the dock manager and tile menu (macOS only).
+@Suite("Regression", .tags(.regression), .serialized) @MainActor struct ManagerRegressionTests {
+    /// REG-033: the context menu's "Open" launched the app directly, skipping the explicit hide
+    /// and the re-arm cooldown that a click applies.
+    @Test("REG-033: context-menu Open takes the click path")
+    func reg033() {
+        var opened = 0
+        let menu = TileMenu(tile: TileModel(id: "a", kind: .app, name: "A", bundleID: "com.example.a"),
+                            open: { opened += 1 }, remove: {})
+        menu.open()
+        #expect(opened == 1)
+    }
+
+    /// REG-032: the pointer monitors ran (and woke the app on every mouse move) with zero
+    /// enabled docks.
+    @Test("REG-032: pointer monitors run only while a dock is enabled", .enabled(if: NSScreen.main != nil))
+    func reg032() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dedock-reg-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var doc = DedockDocument.makeDefault()
+        doc.docks[0].enabled = false
+        let clock = ManualClock()
+        let settings = SettingsModel(file: LayoutFile(directory: dir), clock: clock, document: doc)
+        let hub = PointerHub(source: QuietPointerSource(), clock: clock)
+        let manager = EdgeDockManager(settings: settings, topology: DisplayTopology(clock: clock), hub: hub,
+                                      clock: clock, dataDirectory: dir)
+        #expect(!hub.isRunning)
+        settings.update { $0.docks[0].enabled = true }
+        #expect(hub.isRunning)
+        settings.update { $0.docks[0].enabled = false }
+        #expect(!hub.isRunning)
+        #expect(manager.coordinators.isEmpty)
+    }
+}
+
+/// A pointer source that never delivers anything (no real pointer in tests).
+@MainActor final class QuietPointerSource: PointerEventSource {
+    func install(_ handler: @escaping @MainActor (PointerSample) -> Void) {}
+    func uninstall() {}
+    var currentLocation: CGPoint { .zero }
+    var buttonsDown: Bool { false }
+    var currentModifiers: ModifierSet { [] }
 }

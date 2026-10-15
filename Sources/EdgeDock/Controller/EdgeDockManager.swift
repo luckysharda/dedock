@@ -61,7 +61,6 @@ import SettingsStore
         ) { [weak self] _ in MainActor.assumeIsolated { self?.sync(reason: "reduceMotion") } }
         hub.addSink(self)
         sync(reason: "launch")
-        hub.start()
         // Edge sensing is live: zones built, panels parked, monitors installed.
         edgeReadyMs = msSinceProcessStart()
         DedockLog.event(.launch, "launch.edgeReady", ["ms": edgeReadyMs!, "docks": coordinators.count])
@@ -106,6 +105,12 @@ import SettingsStore
         for (id, c) in coordinators where !keep.contains(id) {
             c.teardown()
             coordinators[id] = nil
+        }
+        // Pointer monitors run only while at least one dock is enabled (architecture §6.3, REG-032).
+        if coordinators.isEmpty {
+            if hub.isRunning { hub.stop() }
+        } else if !hub.isRunning {
+            hub.start()
         }
         DedockLog.event(.app, "docks.sync", ["reason": reason, "docks": coordinators.count])
         dockChanged()

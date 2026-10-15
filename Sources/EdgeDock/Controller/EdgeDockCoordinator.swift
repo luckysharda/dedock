@@ -255,7 +255,9 @@ public struct DockSurroundings: Sendable, Equatable {
 
     private func contextMenu(for id: TileID, event: NSEvent) {
         guard let tile = tiles.first(where: { $0.id == id }) else { return }
-        let menu = TileMenu(tile: tile) { [weak self] in self?.onRemoveTile?(id) }
+        // "Open" takes the same path as a click: explicit hide and re-arm cooldown (REG-033).
+        let menu = TileMenu(tile: tile, open: { [weak self] in self?.click(id) },
+                            remove: { [weak self] in self?.onRemoveTile?(id) })
         controller.send(.hold(.menuOpen, true))
         menu.popUp(from: panel.root, event: event)
         controller.send(.hold(.menuOpen, false))
@@ -361,14 +363,16 @@ public struct DockSurroundings: Sendable, Equatable {
 /// Tile context menu (architecture §6.9). Holds `menuOpen` while tracking.
 @MainActor final class TileMenu: NSObject {
     private let tile: TileModel
+    private let openTile: () -> Void
     private let remove: () -> Void
     private let menu = NSMenu()
 
-    init(tile: TileModel, remove: @escaping () -> Void) {
+    init(tile: TileModel, open: @escaping () -> Void, remove: @escaping () -> Void) {
         self.tile = tile
+        self.openTile = open
         self.remove = remove
         super.init()
-        add("Open", #selector(open))
+        add("Open", #selector(TileMenu.open))
         if tile.url != nil || tile.bundleID != nil { add("Show in Finder", #selector(showInFinder)) }
         if tile.kind == .app, tile.running != .none {
             menu.addItem(.separator())
@@ -392,7 +396,7 @@ public struct DockSurroundings: Sendable, Equatable {
         tile.bundleID.map { NSRunningApplication.runningApplications(withBundleIdentifier: $0) } ?? []
     }
 
-    @objc private func open() { TileActions.activate(tile) }
+    @objc func open() { openTile() }
     @objc private func showInFinder() {
         if let url = tile.url ?? TileActions.appURL(tile) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
     }
