@@ -43,7 +43,7 @@ skipped=0
 skip() { echo "SKIP $1 ($2)"; skipped=$((skipped + 1)); }   # a skipped check is never a PASS
 
 echo "-- build"
-for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/e2e/backdrop.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
+for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/e2e/backdrop.swift Scripts/e2e/notify.swift Scripts/e2e/axpress.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
   out=$B/${${src:t}%.swift}
   check "compile ${src:t}" "swiftc -O $src -o $out 2>$T/${src:t}.err"
 done
@@ -161,6 +161,56 @@ for r in rows:
 open(sys.argv[1], 'w').write(''.join(json.dumps(r) + '\\n' for r in rows))" $T/cua-tiny/tree.jsonl
 python3 Scripts/e2e/cua-eval.py $T/cua-tiny Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-tiny.txt
 check "cua-eval: C3 fails on a degenerate (2x2) AX tile frame" "grep -q \$'^cua C3 tiles in AX tree L\t0' $T/cua-tiny.txt"
+# C1/C3 paired snapshot: GEOM copied with the window list wins over a later (relayouted) GEOM file
+rm -rf $T/cua-pair; cp -R Tests/E2E/selftest/cua-fixture $T/cua-pair
+python3 -c "
+import json, sys
+g = json.load(open(sys.argv[1])); g['docks'][0]['panel']['topLeft'][1] -= 1; json.dump(g, open(sys.argv[2], 'w'))" Tests/E2E/selftest/cua-geom.json $T/cua-geom-moved.json
+python3 Scripts/e2e/cua-eval.py $T/cua-pair $T/cua-geom-moved.json 99 L > $T/cua-race.txt
+cp Tests/E2E/selftest/cua-geom.json $T/cua-pair/geom-pair.json; print 'relayout during step (GEOM changed after the snapshot; C1/C3 use the paired GEOM)' > $T/cua-pair/pair.txt
+python3 Scripts/e2e/cua-eval.py $T/cua-pair $T/cua-geom-moved.json 99 L > $T/cua-paired.txt
+check "cua-eval: C1 unpaired race fails, paired snapshot passes and says so" "grep -q \$'^cua C1 panel window L\t0' $T/cua-race.txt && grep -q \$'^cua C1 panel window L\t1.*paired snapshot.*relayout during step' $T/cua-paired.txt"
+# C8 (settings=1): SKIP without the files; with a fixture Settings window: pass, an unnamed control
+# (a slider with only a value) fails "labelled", a close that never released the hold fails
+rm -rf $T/cua-c8; cp -R Tests/E2E/selftest/cua-fixture $T/cua-c8
+{ print -r -- '{"depth": 0, "role": "AXWindow", "subrole": "AXFloatingWindow", "label": "Edge Dock", "name": "Edge Dock"}'
+  print -r -- '{"depth": 0, "role": "AXWindow", "subrole": "AXStandardWindow", "label": "Dedock Settings", "name": "Dedock Settings"}'
+  print -r -- '{"depth": 1, "role": "AXButton", "subrole": "AXCloseButton", "label": "", "name": ""}'
+  print -r -- '{"depth": 3, "role": "AXCheckBox", "subrole": "", "label": "Show on the left edge", "name": "Show on the left edge"}'
+  print -r -- '{"depth": 3, "role": "AXSlider", "subrole": "", "label": "Show delay", "name": "Show delay"}' } > $T/cua-c8/settings-tree.jsonl
+print -r -- '{"id": 7, "layer": 0, "x": 400, "y": 200, "w": 700, "h": 500, "alpha": 1, "onscreen": true, "name": ""}' > $T/cua-c8/settings-windows.jsonl
+: > $T/cua-c8/settings-windows-after.jsonl
+print -r -- '1 in order: debug.command → inhibitor → reveal.transition' > $T/cua-c8/c8-open.txt
+print -r -- '1 in order: debug.command → inhibitor → inhibitor → reveal.transition' > $T/cua-c8/c8-close.txt
+python3 Scripts/e2e/cua-eval.py $T/cua-c8 Tests/E2E/selftest/cua-geom.json 99 L > $T/c8-good.txt
+sed -i '' 's/"label": "Show delay", "name": "Show delay"/"label": "0.5", "name": ""/' $T/cua-c8/settings-tree.jsonl
+print -r -- "0 missing '^inhibitor .*token=editing on=false' after: debug.command → inhibitor" > $T/cua-c8/c8-close.txt
+python3 Scripts/e2e/cua-eval.py $T/cua-c8 Tests/E2E/selftest/cua-geom.json 99 L > $T/c8-bad.txt
+check "cua-eval: C8 SKIPs without Settings, passes on a good fixture, fails an unnamed control and a held dock" "[[ \$(grep -c \$'^cua C8 .*\tskip\t' $T/cua.txt) == 4 && \$(grep -c \$'^cua C8 .*\t1\t' $T/c8-good.txt) == 4 ]] && grep -q \$'^cua C8 settings controls labelled L\t0\t2 controls, 1 without a label (AXSlider)' $T/c8-bad.txt && grep -q \$'^cua C8 closing Settings releases the hold L\t0' $T/c8-bad.txt"
+python3 -c "
+import json, sys
+g = json.load(open(sys.argv[1])); g['docks'][0].update(style='darkGlass', material='hudWindow'); json.dump(g, open(sys.argv[2] + '/geom-pair.json', 'w'))
+g['docks'][0].update(style='lightGlass', material='hudWindow'); json.dump(g, open(sys.argv[2] + '/geom-bad.json', 'w'))" Tests/E2E/selftest/cua-geom.json $T/cua-c8
+python3 Scripts/e2e/cua-eval.py $T/cua-c8 Tests/E2E/selftest/cua-geom.json 99 L > $T/c9-good.txt
+cp $T/cua-c8/geom-bad.json $T/cua-c8/geom-pair.json; python3 Scripts/e2e/cua-eval.py $T/cua-c8 Tests/E2E/selftest/cua-geom.json 99 L > $T/c9-bad.txt
+# C9 live switch: SKIP without the switch files; pass with lightGlass/popover after the switch line
+print -r -- '1 in order: debug.command → settings.changed key=dd.dock.style → docks.sync reason=settings' > $T/cua-c8/c9-switch.txt
+python3 -c "
+import json, sys
+g = json.load(open(sys.argv[1])); g['docks'][0].update(style='lightGlass', material='popover'); json.dump(g, open(sys.argv[2], 'w'))" Tests/E2E/selftest/cua-geom.json $T/cua-c8/geom-style.json
+python3 Scripts/e2e/cua-eval.py $T/cua-c8 Tests/E2E/selftest/cua-geom.json 99 L > $T/c9-switch.txt
+check "cua-eval: C9 style switch SKIPs without a switch, passes when the log and GEOM agree" "grep -q \$'^cua C9 style switch in Settings reaches GEOM L\tskip' $T/cua.txt && grep -q \$'^cua C9 style switch in Settings reaches GEOM L\t1' $T/c9-switch.txt"
+check "cua-eval: C9 style SKIP without GEOM style, PASS darkGlass/hudWindow, FAIL otherwise" "grep -q \$'^cua C9 dock style tokens L\tskip' $T/cua.txt && grep -q \$'^cua C9 dock style tokens L\t1' $T/c9-good.txt && grep -q \$'^cua C9 dock style tokens L\t0' $T/c9-bad.txt"
+# axpress (REG-051): refuses without the REAL lock, even for the harness-owned fake bundle; the
+# bundle refusal is then the second guard. (The real lock is free here: the self-test refused otherwise.)
+check "axpress refuses a process that is not a harness-owned Dedock build" "! $B/axpress close $$ 'Dedock Settings' 2> $T/axpress.err && grep -q 'refusing' $T/axpress.err"
+# REG-061 gates (DEDOCK_REG061=1): C3 = whole cell; C7 cell edge = AXButton with the tile label
+DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py Tests/E2E/selftest/cua-fixture Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061.txt
+DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py $T/cua-tiny Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061-tiny.txt
+rm -rf $T/cua-061b; cp -R Tests/E2E/selftest/cua-fixture $T/cua-061b
+print -r -- '{"pid":99,"role":"AXButton","label":"Calculator","other_app":false}' > $T/cua-061b/hit-shown-cell.json
+DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py $T/cua-061b Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061b.txt
+check "cua-eval: REG-061 gates (C3 whole cell; C7 cell edge needs the tile's AXButton)" "grep -q \$'^cua C3 tiles in AX tree L\t1.*REG-061' $T/cua-061.txt && grep -q \$'^cua C3 tiles in AX tree L\t0' $T/cua-061-tiny.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t0' $T/cua-061.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t1' $T/cua-061b.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t1.*REG-061 pending' $T/cua.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id
@@ -266,6 +316,15 @@ FA=$T/fakeapp; mkdir -p $FA/build/Dedock.app/Contents/MacOS; cp $B/fake-dock $FA
 # Fake bundle id: launch.sh treats it as a non-real app, regress.sh runs it in self-test mode
 # (no input, no tccutil, no scenarios), so this is safe even while a real Dedock or a demo runs.
 printf '%s' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>FakeDock</string><key>CFBundleIdentifier</key><string>app.dedock.Fake</string><key>LSUIElement</key><true/></dict></plist>' > $FA/build/Dedock.app/Contents/Info.plist
+$FA/build/Dedock.app/Contents/MacOS/FakeDock good > /dev/null 2>&1 & fpid=$!
+sleep 0.5
+if kill -0 $fpid 2>/dev/null && [[ $(lsappinfo info -only bundleid -app $fpid 2>/dev/null) == *app.dedock.Fake* || -n $(ps -o comm= -p $fpid) ]]; then
+  DEDOCK_LOCK_OWNER=selftest-owner $B/axpress close $fpid 'Dedock Settings' > /dev/null 2> $T/axpress-lock.err; echo $? > $T/axpress-lock.rc
+  check "REG-051 axpress refuses the fake bundle without the REAL lock (exit 2, nothing pressed)" "[[ \$(cat $T/axpress-lock.rc) == 2 ]] && grep -q 'does not hold the REAL desktop lock' $T/axpress-lock.err"
+else
+  skip "REG-051 axpress refuses the fake bundle without the REAL lock" "the fake app did not start"
+fi
+kill $fpid 2>/dev/null; wait $fpid 2>/dev/null
 export DEDOCK_LOCKS=$T/rlocks; Scripts/e2e/desktop-lock.sh acquire $DEDOCK_LOCK_OWNER e2e selftest > /dev/null
 rm -rf $B/runs/selftest-trap*
 # Synthetic events are tagged by the driver: the listener tells "the harness posted input" apart
