@@ -16,6 +16,13 @@ Newest entry first. Each entry: done, in progress, next, blockers and notes, the
 | Worktree | `.worktrees/edge-dock-reveal` on `feature/edge-dock-reveal`, branched from `develop` |
 | Docs drafted (all untracked, not committed) | `docs/architecture.md` (modules, layers, folder layout, Edge Dock subsystem, persistence), `docs/plan.md` (master plan: decisions D-1…D-12, gap analysis, milestones M1–M18, per-feature process, M1 tasks T0–T23), `docs/design.md` (skeleton: behaviour, `dd.motion.*` tokens, layout grammar, component inventory; visual direction pending), `docs/evaluation.md` (layers, E2E scripts, perf, visual and motion methods, M1 acceptance list), `docs/organization.md` (layout, branches, PRs, agent lanes, desktop lock, build commands), this file |
 
+### M1 E2E progress (left edge, build `7e7ae7e`, placeholder visuals)
+
+| Result | Scenarios |
+|---|---|
+| Passed | x-00, x-01, x-02, x-03, x-04, x-05a, x-06 (20 rapid crossings, non-vacuous), REG-006; idle CPU 0.017 %, RSS 34 MB (budget 0.5 %) |
+| Open | x-05b; x-07 / x-08 (need the owner present to approve computer use); every right-edge scenario; E1 Capsule visuals after the implementer's capsule fix |
+
 ### Decisions taken today (cross-session)
 
 | # | Decision | By |
