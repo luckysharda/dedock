@@ -307,7 +307,7 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   # own close button (AX press, our window only) releases the hold and the dock hides (pointer away).
   if (( settings )); then
     local SP=$R/log.ndjson
-    $B/notify openSettings > /dev/null; tool "notify openSettings $side" $? 0
+    $B/notify $pid openSettings > /dev/null; tool "notify openSettings $side" $? 0
     sleep 1.5
     $B/axprobe windows $pid > $C/settings-windows.jsonl
     $B/axprobe tree $pid 14 > $C/settings-tree.jsonl; tool "axprobe settings tree $side" $? 0
@@ -320,6 +320,9 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
     python3 $E/log-order.py $SP pid=$pid '^debug[.]command cmd=openSettings ok=true' '^settings[.]changed key=dd[.]dock[.]style value=lightGlass' '^docks[.]sync reason=settings' > $C/c9-switch.txt
     cp $R/data/e2e/geometry.json $C/geom-style.json 2>/dev/null
     $B/axpress press $pid "Dedock Settings" "Dark Glass" > /dev/null 2>&1; sleep 0.6
+    # well away from the dock before the close (≥ 60 pt past the capsule + 16 pt hysteresis), so a
+    # dock that stays shown can only be the app's doing (review of #27)
+    $B/pointer -q move $away ${first[3]}; sleep 0.2
     $B/axpress close $pid "Dedock Settings" > $C/c8-close-press.txt 2>&1; tool "axpress close Settings $side" $? 0
     sleep 1.2
     python3 $E/log-order.py $SP pid=$pid '^debug[.]command cmd=openSettings ok=true' '^inhibitor .*token=editing on=true' '^inhibitor .*token=editing on=false' '^reveal[.]transition .*to=hidden' > $C/c8-close.txt
@@ -354,10 +357,13 @@ print(d.get('showDwellMs', -1), th)" $R/data/e2e/geometry.json $1 2>/dev/null &&
     done
     print -- "-1 -1"
   }
-  $B/notify setEdge=top > /dev/null; t=($(geom_at top))
-  $B/notify setEdge=left > /dev/null; l=($(geom_at left))
+  $B/notify $pid setEdge=top > /dev/null; t=($(geom_at top))
+  $B/notify $pid setEdge=left > /dev/null; l=($(geom_at left))
   sleep 0.5
-  check "$cid" $(( t[1] == 300 && l[1] == 120 && l[2] == 3 )) "top: showDwellMs ${t[1]}, zone ${t[2]} pt; left: showDwellMs ${l[1]}, zone ${l[2]} pt (exp 300 → 120, 3 pt)"
+  # zone thickness 3 pt, or 6 pt where the native Dock shares the edge (derived, never stored)
+  local nd=$(defaults read com.apple.dock orientation 2>/dev/null || echo bottom) lt=3
+  [[ $nd == left ]] && lt=6
+  check "$cid" $(( t[1] == 300 && l[1] == 120 && l[2] == lt )) "top: showDwellMs ${t[1]}, zone ${t[2]} pt; left: showDwellMs ${l[1]}, zone ${l[2]} pt (exp 300 → 120, $lt pt with the native Dock at the $nd)"
 }
 
 run_scn() {  # run_scn <sub-run> <L|R> <scenario> [args]; re-runs once if contaminated (VOID)
@@ -450,6 +456,7 @@ alert_reveal() {  # alert_reveal <sub-run> <pid>
   if (( selftest )); then check "$cid" skip "self-test mode posts no input"; check "REG-057 the notice does not take focus" skip "self-test mode"; return; fi
   local G=$B/runs/$S/data/e2e/geometry.json
   $B/axprobe front > $B/runs/$S/front-notice.json
+  $B/axprobe focus $spid > $B/runs/$S/focus-notice.json
   local alerts=$($B/axprobe windows $spid | python3 -c "import json,sys; print(sum(1 for l in sys.stdin if l.strip() and (w := json.loads(l))['onscreen'] and w['layer'] != 24 and w['w'] > 50))" 2>/dev/null || echo 0)
   local pts=($(python3 -c "import json;d=json.load(open('$G'))['docks'][0];x,y,w,h=d['capsule']['topLeft'];L=d['edge']=='left';print(d['edge'], int(y+h/2), x+w+400 if L else x-400)" 2>/dev/null))
   if (( ${#pts} != 3 )); then check "$cid" 0 "no GEOM for the recovered dock"; check "REG-057 the notice does not take focus" 0 "not probed (no GEOM)"; return; fi
@@ -462,8 +469,20 @@ alert_reveal() {  # alert_reveal <sub-run> <pid>
   $B/pointer -q move ${pts[3]} ${pts[2]}   # leave, so the dock hides before teardown
   sleep 0.5
   check "$cid" $(( ${r%% *} == 1 && alerts >= 1 )) "alert windows on screen: $alerts; ${r#* }"
-  local fpid=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('pid', -1))" $B/runs/$S/front-notice.json 2>/dev/null || echo -1)
-  check "REG-057 the notice does not take focus" $(( fpid != spid && fpid > 0 && alerts >= 1 )) "frontmost app while the notice is up: $( (( fpid == spid )) && echo Dedock || echo 'another app (kept focus)')"
+  # KEY focus, not just the frontmost app: a key non-activating panel leaves another app frontmost
+  # while it takes the keys (review of #28). Fails closed when the focus holder is unknown.
+  # The system-wide focus holder when the system answers; otherwise (it may refuse with "cannot
+  # complete") Dedock must be neither frontmost nor holding a focused element of its own.
+  local fr=$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1])); me = int(sys.argv[2])
+if d.get('pid', -1) > 0:
+    ok = d['pid'] != me; how = 'system-wide ' + d.get('source', '?') + ': ' + ('Dedock' if not ok else 'another app')
+else:
+    ok = d.get('front', -1) not in (-1, me) and not d.get('app_focus', True)
+    how = 'system-wide focus unavailable; frontmost ' + ('Dedock' if d.get('front') == me else 'another app') + ', Dedock focused element ' + ('yes' if d.get('app_focus') else 'none')
+print(int(ok), how)" $B/runs/$S/focus-notice.json $spid 2>/dev/null || echo "0 focus probe unreadable")
+  check "REG-057 the notice does not take focus" $(( ${fr%% *} == 1 && alerts >= 1 )) "key focus while the notice is up: ${fr#* }"
 }
 
 notice_run() {  # notice_run <tag> <launch flag> <check id> <regex…>
