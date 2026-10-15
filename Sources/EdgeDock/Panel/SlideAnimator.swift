@@ -12,7 +12,7 @@ import QuartzCore
     private(set) var edge: ScreenEdge
     /// Translation that parks the content off-screen (from `DockLayout.hiddenOffset`).
     private(set) var hiddenOffset: CGVector
-    private var reduceMotion: Bool
+    private(set) var reduceMotion: Bool
 
     private var completion: (@MainActor (UInt64) -> Void)?
     private var activeGeneration: UInt64?

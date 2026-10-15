@@ -33,11 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let moved = result.corruptFileMovedTo {
                 DedockLog.error(.settings, "layout.json was unreadable; moved to \(moved.lastPathComponent)")
             }
-            // First launch: write the seeded default so the file exists from now on.
-            if result.source == .defaultSeed {
-                do { try await file.save(model.document) } catch {
-                    DedockLog.error(.settings, "saving the default layout failed: \(error)")
-                }
+            if let error = model.lastSaveError {
+                DedockLog.error(.settings, "saving the default layout failed: \(error)")
             }
         } catch {
             DedockLog.error(.settings, "settings load failed: \(error); using defaults")

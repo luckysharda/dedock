@@ -24,6 +24,10 @@ import SettingsStore
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
     private var edgeReadyLogged = false
+    /// Set once edge sensing is live (end of init), independent of any pointer activity.
+    public private(set) var edgeReadyMs: Int?
+    /// Set at the first zone arming after launch.
+    public private(set) var firstArmMs: Int?
     private let launchTime = ProcessInfo.processInfo.systemUptime - EdgeDockManager.processAge()
     private var geometryWritePending = false
 
@@ -59,7 +63,8 @@ import SettingsStore
         sync(reason: "launch")
         hub.start()
         // Edge sensing is live: zones built, panels parked, monitors installed.
-        DedockLog.event(.launch, "launch.edgeReady", ["ms": msSinceProcessStart(), "docks": coordinators.count])
+        edgeReadyMs = msSinceProcessStart()
+        DedockLog.event(.launch, "launch.edgeReady", ["ms": edgeReadyMs!, "docks": coordinators.count])
     }
 
     private func msSinceProcessStart() -> Int {
@@ -148,7 +153,8 @@ import SettingsStore
     private func logEdgeReady() {
         guard !edgeReadyLogged else { return }
         edgeReadyLogged = true
-        DedockLog.event(.launch, "launch.firstArm", ["ms": msSinceProcessStart()])
+        firstArmMs = msSinceProcessStart()
+        DedockLog.event(.launch, "launch.firstArm", ["ms": firstArmMs!])
     }
 
     /// Persist a reorder at once; it survives relaunch (T15 item 5).

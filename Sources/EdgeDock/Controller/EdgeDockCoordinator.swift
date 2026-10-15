@@ -160,15 +160,24 @@ public struct DockSurroundings: Sendable, Equatable {
 
     /// Running state changed: only the tile models change, never the geometry.
     func refreshRunning() {
-        var changed = false
-        for i in tiles.indices where tiles[i].kind == .app {
-            let state = running.state(for: tiles[i].bundleID)
-            guard state != tiles[i].running else { continue }
-            tiles[i].running = state
-            changed = true
-            DedockLog.event(.tiles, "tile.indicator", ["bundle": tiles[i].bundleID ?? "-", "state": state.rawValue])
+        let changes = Self.indicatorChanges(tiles) { [running] in running.state(for: $0) }
+        guard !changes.isEmpty else { return }
+        for change in changes {
+            tiles[change.index].running = change.state
+            DedockLog.event(.tiles, "tile.indicator", ["bundle": tiles[change.index].bundleID ?? "-", "state": change.state.rawValue])
         }
-        if changed { model.tiles = tiles }
+        model.tiles = tiles
+    }
+
+    /// Indicator changes for the dock's own app tiles only; other running apps never appear
+    /// here (and so never reach the log).
+    static func indicatorChanges(_ tiles: [TileModel], state: (String?) -> TileModel.Running)
+        -> [(index: Int, state: TileModel.Running)] {
+        tiles.indices.compactMap { i in
+            guard tiles[i].kind == .app else { return nil }
+            let s = state(tiles[i].bundleID)
+            return s == tiles[i].running ? nil : (i, s)
+        }
     }
 
     func teardown() {
