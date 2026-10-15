@@ -315,7 +315,10 @@ public struct RevealStateMachine: Sendable {
             activeGeneration = nil
             return go(.hidden, .animationEnd)
         case .pointerInside(true), .zoneEntered:
-            // Reverse in place, no dwell: the intent is already "shown" (DD-928).
+            // Reverse in place, no dwell: the intent is already "shown" (DD-928). Not during the
+            // re-arm cooldown after an explicit hide: the pointer is usually still on the tile it
+            // clicked (PR #7 review item 2).
+            guard !isCoolingDown else { return [] }
             return reveal(from: p, cause: .return)
         case .command(.reveal), .command(.toggle):
             return explicitReveal(from: p)

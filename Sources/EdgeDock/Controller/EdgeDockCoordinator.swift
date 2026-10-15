@@ -152,7 +152,8 @@ public struct DockSurroundings: Sendable, Equatable {
         environmentKey = env
         zoneParameters = parameters
         zones = EdgeGeometry.zones(env, parameters)
-        evaluator.reset()
+        // Tell the machine what the reset cleared; the next pointer sample re-derives it.
+        controller.send(evaluator.reset())
     }
 
     // MARK: PointerSampleSink

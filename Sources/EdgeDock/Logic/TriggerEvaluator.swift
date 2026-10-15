@@ -95,13 +95,21 @@ public struct TriggerEvaluator: Sendable {
     }
 
     /// Forget membership (after a geometry rebuild the next sample re-derives it).
-    public mutating func reset() {
+    /// Returns the events that clearing implies (`zoneLeft`, `pointerInside(false)`), so the
+    /// machine never keeps a stale "inside" (PR #7 review item 3). The next sample re-derives
+    /// membership against the new zones.
+    @discardableResult
+    public mutating func reset() -> [RevealEvent] {
+        var events: [RevealEvent] = []
+        if currentZone != nil { events.append(.zoneLeft) }
+        if inside { events.append(.pointerInside(false)) }
         currentZone = nil
         inside = false
         pushAccumulated = 0
         pushFired = false
         bandEnteredAt = nil
         recent.removeAll(keepingCapacity: true)
+        return events
     }
 
     /// Speed from position and timestamp across the trailing window. Global monitors receive

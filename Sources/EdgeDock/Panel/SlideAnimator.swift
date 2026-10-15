@@ -17,6 +17,8 @@ import QuartzCore
     private var completion: (@MainActor (UInt64) -> Void)?
     private var activeGeneration: UInt64?
     private var activeKind = "none"
+    private var activeTarget: AnimationRequest.Target = .hidden
+    private static let generationKey = "dedock.generation"
     private var displayLink: CADisplayLink?
     private let frameLog = DedockEnvironment.current.frameLog
 
@@ -31,14 +33,25 @@ import QuartzCore
         super.init()
     }
 
-    /// Update the geometry after a relayout, keeping the current progress.
+    /// Update the geometry after a relayout. At rest the current progress is kept. If a slide is
+    /// in flight it is completed at its target and its generation reported, so the reveal machine
+    /// never waits for an `animationFinished` that would otherwise never come (PR #7 review item 1).
     public func update(edge: ScreenEdge, hiddenOffset: CGVector, reduceMotion: Bool) {
         let p = presentationProgress
+        let pending = activeGeneration.flatMap { g in completion.map { (g, $0) } }
+        completion = nil
+        activeGeneration = nil
+        layer.removeAnimation(forKey: Self.key)
         self.edge = edge
         self.hiddenOffset = hiddenOffset
         self.reduceMotion = reduceMotion
-        layer.removeAnimation(forKey: Self.key)
-        apply(progress: p)
+        if let (generation, done) = pending {
+            apply(progress: activeTarget == .shown ? 1 : 0)
+            stopFrameLog()
+            done(generation)
+        } else {
+            apply(progress: p)
+        }
     }
 
     // MARK: RevealAnimating
@@ -77,6 +90,8 @@ import QuartzCore
         }
         animation.duration = duration
         animation.delegate = self
+        // Tag the animation, so a late stop from a replaced one never completes this generation.
+        animation.setValue(NSNumber(value: request.generation), forKey: Self.generationKey)
         animation.isRemovedOnCompletion = true
 
         let fadePath = reduceMotion || request.curve == .fade
@@ -92,6 +107,7 @@ import QuartzCore
 
         self.completion = completion
         activeGeneration = request.generation
+        activeTarget = request.target
         let kind = fadePath ? (request.target == .shown ? "fadeIn" : "fadeOut") : (request.target == .shown ? "reveal" : "hide")
         activeKind = kind
 
@@ -183,8 +199,9 @@ import QuartzCore
 
 extension SlideAnimator: CAAnimationDelegate {
     public nonisolated func animationDidStop(_ anim: CAAnimation, finished flag: Bool) {
+        let tag = (anim.value(forKey: "dedock.generation") as? NSNumber)?.uint64Value
         MainActor.assumeIsolated {
-            guard flag, let generation = activeGeneration, let done = completion else { return }
+            guard flag, let generation = activeGeneration, let done = completion, tag == generation else { return }
             completion = nil
             activeGeneration = nil
             let at = translationAlongNormal(presentationProgress)
