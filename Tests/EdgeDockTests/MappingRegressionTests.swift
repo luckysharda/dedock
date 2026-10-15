@@ -129,6 +129,22 @@ import Testing
         #expect(dark.labelFill != aqua.labelFill)
     }
 
+    /// A style change logs `settings.changed key=dd.dock.style value=<style>` (E2E contract).
+    @Test func styleChangeIsReportedOnce() {
+        let old = DedockDocument.makeDefault()
+        var new = old
+        #expect(EdgeDockManager.settingChanges(from: old, to: new).isEmpty)
+        new.docks[0].appearance.style = .lightGlass
+        let changes = EdgeDockManager.settingChanges(from: old, to: new)
+        #expect(changes.count == 1)
+        #expect(changes.first?.key == "dd.dock.style")
+        #expect(changes.first?.value == "lightGlass")
+        #expect(changes.first?.scenario == old.docks[0].scenario)
+        new.docks[0].appearance.size = .l          // other keys are not reported here
+        new.docks[0].appearance.style = old.docks[0].appearance.style
+        #expect(EdgeDockManager.settingChanges(from: old, to: new).isEmpty)
+    }
+
     @Test func geometryNamesTheCapsuleMaterial() {
         #expect(EdgeDockManager.materialName(.hudWindow) == "hudWindow")
         #expect(EdgeDockManager.materialName(.popover) == "popover")

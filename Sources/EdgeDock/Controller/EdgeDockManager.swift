@@ -24,6 +24,8 @@ import SettingsStore
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
     private var appearanceObservation: NSKeyValueObservation?
+    /// The document as of the last settings notification (for `settings.changed`).
+    private var lastDocument: DedockDocument
     private var edgeReadyLogged = false
     /// Set once edge sensing is live (end of init), independent of any pointer activity.
     public private(set) var edgeReadyMs: Int?
@@ -44,6 +46,7 @@ import SettingsStore
     public init(settings: SettingsModel, topology: DisplayTopology, hub: PointerHub,
                 clock: any Clock<Duration> = ContinuousClock(), dataDirectory: URL, notices: LaunchNotices? = nil) {
         self.settings = settings
+        lastDocument = settings.document
         self.topology = topology
         self.hub = hub
         self.clock = clock
@@ -54,7 +57,10 @@ import SettingsStore
             self?.sync(reason: "displays")
             self?.fullscreen.check()
         }
-        settingsObserver = settings.addObserver { [weak self] _ in self?.sync(reason: "settings") }
+        settingsObserver = settings.addObserver { [weak self] _ in
+            self?.logSettingChanges()
+            self?.sync(reason: "settings")
+        }
         // Only top-edge zones avoid status items; side and bottom docks are left alone.
         fullscreen.onStatusItemsChange = { [weak self] in self?.sync(reason: "statusItems", updating: { $0.config.edge == .top }) }
         fullscreen.onChange = { [weak self] changed in
@@ -202,6 +208,23 @@ import SettingsStore
                                         style: tokens.style.rawValue, material: Self.materialName(tokens.blurMaterial))
         }
         geometryWriter.write(layout: topology.layout, docks: docks)
+    }
+
+    /// `settings.changed` lines (E2E contract) for the keys the harness tracks, between two documents.
+    static func settingChanges(from old: DedockDocument, to new: DedockDocument) -> [(key: String, value: String, scenario: String)] {
+        let before = Dictionary(old.docks.map { ($0.id, $0.appearance.style) }, uniquingKeysWith: { a, _ in a })
+        return new.docks.compactMap { dock in
+            guard let was = before[dock.id], was != dock.appearance.style else { return nil }
+            return ("dd.dock.style", dock.appearance.style.rawValue, dock.scenario)
+        }
+    }
+
+    private func logSettingChanges() {
+        let doc = settings.document
+        for change in Self.settingChanges(from: lastDocument, to: doc) {
+            DedockLog.event(.settings, "settings.changed", ["key": change.key, "value": change.value, "scenario": change.scenario])
+        }
+        lastDocument = doc
     }
 
     /// GEOM's `material` value: the blur material's name, or `solid` under Reduce Transparency.
