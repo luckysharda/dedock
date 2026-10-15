@@ -291,7 +291,13 @@ for t in g['docks'][0]['tiles']:
   local pts=($(python3 -c "
 import json, sys; d = json.load(open(sys.argv[1]))['docks'][0]; x, y, w, h = d['capsule']['topLeft']; e = d['edge']
 tx, ty = float(sys.argv[2]), float(sys.argv[3])
-al = int(y + h / 2) if e in ('left', 'right') else int(x + w / 2)
+# reveal at the middle of the widest trigger-zone strip (beside the native Dock on the bottom)
+zs = [z['rect']['topLeft'] for z in d.get('zones', [])]
+if zs:
+    z = max(zs, key=lambda r: r[3] if e in ('left', 'right') else r[2])
+    al = int(z[1] + z[3] / 2) if e in ('left', 'right') else int(z[0] + z[2] / 2)
+else:
+    al = int(y + h / 2) if e in ('left', 'right') else int(x + w / 2)
 o = {'left': (x + w + 4, ty), 'right': (x - 4, ty), 'bottom': (tx, y - 4), 'top': (tx, y + h + 4)}[e]
 a = {'left': (x + w + 400, ty), 'right': (x - 400, ty), 'bottom': (tx, y - 400), 'top': (tx, y + h + 400)}[e]
 print(e, al, *o, *a)" $R/data/e2e/geometry.json ${first[2]} ${first[3]}))

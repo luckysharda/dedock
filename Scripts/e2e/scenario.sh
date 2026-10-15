@@ -59,11 +59,11 @@ case $side in
   *) echo "side must be L, R, B or T" >&2; exit 2 ;;
 esac
 if [[ -f ${GEOM:-/nonexistent} ]]; then
-  read along in_x in_y nozone <<<$(python3 - $GEOM $edge $along $in_x $in_y <<'EOF'
+  read along in_x in_y nozone depth <<<$(python3 - $GEOM $edge $along $in_x $in_y <<'EOF'
 import json, sys
 g, edge, al, ix, iy = json.load(open(sys.argv[1])), sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
 d = next((d for d in g.get("docks", []) if d.get("edge") == edge), None)
-nozone = 0
+nozone, depth = 0, 120
 if d and "capsule" in d:
     x, y, w, h = d["capsule"]["topLeft"]
     off = 16 + 60                                        # outside capsule + hysteresis
@@ -84,7 +84,12 @@ if d and "capsule" in d:
     else:
         al = ix = mid
         iy = int(y - off) if edge == "bottom" else int(y + h + off)
-print(al, ix, iy, nozone)
+    # x-06 crossing amplitude: past the capsule's far side + 16 pt hysteresis + 30 pt, measured from
+    # the screen edge (the top capsule sits below the menu bar, so a fixed 120 pt never left it).
+    sw, sh = max(s["frame"]["topLeft"][0] + s["frame"]["topLeft"][2] for s in g["screens"]), max(s["frame"]["topLeft"][1] + s["frame"]["topLeft"][3] for s in g["screens"])
+    far = {"left": x + w, "right": sw - x, "top": y + h, "bottom": sh - y}[edge]
+    depth = int(far + 16 + 30)
+print(al, ix, iy, nozone, depth)
 EOF
 )
 fi
@@ -130,7 +135,7 @@ settle=$(( hide + 180 + 400 ))   # wait for a full hide before the next trial
           # inbound leg reverses it. Prime with a dwell reveal.
           if (( hide != 0 )); then echo "x-06 needs a run launched with --set 'docks[0].reveal.hideDelayMs=0'" >&2; exit 2; fi
           echo "mark prime"; echo "edge $edge $along"; echo "wait $(( show + 400 ))"
-          echo "mark crossings"; echo "crossings $edge $along 20 2000 120 $seed"; echo "glide $in_x $in_y 60"; echo "wait $settle" ;;
+          echo "mark crossings"; echo "crossings $edge $along 20 2000 ${depth:-120} $seed"; echo "glide $in_x $in_y 60"; echo "wait $settle" ;;
     perf-move) echo "mark circles"; echo "circles $(( W / 2 )) $(( H / 2 )) 150 60 60" ;;
     *) echo "unknown scenario $scn" >&2; exit 2 ;;
   esac

@@ -205,11 +205,18 @@ func cmdTiming(_ ev: [Event], _ o: [String: Double]) {
 
     // Hide delay.
     var hideErr: [Double] = [], cancelled = 0
+    // Measured only when the hide timer starts AT the armingHide transition (cause=leave). If the
+    // pointer left while the dock was still revealing, the timer started at that earlier leave and
+    // armingHide only follows at animationEnd (top edge: 300 ms dwell), so armingHide→hiding is
+    // shorter than the delay by design: not a lateness sample.
+    var leftWhileRevealing = 0
     for a in tr where a.kv["to"] == "armingHide" {
         guard let end = next(after: a.ms, where: { $0.kv["from"] == "armingHide" }) else { continue }
+        if a.kv["cause"] != "leave" { if end.kv["to"] == "hiding" { leftWhileRevealing += 1 }; continue }
         if end.kv["to"] == "hiding" && end.kv["cause"] == "hideDelay" { hideErr.append(end.ms - a.ms - hide) }
         else if end.kv["to"] == "shown" { cancelled += 1 }
     }
+    if leftWhileRevealing > 0 { print("INFO hide delay: \(leftWhileRevealing) hide(s) after leaving during the reveal (timer started at the leave; not timed)") }
     if !hideErr.isEmpty {
         metric("hide_late_p95_ms", pct(hideErr, 0.95))
         gate(pct(hideErr, 0.95) <= tol && hideErr.allSatisfy { $0 > -2 }, "hide delay",

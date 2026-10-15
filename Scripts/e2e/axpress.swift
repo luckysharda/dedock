@@ -52,9 +52,11 @@ if a[0] == "menu" || a[0] == "menu-cancel" {
     guard let bar: AXUIElement = attr(AXUIElementCreateApplication(pid), "AXExtrasMenuBar"),
           let items: [AXUIElement] = attr(bar, kAXChildrenAttribute), let item = items.first else { fail("no status item for pid \(pid)") }
     if a[0] == "menu" {
+        // Opening a menu-bar item's menu blocks in menu tracking, so AXPress commonly returns
+        // kAXErrorCannotComplete (-25204) although the menu IS open; the caller verifies the menu window.
         let r = AXUIElementPerformAction(item, kAXPressAction as CFString)
-        guard r == .success else { fail("AXPress on the status item failed: \(r.rawValue)") }
-        print("opened the status-item menu"); exit(0)
+        guard r == .success || r == .cannotComplete else { fail("AXPress on the status item failed: \(r.rawValue)") }
+        print(r == .success ? "opened the status-item menu" : "pressed the status item (AX: cannot complete, as during menu tracking)"); exit(0)
     }
     let menus: [AXUIElement] = attr(item, kAXChildrenAttribute) ?? []
     guard let menu = menus.first else { print("no open menu"); exit(0) }

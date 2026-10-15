@@ -398,6 +398,14 @@ sleep 0.3; cp $T/g-none.json $B/runs/selftest-nozone/data/e2e/geometry.json
 Scripts/e2e/scenario.sh selftest-nozone B x-01 n=1 dry=1 > $T/nozone.txt 2>&1; echo $? > $T/nozone.rc
 Scripts/e2e/teardown.sh selftest-nozone > /dev/null 2>&1
 check "x-18 scenario: no trigger zone in GEOM gives a FAIL report (exit 1), never a probe" "[[ \$(cat $T/nozone.rc) == 1 ]] && grep -q 'FAIL trigger zone: GEOM has no zone on the bottom edge' $T/nozone.txt && grep -q 'VERDICT FAIL x-01 bottom' $T/nozone.txt"
+# hide delay: an armingHide that follows the reveal's animationEnd (the pointer left while revealing)
+# is not a lateness sample; a normal leave still is
+{ print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":1000000000,"category":"reveal","eventMessage":"reveal.transition edge=top from=revealing to=armingHide cause=animationEnd inh=-"}'
+  print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":1008600000,"category":"reveal","eventMessage":"reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-"}'
+  print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":2000000000,"category":"reveal","eventMessage":"reveal.transition edge=top from=shown to=armingHide cause=leave inh=-"}'
+  print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":2009600000,"category":"reveal","eventMessage":"reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-"}' } > $T/hide-reveal.ndjson
+$B/analyze timing $T/hide-reveal.ndjson show=300 hide=400 > $T/hide-reveal.txt 2>&1
+check "hide delay: a hide after leaving during the reveal is not timed; a normal leave is" "grep -q 'INFO hide delay: 1 hide' $T/hide-reveal.txt && grep -q 'PASS hide delay: n=1' $T/hide-reveal.txt"
 check "scenario dry run" "Scripts/e2e/launch.sh selftest-dry --bin $B/fake-dock >/dev/null && Scripts/e2e/scenario.sh selftest-dry L x-01 n=2 dry=1 | grep -q 'edge left' ; Scripts/e2e/teardown.sh selftest-dry >/dev/null"
 
 echo
