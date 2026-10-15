@@ -23,6 +23,31 @@ import Testing
         send(false, 100)        // release, still at the edge: re-arm
         #expect(m.phase == .arming(.wall))
     }
+
+    /// REG-064: opening Settings revealed the dock explicitly, which waits for a first pointer
+    /// visit (S-13), so after Settings closed with the pointer away the dock stayed shown.
+    /// Releasing the `editing` hold now returns the dock to normal behaviour.
+    @Test("REG-064: closing Settings with the pointer away hides the dock after the hide delay")
+    func reg064() {
+        var m = RevealStateMachine()
+        _ = m.handle(.hold(.editing, true), progress: 0)             // Settings opens
+        _ = m.handle(.command(.reveal), progress: 0)
+        _ = m.handle(.animationFinished(generation: m.activeGeneration!), progress: 1)
+        #expect(m.phase == .shown)
+        let close = m.handle(.hold(.editing, false), progress: 1)    // Settings closes, pointer away
+        #expect(m.phase == .armingHide)
+        #expect(close.contains { if case .startTimer(.hide, _) = $0 { true } else { false } })
+        _ = m.handle(.timerFired(.hide), progress: 1)
+        #expect(m.phase == .hiding)
+
+        // Other holds keep S-13: an explicit reveal still waits for the first visit.
+        var n = RevealStateMachine()
+        _ = n.handle(.command(.reveal), progress: 0)
+        _ = n.handle(.animationFinished(generation: n.activeGeneration!), progress: 1)
+        _ = n.handle(.hold(.menuOpen, true), progress: 1)
+        _ = n.handle(.hold(.menuOpen, false), progress: 1)
+        #expect(n.phase == .shown)
+    }
 }
 
 @Suite struct DebugCommandTests {
