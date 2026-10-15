@@ -161,6 +161,27 @@ for r in rows:
 open(sys.argv[1], 'w').write(''.join(json.dumps(r) + '\\n' for r in rows))" $T/cua-tiny/tree.jsonl
 python3 Scripts/e2e/cua-eval.py $T/cua-tiny Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-tiny.txt
 check "cua-eval: C3 fails on a degenerate (2x2) AX tile frame" "grep -q \$'^cua C3 tiles in AX tree L\t0' $T/cua-tiny.txt"
+# REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
+check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
+rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id
+python3 -c "
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+for r in rows:
+    if r.get('depth') == 0 and r.get('role') == 'AXWindow': r['subrole'] = 'AXFloatingWindow'; r['label'] = 'Edge Dock'
+open(sys.argv[1], 'w').write(''.join(json.dumps(r) + '\\n' for r in rows))" $T/cua-id/tree.jsonl
+python3 Scripts/e2e/cua-eval.py $T/cua-id Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-id.txt
+check "cua-eval: REG-056 passes with AXFloatingWindow 'Edge Dock'" "grep -q \$'^cua C1 REG-056 panel AX identity L\t1' $T/cua-id.txt"
+# log-order (REG-057 notices, REG-059): in order passes; notice before the dock, missing, other pid fail
+lo() { print -r -- "{\"subsystem\":\"app.dedock.Dedock\",\"processID\":${2:-5},\"eventMessage\":\"$1\"}" }
+{ lo 'settings.recovered source=backup'; lo 'launch.edgeReady ms=300'; lo 'settings.notice kind=recovered' } > $T/lo-good.ndjson
+{ lo 'settings.recovered source=backup'; lo 'settings.notice kind=recovered'; lo 'launch.edgeReady ms=9000' } > $T/lo-modal.ndjson
+{ lo 'settings.recovered source=backup' 6; lo 'launch.edgeReady ms=300' 6; lo 'settings.notice kind=recovered' 6 } > $T/lo-other.ndjson
+LOP=('^settings[.]recovered' '^launch[.]edgeReady' '^settings[.]notice .*kind=recovered')
+check "log-order: launch notices in order pass" "python3 Scripts/e2e/log-order.py $T/lo-good.ndjson pid=5 \$LOP | grep -q '^1 '"
+check "log-order: a notice before launch.edgeReady fails (REG-057)" "python3 Scripts/e2e/log-order.py $T/lo-modal.ndjson pid=5 \$LOP | grep -q '^0 missing'"
+check "log-order: another process's lines do not count" "python3 Scripts/e2e/log-order.py $T/lo-other.ndjson pid=5 \$LOP | grep -q '^0 '"
+check "log-order: unreadable log fails closed" "python3 Scripts/e2e/log-order.py $T/no-such.ndjson '^x' | grep -q '^0 log unreadable'"
 $B/axprobe at 960 540 only=1 > $T/axp.json 2>&1
 check "REG-041 axprobe never records another app's AX text" "python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not (d.get('other_app') is True and d.get('label')=='' and d.get('role')=='' and 'app' not in d))\" $T/axp.json"
 
@@ -267,6 +288,7 @@ Scripts/e2e/regress.sh run $FA id=selftest-full edges= idle=0 > $T/full.txt 2>&1
 check "REG-052 exit code 1 (gate failed) is a healthy tool run" "grep -q '\"tool\":\"analyze X\",\"rc\":1,\"ok\":true' $B/runs/selftest-full/tools.jsonl && ! grep -q 'FAIL tool analyze' $T/full.txt"
 check "REG-055 self-test run lists the hand-off check and SKIPs it (no input posted)" "grep -qx 'REG-055 no pointer hand-off' $B/runs/selftest-full/expected.txt && grep -q '\"id\": \"REG-055 no pointer hand-off\", \"ok\": false, \"skip\": true' $B/runs/selftest-full/checks.jsonl"
 check "REG-050 a completed run leaves nothing running" "! kill -0 \$(sed -n 's/^APP_PID=//p' $B/runs/selftest-full-X/run.env) 2>/dev/null"
+check "REG-057 rows run: corrupt layout written, notice + REG-006 rows recorded, the reveal row SKIPs (no input)" "! python3 -c 'import json,sys; json.load(open(sys.argv[1]))' $B/runs/selftest-full-C/data/layout.json 2>/dev/null && [[ \$(grep -cE '\"id\": \"(REG-057 (corrupt|unreadable) layout|REG-006 [CU])' $B/runs/selftest-full/checks.jsonl) == 5 ]] && grep -q '\"id\": \"REG-057 corrupt layout: dock reveals while the alert is up\", \"ok\": false, \"skip\": true' $B/runs/selftest-full/checks.jsonl && ! kill -0 \$(sed -n 's/^APP_PID=//p' $B/runs/selftest-full-C/run.env) \$(sed -n 's/^APP_PID=//p' $B/runs/selftest-full-U/run.env) 2>/dev/null"
 # REG-055 (review of #22): pointer sharing ON → refuse before any input, no run dir; allow → runs, recorded
 rm -rf $B/runs/selftest-ps*
 $B/listen 6 > $T/ps-listen.txt & pl=$!

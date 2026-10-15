@@ -9,6 +9,8 @@
 #     --set <path>=<json>    patch the seeded layout, e.g. --set 'docks[0].edge="right"'
 #                            --set 'docks[0].reveal.showDwellMs=120' (repeatable)
 #     --frame-log            also set DEDOCK_FRAME_LOG=1
+#     --corrupt-layout       replace layout.json with invalid JSON (REG-036/REG-057 recovery path)
+#     --unreadable-layout    make layout.json unreadable (chmod 000; REG-057 read-only path)
 #     --timeout <s>          wait this long for launch.edgeReady (default 5)
 #
 # Creates build/e2e/runs/<run-id>/ in the harness worktree:
@@ -23,7 +25,7 @@ set -euo pipefail
 
 HARNESS=${0:A:h:h:h}
 run=${1:?usage: launch.sh <run-id> [options]}; shift
-app=${DEDOCK_APP_WORKTREE:-} bin= seed= noseed=0 frame=0 timeout=5
+app=${DEDOCK_APP_WORKTREE:-} bin= seed= noseed=0 frame=0 timeout=5 corrupt=0 unreadable=0
 sets=()
 while (( $# )); do
   case $1 in
@@ -33,6 +35,8 @@ while (( $# )); do
     --no-seed) noseed=1; shift ;;
     --set) sets+=$2; shift 2 ;;
     --frame-log) frame=1; shift ;;
+    --corrupt-layout) corrupt=1; shift ;;
+    --unreadable-layout) unreadable=1; shift ;;
     --timeout) timeout=$2; shift 2 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
@@ -101,6 +105,13 @@ for p in patches:
             else: node = node.setdefault(part, [] if nxt.startswith("[") else {})
 json.dump(doc, open(path, "w"), indent=2)
 EOF
+fi
+
+# Broken layouts for the launch-notice paths (REG-057): after seeding, before the app starts.
+(( corrupt )) && print -r -- '{ "schema": 1, "docks": [ not json' > $R/data/layout.json
+if (( unreadable )); then
+  [[ -f $R/data/layout.json ]] || echo '{}' > $R/data/layout.json
+  chmod 000 $R/data/layout.json
 fi
 
 # Log capture first, so launch.edgeReady is not missed. (/usr/bin/log: zsh has a `log` builtin.)

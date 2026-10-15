@@ -116,10 +116,12 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
 # any that is missing, and every tool's exit code is recorded (tools.jsonl, "tool health").
 {
   print -l "x-00 UIElement" "x-00 status item" "x-00 no permission prompt" "x-00 starts hidden" "REG-026 first launch" \
-           "REG-043 X" "REG-018 X" "REG-014 X" "contract X" "REG-006 X"
+           "REG-043 X" "REG-018 X" "REG-059 X" "REG-014 X" "contract X" "REG-006 X" \
+           "REG-057 corrupt layout: dock up, notice after, no input" "REG-057 corrupt layout: dock reveals while the alert is up" "REG-006 C" \
+           "REG-057 unreadable layout: dock up read-only, notice after, no input" "REG-006 U"
   for t in $edge_list; do
-    print -l "geom $t (REG-013 …)" "REG-043 $t" "REG-018 $t" "REG-014 $t" "contract $t" "REG-006 $t" "REG-006 ${t}0" \
-             "cua C1 panel window $t" "cua C2 cua-driver sees tiles $t" "cua C3 tiles in AX tree $t" "cua C3 REG-040 tiles are buttons $t" \
+    print -l "geom $t (REG-013 …)" "REG-043 $t" "REG-018 $t" "REG-059 $t" "REG-014 $t" "contract $t" "REG-006 $t" "REG-006 ${t}0" \
+             "cua C1 panel window $t" "cua C1 REG-056 panel AX identity $t" "cua C2 cua-driver sees tiles $t" "cua C3 tiles in AX tree $t" "cua C3 REG-040 tiles are buttons $t" \
              "cua C3 REG-040 tiles pressable $t" "cua C4 status item $t" "cua C5 non-activating $t" "cua C6 click-through while hidden $t" \
              "cua C7 shown tile takes the hit $t" "cua C7 tile cell edge stays in the dock $t" "cua C7 4 pt outside passes through $t" "cua C8 settings labelled $t"
     for scn in x-01 x-02 x-03 x-04 x-05a x-05b x-06; do print -r -- "$t.$scn-$t"; done
@@ -207,6 +209,9 @@ ready = [i for i, n in enumerate(names) if n == "launch.edgeReady"]
 prep = [i for i, n in enumerate(names) if n in ("layout.pass", "docks.sync")]
 ok18 = len(ready) == 1 and prep and min(prep) < ready[0]
 print(f"REG-018 {int(bool(ok18))} launch.edgeReady x{len(ready)}, after layout.pass/docks.sync: {bool(prep and ready and min(prep) < ready[0])}; launch.firstArm x{names.count('launch.firstArm')}")
+syncs = [e for e in ev if e.startswith("docks.sync ")]
+first = next((kv for kv in (syncs[0].split() if syncs else []) if kv.startswith("reason=")), "none")
+print(f"REG-059 {int(first == 'reason=launch')} first docks.sync after launch: {first} (exp reason=launch)")
 try:
     tiles = {t.get("bundleId") or t.get("bundleID") for d in json.load(open(geom))["docks"] for t in d["tiles"]}
 except (OSError, ValueError, KeyError):
@@ -316,7 +321,7 @@ if launch $X --app $app --no-seed --timeout 8 > $B/runs/$id/launch-X.txt 2>&1 &&
   pid=$(sed -n 's/^APP_PID=//p' $B/runs/$X/run.env)
   check "x-00 UIElement" $(lsappinfo info -only ApplicationType -app $pid 2>/dev/null | grep -q UIElement && echo 1 || echo 0) "no Dock icon (LSUIElement)"
   si=$(osascript -e "tell application \"System Events\" to tell (first process whose unix id is $pid) to get description of every menu bar item of menu bar 1" 2>/dev/null)
-  check "x-00 status item" $([[ $si == *dedock* ]] && echo 1 || echo 0) "status item: ${si:-none}"
+  check "x-00 status item" $([[ ${si:l} == *dedock* ]] && echo 1 || echo 0) "status item: ${si:-none}"   # any case: the UI name becomes "Dedock"
   if ! command -v cua-driver >/dev/null; then
     check "x-00 no permission prompt" 0 "cua-driver not installed: cannot check"
   else
@@ -355,6 +360,52 @@ PY
 else
   check "x-00 launch" 0 "app did not reach launch.edgeReady (see build/e2e/runs/$id/launch-X.txt)"
 fi
+
+# REG-057: a broken layout.json must not block the launch on a modal alert. The dock comes up
+# (launch.edgeReady) with NO input, and the notice is posted after it. Corrupt → recovered from the
+# seed; unreadable → runs read-only. The alert stays on screen (the app's own window, never clicked);
+# teardown quits the app.
+# While the recovery alert is on screen, an x-01-style reveal (pointer to the edge, dwell) must still
+# work: a modal run loop can stall default-mode work (review of #23/#24). Fails closed when the
+# alert is not on screen (then nothing was proven).
+alert_reveal() {  # alert_reveal <sub-run> <pid>
+  local S=$1 spid=$2 cid="REG-057 corrupt layout: dock reveals while the alert is up"
+  if (( selftest )); then check "$cid" skip "self-test mode posts no input"; return; fi
+  local G=$B/runs/$S/data/e2e/geometry.json
+  local alerts=$($B/axprobe windows $spid | python3 -c "import json,sys; print(sum(1 for l in sys.stdin if l.strip() and (w := json.loads(l))['onscreen'] and w['layer'] != 24 and w['w'] > 50))" 2>/dev/null || echo 0)
+  local pts=($(python3 -c "import json;d=json.load(open('$G'))['docks'][0];x,y,w,h=d['capsule']['topLeft'];L=d['edge']=='left';print(d['edge'], int(y+h/2), x+w+400 if L else x-400)" 2>/dev/null))
+  if (( ${#pts} != 3 )); then check "$cid" 0 "no GEOM for the recovered dock"; return; fi
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
+  print -l "edge ${pts[1]} ${pts[2]}" "wait 700" > $B/runs/$S/reveal.txt
+  $B/pointer -q script $B/runs/$S/reveal.txt
+  sleep 0.2
+  local r=$(python3 $E/log-order.py $B/runs/$S/log.ndjson pid=$spid '^settings[.]notice .*kind=recovered' '^reveal[.]transition .*to=shown' 2>/dev/null || echo "0 log-order did not run")
+  $B/pointer -q move ${pts[3]} ${pts[2]}   # leave, so the dock hides before teardown
+  sleep 0.5
+  check "$cid" $(( ${r%% *} == 1 && alerts >= 1 )) "alert windows on screen: $alerts; ${r#* }"
+}
+
+notice_run() {  # notice_run <tag> <launch flag> <check id> <regex…>
+  local tag=$1 flag=$2 cid=$3; shift 3
+  local S=$id-$tag
+  if launch $S --app $app $flag --timeout 8 > $B/runs/$id/launch-$tag.txt 2>&1 && launched $B/runs/$id/launch-$tag.txt; then
+    local spid=$(sed -n 's/^APP_PID=//p' $B/runs/$S/run.env) r
+    for i in {1..30}; do grep -q '"eventMessage":"settings.notice' $B/runs/$S/log.ndjson && break; sleep 0.1; done
+    sleep 0.3
+    r=$(python3 $E/log-order.py $B/runs/$S/log.ndjson pid=$spid "$@" 2>/dev/null || echo "0 log-order did not run")
+    check "$cid" ${r%% *} "${r#* }"
+    [[ $tag == C ]] && alert_reveal $S $spid
+  else
+    check "$cid" 0 "app did not reach launch.edgeReady within 8 s without input (a modal alert before the dock?): see build/e2e/runs/$id/launch-$tag.txt"
+  fi
+  teardown_check $S; check "REG-006 $tag" $(( $? == 0 )) "native Dock prefs unchanged"
+  chmod 644 $B/runs/$S/data/layout.json 2>/dev/null   # keep the run dir readable after the read-only case
+}
+notice_run C --corrupt-layout "REG-057 corrupt layout: dock up, notice after, no input" \
+  '^settings\.recovered' '^launch\.edgeReady' '^settings\.notice .*kind=recovered'
+notice_run U --unreadable-layout "REG-057 unreadable layout: dock up read-only, notice after, no input" \
+  '^settings\.readFailed' '^launch\.edgeReady' '^settings\.notice .*kind=readOnly'
 
 for tag in $edge_list; do
   side=$tag; [[ $tag == R ]] && set_edge=(--set 'docks[0].edge="right"') || set_edge=()

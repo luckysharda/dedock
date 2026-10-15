@@ -18,12 +18,14 @@ ws = [w for w in rows(f"{C}/windows.jsonl") if w["w"] > 50 and w["h"] > 50]
 px, py, pw, ph = d["panel"]["topLeft"]
 ok = len(ws) == 1 and ws[0]["layer"] == 24 and ws[0]["onscreen"] and all(abs(a - b) <= 0.5 for a, b in zip((ws[0]["x"], ws[0]["y"], ws[0]["w"], ws[0]["h"]), (px, py, pw, ph)))
 tree = rows(f"{C}/tree.jsonl")
-# REG-056 (reported, not yet gated): the panel's AX window subrole and label. AXSystemDialog reads
-# as "system dialog". The fix pins subrole AXFloatingWindow and description "Edge Dock"; this becomes
-# a gate on those values once the fix lands.
+# REG-056: the panel's AX identity. It reported AXSystemDialog (VoiceOver: "system dialog") with no
+# name; the fix pins role AXWindow, subrole AXFloatingWindow, description "Edge Dock".
+PANEL_SUBROLE, PANEL_LABEL = "AXFloatingWindow", "Edge Dock"
 wins = [e for e in tree if e.get("depth") == 0 and e.get("role") == "AXWindow"]
 wsub = sorted({f"{e.get('subrole') or '-'} '{e.get('label', '')}'" for e in wins})
-chk("C1 panel window", ok, f"{len(ws)} window(s); layer {ws[0]['layer'] if ws else '-'} (exp 24); frame {[ws[0][k] for k in ('x','y','w','h')] if ws else '-'} vs GEOM {[px,py,pw,ph]}; AX window subrole/label {', '.join(wsub) or '-'} (REG-056; exp AXFloatingWindow 'Edge Dock' once fixed)")
+chk("C1 panel window", ok, f"{len(ws)} window(s); layer {ws[0]['layer'] if ws else '-'} (exp 24); frame {[ws[0][k] for k in ('x','y','w','h')] if ws else '-'} vs GEOM {[px,py,pw,ph]}")
+chk("C1 REG-056 panel AX identity", len(wins) == 1 and wins[0].get("subrole") == PANEL_SUBROLE and wins[0].get("label") == PANEL_LABEL,
+    f"AX window subrole/label: {', '.join(wsub) or 'no AXWindow'} (exp AXWindow {PANEL_SUBROLE} '{PANEL_LABEL}')")
 tl = [e for e in tree if e.get("label") in tiles and e.get("depth", 0) >= 1]
 # The AX element may be the icon inside the tile cell (E1: 52 pt icon in a 62x54 cell): require it to
 # lie inside the GEOM tile frame and be centred on it (±2 pt), and report the size difference. Lower
@@ -48,8 +50,8 @@ try:
     chk("C2 cua-driver sees tiles", len(seen) == len(tiles), f"cua-driver get_window_state: {len(els)} elements, {len(seen)}/{len(tiles)} tiles")
 except Exception as ex:
     chk("C2 cua-driver sees tiles", False, f"cua-driver output unreadable: {type(ex).__name__}")
-si = [e for e in tree if e.get("role") == "AXMenuBarItem" and e.get("label") == "dedock"]
-chk("C4 status item", len(si) == 1, f"AXMenuBarItem 'dedock': {len(si)}")
+si = [e for e in tree if e.get("role") == "AXMenuBarItem" and (e.get("label") or "").lower() == "dedock"]  # "dedock" or "Dedock"
+chk("C4 status item", len(si) == 1, f"AXMenuBarItem 'dedock' (any case): {len(si)}")
 fronts = [json.load(open(f"{C}/{f}")) for f in ("front-launch.json", "front-shown.json")]
 chk("C5 non-activating", all(f.get("pid") != pid for f in fronts), "frontmost after launch and with the pointer on a shown tile is not Dedock")
 hid = rows(f"{C}/hit-hidden.jsonl")
