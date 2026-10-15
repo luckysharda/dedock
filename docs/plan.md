@@ -101,7 +101,7 @@ dedock has **zero features today**, so every row is `missing`. One row per featu
 | DD-403, DD-405, DD-407 | Snapping (halves, quarters, center, maximize); menu bar ▸ Window Actions; respect reserved edges | DD, new (reserved edges) | P1 | missing | M7 | 4, 19 |
 | DD-404, DD-406 | Bring window to current Space; snapping shortcuts | DD, new | P2 | missing | M12 | 4 |
 | DD-509 | Shared widget provider runtime (scaffold in M3, full in M9) | new | P0 | missing | M3 / M9 | 5 |
-| DD-501, DD-502, DD-505–DD-507 | Widgets on Dock hover: media widget, calendar widget and selection, widget display mode | DD, CD, Pro | P1 | missing | M9 | 5, 7 |
+| DD-501, DD-502, DD-505–DD-507 | Widgets on Dock hover: media widget (MediaRemote, owner-approved D8 exception, §2.3a), calendar widget and selection, widget display mode | DD, CD, Pro | P1 | missing | M9 | 5, 7 |
 | DD-503, DD-504 | Media widget scrolling; media extras (output picker etc.) | DD | P2 | missing | M12 | 5, 38 |
 | DD-508 | Pin a widget to the screen | DD, Pro | P2 | missing | M12 | 8 |
 | DD-510 | Lyrics and artwork lookups (opt-in, network) | DD, Pro | P2 | missing | M12 | 6 |
@@ -189,26 +189,27 @@ dedock has **zero features today**, so every row is `missing`. One row per featu
 | DD-1012, DD-1013 | Mail unread (Apple Events only); latest note | CD | P2 | missing | M13 | 37 |
 | DD-1014 | Audio output and volume | CD | P1 | missing | M9 | 38 |
 | DD-1015, DD-1017, DD-1018 | Per-app volume; mic mute and level; voice memo | CD | P2 | missing | M13 | 38 |
-| DD-1016 | Background sounds | CD | P3 | missing | deferred: no public API for the system feature; own audio needs licensed assets | 38 |
-| DD-1019 | Floating video preview | CD | P3 | missing | deferred: per-browser scripting; duplicates browser Picture in Picture | 38 |
+| DD-1016 | Background sounds | CD | P2 | missing | M13 (from scratch, §2.3a) | 38 |
+| DD-1019 | Floating video preview | CD | P2 | missing | M12 (from scratch, §2.3a) | 38 |
 | DD-1020, DD-1024 | Network throughput; quick toggles | CD | P1 | missing | M9 | 39 |
-| DD-1021–DD-1023, DD-1025 | Bluetooth batteries; temperature; top apps; keyboard lock | CD | P2 | missing | M13 | 39 |
+| DD-1021–DD-1023 | Bluetooth batteries (AirPods etc.); temperature; top apps (CPU and memory are in DD-973) | CD | P1 | missing | M9, wave 1 (owner, 2026-10-16; §2.3a for the sources) | 39 |
+| DD-1025 | Keyboard lock | CD | P2 | missing | M13 | 39 |
 | DD-1026, DD-1027, DD-1031 | Applications library; Downloads; screenshots | CD | P1 | missing | M9 | 40 |
 | DD-1028–DD-1030, DD-1032–DD-1036 | Recent files; find files; web search; clipboard history; bookmarks; cloud-folder drop; App Switcher tile; Window Manager tile | CD | P2 | missing | M13 | 2, 4, 40 |
 | DD-1037–DD-1042 | Colour picker; converter; calculator; emoji; quick contacts; recent photo | CD | P2 | missing | M13 | 41 |
 | DD-1043 | Weather family (behind the network gate) | CD | P1 | missing | M9 | 42 |
-| DD-1044 | Web widget (URL tile) | CD (inferred) | P3 | missing | deferred: WebKit memory per tile; breaks the network-ledger model | — |
+| DD-1044 | Web widget (URL tile) | CD (inferred) | P2 | missing | M14 (from scratch, §2.3a) | — |
 | DD-1051, DD-1052 | Size classes and variant families; change size in place | CD, new | P1 | missing | M9 | 34 |
 | DD-1053 | Per-tile surface and colour override | CD, Pro | P2 | missing | M13 | 26 |
 | DD-1061, DD-1063–DD-1079, DD-1088 (counts), DD-1092 | Connected-account framework (Keychain only) and providers: Stripe, Polar, Dodo, Lemon Squeezy, Shopify, Plausible, Simple Analytics, DataFast, Dub, Resend, Supabase, GitHub, Linear, stocks, crypto, Claude and Codex meters, YouTube counts, Home Assistant | CD | P2 | missing | M15 | 43, 44, 45 |
-| DD-1062 | Encrypted-file credential store | CD | P3 | missing | deferred: its key would live in the Keychain anyway | 45 |
-| DD-1080–DD-1087 | AI-usage meters: Cursor, Antigravity, GLM/Z.ai, Grok, OpenCode, Copilot, Gemini API, Perplexity | CD | P3 | missing | deferred: no documented personal usage API; scraping breaks and may breach terms | 44 |
-| DD-1088 (Studio), DD-1089, DD-1090, DD-1091 | YouTube Studio; X followers; TikTok followers; Gmail unread | CD | P3 | missing | deferred: OAuth + Google verification; paid X tier; TikTok app review; restricted Gmail scopes | 37, 44 |
-| DD-1093 | Apple Home accessories | CD | P3 | missing | deferred: HomeKit not available to a native AppKit app | 44 |
+| DD-1062 | Encrypted-file credential store | CD | P2 | missing | M15 (from scratch, §2.3a) | 45 |
+| DD-1080–DD-1087 | AI-usage meters: Cursor, Antigravity, GLM/Z.ai, Grok, OpenCode, Copilot, Gemini API, Perplexity | CD | P2 | missing | M15 (from scratch, §2.3a; per-provider sources, owner question) | 44 |
+| DD-1088 (Studio), DD-1089, DD-1090, DD-1091 | YouTube Studio; X followers; TikTok followers; Gmail unread | CD | P2 | missing | M15 (from scratch, §2.3a; external access blockers are owner questions) | 37, 44 |
+| DD-1093 | Apple Home accessories | CD | P2 | missing | M16 (from scratch, §2.3a; HomeKit access is an owner question) | 44 |
 | DD-1101, DD-1103–DD-1105 | Wallpaper browser; wallpaper tile; app-icon style; wallpaper per profile | CD, new | P2 | missing | M16 | 26, 46 |
-| DD-1102 | Bundled 150+ wallpaper library | CD | P3 | missing | deferred: licensed partner content; own library is a business decision (O-1) | 46 |
+| DD-1102 | Wallpaper library, our own content | CD | P2 | missing | M16 (from scratch, §2.3a) | 46 |
 | DD-1111, DD-1112, DD-1114–DD-1116 | MCP server (read) and change levels; URL scheme; Shortcuts actions; Shortcut-runner / Quick Actions tile | CD, new, Pro | P2 | missing | M16 | 23, 55 |
-| DD-1113 | Assistant wallpaper suggestions | CD | P3 | missing | deferred: needs a tagged library and the MCP write path | 46 |
+| DD-1113 | Assistant wallpaper suggestions | CD | P2 | missing | M16 (from scratch, §2.3a) | 46 |
 | DD-1121 | New Message and New Document on app tiles | CD | P1 | missing | M9 | 33 |
 | DD-1122 | New window with a browser profile | CD | P2 | missing | M13 | 33 |
 | DD-1131, DD-1132 | Automatic local snapshots; sync layouts through a folder | new, CD request | P2 | missing | M16 | 22 |
@@ -219,6 +220,32 @@ dedock has **zero features today**, so every row is `missing`. One row per featu
 | DD-1145 | Licence and purchase UX | CD, Pro | P3 | missing | deferred: business model undecided (O-1, decide before M11) | 49 |
 | DD-1146 | Per-permission cards and chips | CD, Pro | P1 | missing | M9 | 20 |
 | DD-1147 | Window tiles in the Edge Dock (pinned windows, minimized windows) | CD, Pro (overlaps DD-1201) | TBD | missing | proposed P2, M13 (decide at M9) | 64 |
+
+### 2.3a From-scratch designs for the formerly deferred CoolDock rows (owner, 2026-10-16)
+
+The owner un-deferred these rows: "take reference, we will build it from scratch". Each is a clean-room design. CoolDock is a **behavioural reference only**: no code, strings, assets or sounds are taken from it (R9). Every network widget sits behind the opt-in network gate (DD-995) and is listed in the privacy ledger (DD-816); credentials live in the Keychain (DD-1061) or the encrypted store (DD-1062); D8 (no private API) holds unless the owner grants an exception. Facts about third-party APIs below are *inferred* and are checked per provider when the milestone starts.
+
+| DD | From-scratch approach | Milestone | Blocker / owner question |
+|---|---|---|---|
+| DD-1016 Background sounds | Sounds synthesized on the Mac with `AVAudioEngine`: white, pink and brown noise, filtered "rain", slow-modulated "surf", a fan hum; per-sound volume and a sleep timer. No recordings, so nothing to license. | M13 | none |
+| DD-1019 Floating video preview | Generic "float a window": pick any window (or a region of it) and show a live `ScreenCaptureKit` stream of it in a small floating, resizable panel; click it to bring the source forward; audio stays with the source. Not tied to one browser, and different from Picture in Picture. | M12 (Screen Recording arrives in M3) | none; needs Screen Recording |
+| DD-1021 Bluetooth batteries | Magic Keyboard, Mouse and Trackpad: `BatteryPercent` in the I/O Registry (public). AirPods and other headsets: battery fields where the public `system_profiler SPBluetoothDataType` output carries them (checked per macOS version). | M9 | Owner (Q-B): public sources only; AirPods appear where the system report carries their levels |
+| DD-1022 Temperature | Public: `ProcessInfo.thermalState` (nominal / fair / serious / critical) as a four-step gauge. Degrees need SoC sensor reads that are private API. | M9 | Owner (Q-A): the four-step gauge only; no degrees; D8 kept |
+| DD-1023 Top apps | Per-process CPU and memory from `libproc` (public), sampled only while the widget is visible. | M9 | none |
+| DD-1044 Web widget | A `WKWebView` tile with: one web tile per dock by default; a non-persistent data store unless the user opts in; no script bridge to Dedock; the page is snapshotted and its process suspended while the dock is hidden; the domain is shown in the network ledger; the tile follows the DD-1371 sandbox rules. | M14 | none |
+| DD-1062 Encrypted store | Credentials in a file sealed with CryptoKit (`ChaChaPoly`); the key comes from a passphrase the user enters (PBKDF2, high iteration count) and is kept in memory only, so the key never lives in the Keychain (the reason it was deferred). Unlock through a sheet in Settings, never a modal session. | M15 | none |
+| DD-1080–DD-1087 AI-usage meters | Three source kinds per provider: (1) **local**: usage files that the provider's own CLI or IDE keeps on this Mac, read from a folder the user picks; (2) **documented API** with the user's own key; (3) neither: a **manual budget meter** plus a deep link to the provider's usage page. No scraping. | M15 | Owner (Q-G): providers with neither get the manual budget meter and a deep link |
+| DD-1088 YouTube Studio | YouTube Analytics with the user's own Google OAuth client (testing mode covers one user). | M15 | Owner (Q-F): the user's own developer app |
+| DD-1089 X followers | X API with the user's own paid key, kept in the Keychain. | M15 | Owner (Q-D): the user's own key; **blocked until the user provides it** |
+| DD-1090 TikTok followers | TikTok's display API with the user's own developer app (sandbox). | M15 | Owner (Q-F): the user's own developer app |
+| DD-1091 Gmail unread | IMAP `STATUS … (UNSEEN)` with a Google app password (no OAuth verification), stored in the Keychain; Mail.app users already get DD-1012. | M15 | Owner (Q-E): IMAP with an app password |
+| DD-1093 Apple Home | Stage 1: actions through the user's own Shortcuts (DD-1115, DD-1116) and state through Home Assistant (DD-1092). Stage 2: a Mac Catalyst helper with the HomeKit entitlement, talking to Dedock over XPC, once the paid Apple Developer account exists (M11). | M16 (stage 1), after M11 (stage 2) | Owner (Q-C): both, staged |
+| DD-1102 Wallpaper library | A procedural generator, rendered on the Mac at the display's resolution: gradients and mesh gradients, noise fields, geometric patterns, each with palette and seed controls; plus original images made for the project. No AI-generated images. | M16 | Owner (Q-H): generator plus original images |
+| DD-1113 Assistant suggestions | Mood, time of day, season and weather map to generator parameters locally (rule-based); through MCP (DD-1111/DD-1112, change level) an assistant can call the generator. Weather input uses the weather family (DD-1043) behind the network gate. | M16 | none |
+
+DD-1142 (replace the native Dock) and DD-1145 (licence UX) stay deferred (owner, Q-I).
+
+**Media widget source (owner, 2026-10-16).** The Now Playing / media widget (DD-501 and the Edge Dock media tile) reads playback state from Apple's private MediaRemote framework so it works with every app. This is an owner-approved exception to D8, scoped to media only: it lives inside `PrivateBridges`, is resolved at runtime and optional, and is listed in the capability table (DD-815). Recent macOS versions restrict MediaRemote to entitled clients, so the plan is: (1) an isolated adapter process that queries MediaRemote through a system-provided runtime permitted to load it (the approach used by open-source adapters), versioned and behind a kill switch; (2) a public fallback when the adapter is unavailable: per-app Apple Events for Music and Spotify (Automation permission, asked only when the user adds the widget); (3) a check on every macOS major version, with the fallback taking over automatically when the adapter fails.
 
 ### 2.4 Pillar D: DockDoor Pro parity
 
@@ -303,14 +330,14 @@ Order: Edge Dock reveal first, then the app shell, then previews, switcher, ⌘T
 | M6 | Previews and switcher completion, ⌘Tab overlay | DD-105, DD-109, DD-111–DD-113, DD-115–DD-117, DD-206–DD-209, DD-215, DD-301–DD-304, DD-306, DD-601, DD-603, DD-604, DD-613, DD-616, DD-617, DD-631–DD-633, DD-652, DD-702, DD-705, DD-706, DD-1237, DD-1343 | ⌘Tab overlay toggles without restart; every listed P1 criterion passes | AP-M5 (part) |
 | M7 | Window actions, snapping and automation | DD-403, DD-405, DD-407, DD-803, DD-810–DD-812, DD-814 | Snapping respects reserved bands; AppleScript returns JSON with `ok`/`reason`; settings search over every row | AP-M5 (part) |
 | M8 | Edge Dock modes and displays | DD-904, DD-910 (Swap, Floating cards), DD-913, DD-914, DD-924 (full), DD-926 (spacing, presets), DD-930, DD-932, DD-942–DD-946, DD-982, DD-983, DD-993, DD-1141 (Pinned/Floating top), DD-1356, DD-801 (Layout menu, Reset Layout) | Swap restores native auto-hide in 20 of 20 kill tests; six docks on two displays keep idle CPU < 0.5 %, RSS ≤ 150 MB | AP-M6 |
-| M9 | Tiles, widgets and editing (+ CoolDock wave 1) | DD-501, DD-502, DD-505–DD-507, DD-509 (full), DD-963, DD-964 (gallery), DD-965, DD-968, DD-971–DD-974, DD-976–DD-978, DD-980, DD-984, DD-995, DD-1002–DD-1006, DD-1010, DD-1011, DD-1014, DD-1020, DD-1024, DD-1026, DD-1027, DD-1031, DD-1043, DD-1051, DD-1052, DD-1121, DD-1143, DD-1146, DD-1223; decide DD-1147 | ≤ 2 wake-ups/s from widgets on two docks; providers paused while hidden | AP-M7 (widgets, editing) |
+| M9 | Tiles, widgets and editing (+ CoolDock wave 1) | DD-501, DD-502, DD-505–DD-507, DD-509 (full), DD-963, DD-964 (gallery), DD-965, DD-968, DD-971–DD-974, DD-976–DD-978, DD-980, DD-984, DD-995, DD-1002–DD-1006, DD-1010, DD-1011, DD-1014, DD-1020, DD-1021–DD-1023, DD-1024, DD-1026, DD-1027, DD-1031, DD-1043, DD-1051, DD-1052, DD-1121, DD-1143, DD-1146, DD-1223; decide DD-1147 | ≤ 2 wake-ups/s from widgets on two docks; providers paused while hidden | AP-M7 (widgets, editing) |
 | M10 | Profiles | DD-951–DD-954, DD-956, DD-958 | Profiles end to end; export/import with placeholders for missing apps | AP-M7 (profiles) |
 | M11 | v1.0 release | DD-1144, DD-1381, DD-809, DD-816 (ledger on the site); O-1 decided; Developer ID + notarization | AP §10.2 exit gate incl. the union audit; VoiceOver reaches every tile and card | AP-M8 |
-| M12 | Power-user parity | Pillar A P2 rows, DD-1202–DD-1209, DD-1221, DD-1222, DD-1224, DD-1226, DD-1227, DD-1251–DD-1255, DD-1341, DD-1342; Dock Locking, native-Dock indicator, live video previews (AP §6) | Every listed item shipped or declined in writing | AP-M9 |
-| M13 | Edge Dock 2 (+ CoolDock local wave 2) | DD-905, DD-927 (speed), DD-955, DD-957, DD-962 (cards), DD-969, DD-970, DD-979, DD-809 (chip), C1 P2 widgets, DD-1053, DD-1122, DD-1147 (if P2), D3/D6/D8/D9/D11 P2 rows | AP §10.3 criteria for these rows | AP-M10 |
-| M14 | Extensibility | DD-994, DD-1371, DD-1372, DD-813 | Hostile sample widgets cannot reach network, screen, windows or files | AP-M11 |
-| M15 | Connected widgets | DD-1061, DD-1063–DD-1079, DD-1088 (counts), DD-1092 | No credential in any export, log, diagnostics file or MCP output (leak test) | AP-M12 |
-| M16 | Personalization and automation | DD-1101, DD-1103–DD-1105, DD-1111, DD-1112, DD-1114–DD-1116, DD-1131, DD-1132 | MCP tools cannot raise their own level | AP-M13 |
+| M12 | Power-user parity | Pillar A P2 rows, DD-1202–DD-1209, DD-1221, DD-1222, DD-1224, DD-1226, DD-1227, DD-1251–DD-1255, DD-1341, DD-1342; Dock Locking, native-Dock indicator, live video previews (AP §6), DD-1019 | Every listed item shipped or declined in writing | AP-M9 |
+| M13 | Edge Dock 2 (+ CoolDock local wave 2) | DD-905, DD-927 (speed), DD-955, DD-957, DD-962 (cards), DD-969, DD-970, DD-979, DD-809 (chip), C1 P2 widgets, DD-1053, DD-1122, DD-1147 (if P2), D3/D6/D8/D9/D11 P2 rows, DD-1016 | AP §10.3 criteria for these rows | AP-M10 |
+| M14 | Extensibility | DD-994, DD-1371, DD-1372, DD-813, DD-1044 | Hostile sample widgets cannot reach network, screen, windows or files | AP-M11 |
+| M15 | Connected widgets | DD-1061, DD-1063–DD-1079, DD-1088 (counts), DD-1092, DD-1062, DD-1080–DD-1087, DD-1088 (Studio)–DD-1091 | No credential in any export, log, diagnostics file or MCP output (leak test) | AP-M12 |
+| M16 | Personalization and automation | DD-1101, DD-1103–DD-1105, DD-1111, DD-1112, DD-1114–DD-1116, DD-1131, DD-1132, DD-1093, DD-1102, DD-1113 | MCP tools cannot raise their own level | AP-M13 |
 | M17 | Feel, shelf and Control Center | DD-1201, DD-1261–DD-1263, DD-1271, DD-1282, DD-1301, DD-1302, DD-1304, DD-1305 | Magnification ≤ 5 % CPU while sweeping; Minimize overlay never outlives 1 s | AP-M14 |
 | M18 | Add-ons | X-1…X-8 (§3) | Each add-on passes its own design gate and criteria | none |
 | P3 | Deferred backlog | all P3 ids (§2) | Reviewed at every exit gate; leaves only when its revisit trigger fires (AP §10.5) | AP §10.5 |
@@ -521,3 +548,4 @@ Decided by the owner on 2026-10-16: DD-934 option (b) (T40); no updater in M2, D
 4. Which of the add-ons X-1…X-8 to keep.
 5. O-1 business model, needed before M11.
 6. ~~DD-934 pointer-sharing edges~~ **decided 2026-10-16: (b), a per-edge setting, plus the hand-off hide (M2, T40).**
+7. ~~Pillar C sources and access~~ **decided 2026-10-16 (§2.3a):** Q-A four-step thermal gauge only (D8 kept); Q-B public sources only; Q-C Shortcuts and Home Assistant now, a HomeKit helper after M11; Q-D the user's own X key, blocked until provided; Q-E Gmail over IMAP with an app password; Q-F the user's own developer apps; Q-G manual budget meter and deep link; Q-H the procedural generator plus original images, no AI images; Q-I DD-1142 and DD-1145 stay deferred. Also: the media widget uses MediaRemote as an owner-approved, media-only D8 exception, with an adapter process and a public fallback.
