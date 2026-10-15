@@ -11,8 +11,9 @@
 //   analyze frames <log.ndjson> [hz=auto] [devtol=2] [devpct=3]
 //       Frame log (DEDOCK_FRAME_LOG=1): per-animation curve match against the
 //       motion tokens, overshoot, duration, plus the three DD-928 checks.
-//   analyze contamination <listen.txt>
-//       Counts input the driver did not post (syn=0) during a run.
+//   analyze contamination <listen.txt> [idle=1]
+//       Counts input the driver did not post (syn=0) during a run. With idle=1 (a run
+//       that should see no input) zero events is clean; otherwise zero events fails.
 //
 // Exit status 0 = every gate in the command passed, 1 = a gate failed, 2 = usage/input error.
 // Lines starting with "FAIL" name the failing gate; "PASS"/"INFO" otherwise.
@@ -211,7 +212,9 @@ func cmdTiming(_ ev: [Event], _ o: [String: Double]) {
     // The spring's 99 % point (220 ms) is gated in `frames`; when the app declares the
     // spring settled (revealing → shown) is its own choice, so it is reported only.
     if !rv.isEmpty { info("revealing→shown", "\(rv.map(f1).joined(separator: ",")) ms (99 % point exp \(Int(revealDur)); see `frames`)") }
-    if !hd.isEmpty { gate(hd.allSatisfy { abs($0 - hideDur) <= frame + 1 }, "hide duration", "\(hd.map(f1).joined(separator: ",")) ms (exp \(Int(hideDur)) ± 1 frame)") }
+    // State time includes the commit → vsync gap (up to a frame); the motion itself is gated
+    // in `frames` from the frame log (§8: first moved frame → final frame).
+    if !hd.isEmpty { info("hiding→hidden", "\(hd.map(f1).joined(separator: ",")) ms state time (motion exp \(Int(hideDur)) ms; see `frames`)") }
 
     if let last = tr.last { info("final state", "\(last.kv["to"] ?? "?") (cause=\(last.kv["cause"] ?? "?"))") }
     if dwellErr.isEmpty && hideErr.isEmpty && nfr4.isEmpty && rv.isEmpty && hd.isEmpty && pushes.isEmpty && leaves == 0 {
@@ -291,12 +294,15 @@ func cmdFrames(_ ev: [Event], _ o: [String: Double]) {
         if !interrupted, a.curve != "fade", abs(a.to - a.from) < 5 {
             info("\(label) duration", "travel \(f1(abs(a.to - a.from))) pt too short to time")
         } else if !interrupted, a.curve != "fade" {
+            // §8: t0 = the first frame that moved (not the commit, which lands up to a frame
+            // before the next vsync, nor reveal.end, which is a state-machine signal).
             let expected = a.curve == "spring" ? 220.0 : a.dur * 1000
             let near = a.curve == "spring" ? abs(a.to - a.from) * 0.01 + 0.05 : 0.05
-            if let f = a.seg.first(where: { abs($0.tx - a.to) <= near }) {
-                let reach = f.ms - a.start
+            if let moved = a.seg.first(where: { abs($0.tx - a.from) > 0.05 }),
+               let f = a.seg.first(where: { abs($0.tx - a.to) <= near }) {
+                let reach = f.ms - moved.ms
                 gate(abs(reach - expected) <= frameMs + 1, "\(label) duration",
-                     "\(a.curve == "spring" ? "99 % of travel" : "at target") after \(f1(reach)) ms (exp \(f1(expected)) ± 1 frame)")
+                     "first moved frame → \(a.curve == "spring" ? "99 % of travel" : "at target") \(f1(reach)) ms (exp \(f1(expected)) ± 1 frame); commit → first frame \(f1(moved.ms - a.b.ms)) ms")
             } else {
                 gate(false, "\(label) duration", "never reached the target")
             }
@@ -332,12 +338,13 @@ func cmdFrames(_ ev: [Event], _ o: [String: Double]) {
     gate(flicker.isEmpty, "DD-928 no flicker", flicker.isEmpty ? "direction changes only at reversals" : flicker.prefix(5).joined(separator: "; "))
 }
 
-func cmdContamination(_ path: String) {
+/// `idle=1`: a run that should see no input at all, so 0 events is the clean result.
+func cmdContamination(_ path: String, idle: Bool) {
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { fail("cannot read \(path)") }
     let lines = text.split(separator: "\n").filter { $0.hasPrefix("mach=") }
     let foreign = lines.filter { $0.contains(" syn=0") }
     let untagged = lines.filter { !$0.contains(" syn=") } // listener built before tagging: cannot tell
-    gate(!lines.isEmpty && foreign.isEmpty && untagged.isEmpty, "input contamination",
+    gate((idle || !lines.isEmpty) && foreign.isEmpty && untagged.isEmpty, "input contamination\(idle ? " (idle: expect none)" : "")",
          "\(lines.count) events seen, \(foreign.count) not from the driver, \(untagged.count) unverifiable (no syn= field)"
          + (foreign.first.map { " (first: \($0))" } ?? ""))
 }
@@ -353,7 +360,7 @@ switch args[0] {
 case "events": cmdEvents(loadEvents(args[1]))
 case "timing": cmdTiming(loadEvents(args[1]), opts(args.dropFirst(2)))
 case "frames": cmdFrames(loadEvents(args[1]), opts(args.dropFirst(2)))
-case "contamination": cmdContamination(args[1])
+case "contamination": cmdContamination(args[1], idle: args.dropFirst(2).contains("idle=1"))
 default: fail("unknown command \(args[0])")
 }
 exit(failures == 0 ? 0 : 1)

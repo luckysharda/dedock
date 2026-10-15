@@ -74,6 +74,9 @@ printf 'mach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0 syn=1\nmach=2 ev=move x=3 y=1 dx
 printf 'mach=1 ev=move x=1 y=1 dx=0 dy=0 mods=0\n' > $T/untagged.txt
 check "contamination: clean passes" "$B/analyze contamination $T/clean.txt >/dev/null"
 check "contamination: foreign input fails" "! $B/analyze contamination $T/dirty.txt >/dev/null"
+: > $T/empty.txt
+check "contamination: idle run with no input passes" "$B/analyze contamination $T/empty.txt idle=1 >/dev/null"
+check "contamination: pointer run with no input fails" "! $B/analyze contamination $T/empty.txt >/dev/null"
 check "contamination: untagged fails" "! $B/analyze contamination $T/untagged.txt >/dev/null"
 
 echo "-- launch / teardown (fake-dock serve)"

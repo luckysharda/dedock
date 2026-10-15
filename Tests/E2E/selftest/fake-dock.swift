@@ -56,9 +56,12 @@ func animate(kind: String, curve: String, from: Double, to: Double, dur: Double,
         return from + (to - from) * min(1, p)
     }
     let total = curve == "spring" ? 0.30 : dur // spring settles past its 0.22 s 99 % point
-    var k = 1.0
+    // Like a display link: the first frame lands at the next vsync (here 7 ms after the
+    // commit, always < 1 frame), then one frame every 16.7 ms.
+    let phase = 0.007
+    var k = 0.0
     while true {
-        let due = k * frameMs / 1000
+        let due = phase + k * frameMs / 1000
         if let stop = stopAfterMs, due * 1000 > stop {
             sleepMs(stop - Date().timeIntervalSince(start) * 1000)
             return value(at: Date().timeIntervalSince(start)) // presentation value at the interrupt
@@ -71,6 +74,9 @@ func animate(kind: String, curve: String, from: Double, to: Double, dur: Double,
         log(frameLog, String(format: "frame edge=left tx=%.2f alpha=1.000 anim=%@", v, kind))
         k += 1
     }
+    // A display link always renders the final value at the first vsync at or after the end.
+    sleepMs((phase + k * frameMs / 1000) * 1000 - Date().timeIntervalSince(start) * 1000)
+    log(frameLog, String(format: "frame edge=left tx=%.2f alpha=1.000 anim=%@", to, kind))
     log(reveal, "reveal.end edge=left kind=\(kind) at=\(to)")
     return to
 }

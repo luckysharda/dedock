@@ -2,7 +2,10 @@
 """Checks a GEOM file (Tests/E2E/contract.md §4) against the M1 layout and trigger rules
 (docs/evaluation.md §3.2, §3.5; docs/plan.md §6 fixed values).
 
-    Scripts/e2e/geom-check.py <geometry.json> [inset=6] [padding=6] [gap=8] [zone=3] [span=40] [corner=24]
+    Scripts/e2e/geom-check.py <geometry.json> [layout=<layout.json>] [inset=6] [padding=6] [gap=8] [zone=3] [span=40] [corner=24]
+
+With layout=, the expected inset comes from the seeded layout (docks[0].placement.edgeGapPt)
+unless inset= is given; padding and gap come from docs/design.md tokens via the arguments.
 
 Prints PASS/FAIL/INFO lines; exit 1 if any FAIL. Coordinates are top-left global points.
 """
@@ -11,7 +14,13 @@ import sys
 
 args = dict(a.split("=", 1) for a in sys.argv[2:] if "=" in a)
 num = lambda k, d: float(args.get(k, d))
-INSET, PAD, GAP, ZONE, SPAN, CORNER = (num("inset", 6), num("padding", 6), num("gap", 8),
+inset_default = 6
+if "layout" in args:
+    try:
+        inset_default = json.load(open(args["layout"]))["docks"][0]["placement"]["edgeGapPt"]
+    except (OSError, KeyError, IndexError, ValueError):
+        print("WARN layout has no docks[0].placement.edgeGapPt; inset defaults to 6")
+INSET, PAD, GAP, ZONE, SPAN, CORNER = (num("inset", inset_default), num("padding", 6), num("gap", 8),
                                        num("zone", 3), num("span", 40), num("corner", 24))
 g = json.load(open(sys.argv[1]))
 fails = 0
