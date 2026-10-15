@@ -369,7 +369,7 @@ Zones are built only when the display layout, the dock's settings, its content l
 
 The settings pane marks an edge "shared" and warns when a dock's whole span is shared and the policy is "Wall parts only".
 
-**Pointer-sharing edges (DD-934, open).** macOS can pass the pointer to a nearby Mac or iPad when it is pushed through a display edge that has no neighbouring display. To Dedock that edge looks like a **wall**, so both features answer the same gesture: contact plus dwell reveals the dock, and a continued push (push-through, 40 pt) also starts the hand-off. The pointer can then leave in the middle of a reveal, and the dock stays open with a pointer "in the zone" that is actually parked while the user works on the other device. There is no public API that reports whether pointer sharing is on or which edge it uses *(inferred; the M2 spike confirms it)*. Options:
+**Pointer-sharing edges (DD-934; owner decided option (b) on 2026-10-16, `docs/plan.md` T40).** macOS can pass the pointer to a nearby Mac or iPad when it is pushed through a display edge that has no neighbouring display. To Dedock that edge looks like a **wall**, so both features answer the same gesture: contact plus dwell reveals the dock, and a continued push (push-through, 40 pt) also starts the hand-off. The pointer can then leave in the middle of a reveal, and the dock stays open with a pointer "in the zone" that is actually parked while the user works on the other device. There is no public API that reports whether pointer sharing is on or which edge it uses *(inferred; the M2 spike confirms it)*. Options:
 
 | Option | Rule | Cost |
 |---|---|---|

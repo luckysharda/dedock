@@ -124,7 +124,7 @@ dedock has **zero features today**, so every row is `missing`. One row per featu
 | DD-801 | Menu bar item (minimal in M1: Edge Dock controls, Settings, Quit; full in M2; Layout menu and Reset Layout in M8) | DD, CD, Pro | P0 | missing | M1 / M2 / M8 | 19 |
 | DD-802 | Settings window (Edge Dock pane in M1; full shell in M2; panes appear as features ship) | DD, CD, Pro | P0 | missing | M1 / M2 | 18 |
 | DD-805, DD-806, DD-807, DD-808 | Permissions with hot start; onboarding with scenario cards; health monitor and self-heal; launch at login | DD, CD, new | P0 | missing | M2 | 20 |
-| DD-809 | Updates (Sparkle 2, stable/beta) | DD, CD, Pro | P0 | missing | M2 | 21 |
+| DD-809 | Updates (Sparkle 2, stable/beta) | DD, CD, Pro | P0 | missing | M11 (owner, 2026-10-16: no updater before Developer ID and notarization) | 21 |
 | DD-809 (update chip, progress) | Update chip in the Edge Dock with download progress | CD, Pro | P2 | missing | M13 | 21 |
 | DD-815, DD-816 | Private-API isolation (capability table); privacy and network ledger | new, Pro (ledger) | P0 | missing | M2 | 23, 24 |
 | DD-803 | Settings search | DD, Pro | P1 | missing | M7 | 18 |
@@ -151,7 +151,7 @@ dedock has **zero features today**, so every row is `missing`. One row per featu
 | DD-911, DD-912 | Pinned (Fixed) mode; Reveal mode with the reveal state machine | CD | P0 | missing | M1 | 25, 27 |
 | DD-913, DD-914 | Swap with the native Dock (consented auto-hide snapshot/restore); Floating (horizontal/vertical, under the menu bar) | CD | P1 | missing | M8 | 25, 47 |
 | DD-921–DD-923, DD-925–DD-929, DD-931, DD-933 | Show delay, hide delay, trigger zone size/span, alignment and distance, dock size, slide motion, reverse in place, hold-open inhibitors, shared display edges, click-through gate | CD, Pro, new | P0 | missing | M1 | 27 |
-| DD-934 | Pointer-sharing edges: an edge that also hands the pointer to a nearby Mac or iPad (the system's pointer-sharing feature) must not lose the pointer to a reveal push, and a dock must not stay open while the pointer is on the other device. **Open (§7 question 6)** | new | P1 | missing | decide in M2; ship in M2 | 27, 29 |
+| DD-934 | Pointer-sharing edges: an edge that also hands the pointer to a nearby Mac or iPad (the system's pointer-sharing feature) must not lose the pointer to a reveal push, and a dock must not stay open while the pointer is on the other device. **Decided (owner, 2026-10-16): option (b), a per-edge setting, plus the hand-off hide** | new | P1 | missing | M2 (T40) | 27, 29 |
 | DD-924 | Full-screen reveal delay (pulled into M1 with a no-permission full-screen heuristic) | new | P1 | missing | M1 | 27 |
 | DD-926 (widget spacing, presets) | Separate tile-gap control; Compact/Cozy/Roomy presets | CD, Pro | P1 | missing | M8 | 26 |
 | DD-927 (speed) | Animation speed 1×–4× | Pro | P2 | missing | M13 | 27 |
@@ -296,7 +296,7 @@ Order: Edge Dock reveal first, then the app shell, then previews, switcher, ⌘T
 | M | Name | Scope (PRD ids) | Exit criteria (summary) | AP equivalent |
 |---|---|---|---|---|
 | **M1** | **Edge Dock reveal** | DD-901, DD-902, DD-903, DD-910 (subset), DD-911, DD-912, DD-921–DD-929, DD-931, DD-933, DD-961, DD-962 (dot), DD-964 (basic), DD-975, DD-978 (basic), DD-1141 (Reveal on top, beta), DD-941 / DD-991 / DD-992 (partial), DD-801 / DD-802 (minimal), DD-814 (edge trace) | §6 acceptance criteria; NFR-1, NFR-2, NFR-4 met; works with every TCC grant reset | AP-M3 subset (+ AP-M0 bootstrap parts) |
-| M2 | App shell, settings and Edge Dock P0 completion | DD-801, DD-802, DD-805–DD-809, DD-815, DD-816, DD-701, DD-704, DD-711, DD-941, DD-947, DD-966, DD-981, DD-991, DD-992; stable signing identity; CI string guard | Permissions hot start; `killall Dock` and sleep/wake recovery; 9-cell native Dock matrix green; 20 full-screen cycles OK; onboarding replayable | AP-M0 + rest of AP-M3 |
+| M2 | App shell, settings and Edge Dock P0 completion | DD-801, DD-802, DD-805–DD-808, DD-934, DD-815, DD-816, DD-701, DD-704, DD-711, DD-941, DD-947, DD-966, DD-981, DD-991, DD-992; stable signing identity; CI string guard | Permissions hot start; `killall Dock` and sleep/wake recovery; 9-cell native Dock matrix green; 20 full-screen cycles OK; onboarding replayable | AP-M0 + rest of AP-M3 |
 | M3 | Window engine and Dock hover previews | DD-401, DD-402, DD-101–DD-104, DD-106–DD-108, DD-110, DD-636, DD-651, DD-703, DD-708, DD-509 (scaffold), DD-967 | DockDoor regressions #472, #297, #1222, #277, #1001 pass; previews in all three native Dock orientations and from Edge Dock tiles; text lists with Screen Recording denied | AP-M1 + AP-M2 (previews) |
 | M4 | Window switcher | DD-201–DD-204, DD-210, DD-213, DD-614, DD-615 | Key-script tests; switcher first frame ≤ 100 ms (NFR-5); tap callback < 1 ms p99 (NFR-6) | AP-M2 (switcher) |
 | M5 | MVP hardening and private beta | all P0 ids | AP §10.1 exit gate: performance, regressions, Edge Dock matrix, clean-room guard, Screen Recording denied; testers on macOS 14, 15, 26, 27 | AP-M4 |
@@ -305,7 +305,7 @@ Order: Edge Dock reveal first, then the app shell, then previews, switcher, ⌘T
 | M8 | Edge Dock modes and displays | DD-904, DD-910 (Swap, Floating cards), DD-913, DD-914, DD-924 (full), DD-926 (spacing, presets), DD-930, DD-932, DD-942–DD-946, DD-982, DD-983, DD-993, DD-1141 (Pinned/Floating top), DD-1356, DD-801 (Layout menu, Reset Layout) | Swap restores native auto-hide in 20 of 20 kill tests; six docks on two displays keep idle CPU < 0.5 %, RSS ≤ 150 MB | AP-M6 |
 | M9 | Tiles, widgets and editing (+ CoolDock wave 1) | DD-501, DD-502, DD-505–DD-507, DD-509 (full), DD-963, DD-964 (gallery), DD-965, DD-968, DD-971–DD-974, DD-976–DD-978, DD-980, DD-984, DD-995, DD-1002–DD-1006, DD-1010, DD-1011, DD-1014, DD-1020, DD-1024, DD-1026, DD-1027, DD-1031, DD-1043, DD-1051, DD-1052, DD-1121, DD-1143, DD-1146, DD-1223; decide DD-1147 | ≤ 2 wake-ups/s from widgets on two docks; providers paused while hidden | AP-M7 (widgets, editing) |
 | M10 | Profiles | DD-951–DD-954, DD-956, DD-958 | Profiles end to end; export/import with placeholders for missing apps | AP-M7 (profiles) |
-| M11 | v1.0 release | DD-1144, DD-1381, DD-816 (ledger on the site); O-1 decided; Developer ID + notarization | AP §10.2 exit gate incl. the union audit; VoiceOver reaches every tile and card | AP-M8 |
+| M11 | v1.0 release | DD-1144, DD-1381, DD-809, DD-816 (ledger on the site); O-1 decided; Developer ID + notarization | AP §10.2 exit gate incl. the union audit; VoiceOver reaches every tile and card | AP-M8 |
 | M12 | Power-user parity | Pillar A P2 rows, DD-1202–DD-1209, DD-1221, DD-1222, DD-1224, DD-1226, DD-1227, DD-1251–DD-1255, DD-1341, DD-1342; Dock Locking, native-Dock indicator, live video previews (AP §6) | Every listed item shipped or declined in writing | AP-M9 |
 | M13 | Edge Dock 2 (+ CoolDock local wave 2) | DD-905, DD-927 (speed), DD-955, DD-957, DD-962 (cards), DD-969, DD-970, DD-979, DD-809 (chip), C1 P2 widgets, DD-1053, DD-1122, DD-1147 (if P2), D3/D6/D8/D9/D11 P2 rows | AP §10.3 criteria for these rows | AP-M10 |
 | M14 | Extensibility | DD-994, DD-1371, DD-1372, DD-813 | Hostile sample widgets cannot reach network, screen, windows or files | AP-M11 |
@@ -416,6 +416,83 @@ Every feature (one worktree each) goes through these steps. A step is done only 
 
 ---
 
+## 6a. M2 task breakdown: app shell, settings and Edge Dock P0 completion
+
+**Goal.** M1's Edge Dock becomes a shippable app: it signs with a stable identity so permission grants survive rebuilds; asks for Accessibility only where it adds something and lights up without a relaunch; welcomes a new user once (replayable); survives the Dock relaunching, sleep and wake, Space and display changes; sits correctly beside the native Dock in every arrangement; and has a full Settings shell and menu-bar item. M1's four missing acceptance rows roll in (user decision, 2026-10-16). M1 itself closes when REG-065/066 pass on the L, R, B, T card.
+
+**Fixed for M2**
+
+| Item | Decision |
+|---|---|
+| Permissions | Accessibility only (optional): the AX full-screen check, the menu-bar status-item walk and the real native Dock span. Screen Recording waits for previews (M3). Without the grant every M1 behaviour stays. |
+| Signing | A self-signed "Dedock Development" identity in the user's login keychain signs local builds; CI stays ad hoc. Developer ID and notarization are M11. |
+| Network | **Decided (owner, 2026-10-16): no network use in M2; D8 is unchanged.** Updates (Sparkle, DD-809) move to M11 with Developer ID and notarization. |
+| Modality | `docs/design.md` §2.3a holds for every new surface: notices are non-activating panels, pickers and confirmations inside Settings are sheets, nothing runs a modal session. |
+
+### 6a.1 Tasks
+
+T-ids continue from M1.
+
+| # | Task | PRD / REG | Acceptance criteria |
+|---|---|---|---|
+| T24 | **Signing identity** (R2) | — | (1) `Scripts/make-app.sh` signs with `DEDOCK_SIGN_IDENTITY` when that identity is in the keychain, else ad hoc; CI stays ad hoc. (2) `Scripts/make-signing-identity.sh` creates the self-signed code-signing identity; the user runs it once. (3) Two rebuilds keep the same designated requirement (`codesign -d -r-`), so an Accessibility grant survives a rebuild. |
+| T25 | **M1 rows rolled in** | DD-903, DD-912, DD-926, DD-975; M1 rows 10, 20, 27, 43 | (1) Drag a tile out of the capsule (plus hysteresis) → a non-activating confirm panel beside the dock ("Remove “Name” from the Edge Dock?", Remove / Keep; Esc, a click elsewhere or 8 s = Keep); `popoverOpen` holds the dock meanwhile; Remove persists at once. (2) Hover label toward the screen centre on every edge, shown instantly. (3) No relayout while the pointer moves inside the zone or the shown dock. (4) The size control scales tiles, gaps and padding with a live preview. (5) The M1 pins: 400 ms hide default, 1–20 pt zone and 0–48 pt inset clamps, `popoverOpen` and `pinnedByUser` holds, the 30 Hz `.common` menu-tracking timer, the fixed panel frame, an atomic write and one concrete v0 → v1 migration step. |
+| T26 | **Separators and spacers** | DD-966 | (1) Settings ▸ Tiles ▸ Add Separator / Add Spacer. (2) Layout grammar: a short cell along the dock; drawn per `docs/design.md` §7.1. (3) Hidden from accessibility; C3 ignores them. |
+| T27 | **Health monitor and recovery** | DD-807, DD-947 | (1) After the Dock relaunches (`killall Dock`), native Dock prefs are re-read and zones rebuilt within 1 s; the panel survives. (2) Wake, Space change and full-screen exit keep the panel on all Spaces (`docs/architecture.md`, Spaces membership). (3) Display add, remove and wake re-sync, with the side-dock relayout hysteresis of `docs/design.md` §4.3. (4) The native Dock footprint estimate gets a one-tile margin each side until T31 measures it. |
+| T28 | **Permissions with hot start** | DD-805 | (1) Accessibility status is read without prompting; a grant made in System Settings takes effect within 2 s with no relaunch; a revoke falls back to M1 behaviour within 2 s, never a crash. (2) Polling runs only while the Permissions pane or onboarding is open; otherwise the distributed accessibility notification. (3) Every feature names its permission in the capability table (T36). |
+| T29 | **Onboarding** | DD-806 | (1) First launch only, after `launch.edgeReady`: a non-modal welcome with the scenario cards (Recommended from the native Dock edge), and an optional Accessibility explainer. (2) Replayable from Settings ▸ General and the menu-bar item. (3) Skipping keeps the default; no focus is stolen from the user's typing. |
+| T30 | **Hide during full screen** | DD-981 | (1) Setting "Hide in full screen" (default off): no zones while the dock's display shows a full-screen Space. (2) 20 full-screen enter/exit cycles keep the dock working (REG-008). |
+| T31 | **Native Dock matrix** | DD-991, DD-992 | (1) All 9 cells (native Dock left/bottom/right × Edge Dock left/right/bottom), each with auto-hide off and on, are L2-tested with `FakeDockPreferences`: placement, zones (REG-065 beside the Dock), recommended edge. (2) With Accessibility, the real native Dock span comes from its AX list instead of the estimate. (3) Native Dock prefs are only ever read. |
+| T32 | **Top edge with Accessibility** | DD-1141, REG-044, REG-066 | Status items are not separate windows on current macOS, so the window-list exclusion sees none. With Accessibility, the top zone subtracts the real menu-bar extras (the `AXExtrasMenuBar` of the system UI server and of each app); without it, M1 behaviour (300 ms dwell). Unit tests over a fixture AX tree. |
+| T33 | **Settings shell** | DD-802 | (1) Sidebar per `docs/design.md` §7.2: General (launch at login, appearance, Reduce Motion override, Show Welcome), Edge Dock (M1 pane), Permissions (status, why, Open System Settings), About (version, capability table, privacy ledger). (2) Every control named (REG-063 rule); keyboard reachable; no modal sessions. |
+| T34 | **Menu-bar item, full** | DD-801 | Adds Show Welcome…, About, and a permission badge when a granted permission was revoked. |
+| T35 | **Launch at login** | DD-808 | `SMAppService.mainApp` toggle in General; a login item the user disabled in System Settings shows as off with a button that opens that pane. (Updates, DD-809, are M11.) |
+| T36 | **Capability table and privacy ledger** | DD-815, DD-816 | (1) One table of every OS capability used, its permission and whether it is public API (shown in About; checked by `Scripts/check-deps.sh` D8). (2) `docs/privacy.md` plus the in-app ledger: no data leaves the Mac (no network use in M2). |
+| T37 | **Appearance** | DD-701, DD-704, DD-711 | Light / Dark / System for Dedock's own windows; materials with their macOS 14–15 fallbacks (R8) and Reduce Transparency solid forms; the in-app Reduce Motion override. |
+| T38 | **Display fallback** | DD-941 (full) | The dock follows the main display, falls back to the built-in display when it is disconnected and returns when it reconnects (L2; E2E waits for a second display, as x-11 does). |
+| T39 | **CI string guard** | R9 | The clean-room string list is reference material and is not committed: CI reads it from a repository secret when present (pushes to `develop`; fork PRs skip). Owner, 2026-10-16: this scan plus the PR "Sources consulted" checklist and the planner's review is the clean-room method. |
+| T40 | **Pointer-sharing edges** | DD-934 | Owner's choice (b), 2026-10-16. (1) Per-edge setting "Pointer sharing uses this edge" in the Edge Dock pane; on that edge the DD-931 shared-edge policy applies (dwell only, no push-through, optional ⌥), reusing `SharedEdgePolicy`. (2) Hand-off hide: a pointer parked in the zone with no events after a push hides the dock after the hide delay; the edge re-arms only after inward movement (500 ms cooldown kept). (3) Unit tests for both on a fake clock; E2E: with the setting on, a push does not reveal and a dwell does (the harness still refuses while the system feature is on, REG-055). |
+
+### 6a.2 E2E for M2 (testing lane)
+
+| Area | Rows | Needs |
+|---|---|---|
+| Carried from M1 | x-07 to x-17 scripted as listed in `docs/evaluation.md` §7.4; 50-trial NFR-4 perf mode; leaks after 100 cycles; dropped frames | x-17 needs the user to turn Reduce Motion on and off |
+| Permissions | hot start: grant → feature on within 2 s, revoke → M1 behaviour within 2 s; a grant survives a rebuild (T24) | the user grants and revokes in System Settings; agents never toggle permissions |
+| Onboarding | first launch (empty data dir) shows Welcome after `edgeReady`, non-activating, no key focus; replay through a new closed-enum debug command | — |
+| Recovery | `killall Dock` → reveal within 1 s; sleep/wake and display sleep; 20 full-screen cycles with a harness-owned app | the user's OK for each `killall Dock` and sleep window |
+| Native Dock matrix | a subset of the 9 cells live | the user changes the Dock's position and auto-hide, or approves the harness doing it with a restore |
+| Settings shell | C8 across all panes; launch-at-login toggle registers and unregisters the debug build | the user's OK, because it touches Login Items |
+
+### 6a.3 What needs the user
+
+| Item | When |
+|---|---|
+| Run `Scripts/make-signing-identity.sh` once (creates the self-signed identity in the login keychain) | before T28 testing |
+| Grant and revoke Accessibility for the debug build during permission windows | T28, T31, T32 tests |
+| OK per window for `killall Dock`, sleep, Dock setting changes and Login Items registration | recovery and matrix tests |
+| Developer ID (Apple Developer Program), Sparkle keys and update hosting | not needed for M2; M11 |
+| Add the clean-room string list as a repository secret (method decided 2026-10-16) | T39 |
+| Visual sign-offs (`docs/evaluation.md` §11 rows 11, 51, 56) | open |
+
+Decided by the owner on 2026-10-16: DD-934 option (b) (T40); no updater in M2, D8 unchanged, Sparkle in M11; x-11 deferred to M8 with unit coverage now; the clean-room method (T39).
+
+### 6a.4 M2 exit
+
+| # | Criterion | Evidence |
+|---|---|---|
+| 1 | Permission hot start, grant and revoke, no relaunch | T28 E2E rows |
+| 2 | `killall Dock`, sleep/wake and Space recovery | T27 L2 + E2E |
+| 3 | 9-cell native Dock matrix green | T31 L2 + live subset |
+| 4 | 20 full-screen cycles | T30 E2E (REG-008) |
+| 5 | Onboarding replayable, non-modal | T29 E2E |
+| 6 | M1 rows 10, 20, 27, 43 Pass | T25 |
+| 7 | Settings shell and menu-bar item complete, every control named | T33, T34, C8 |
+| 8 | Stable signing identity; grants survive rebuilds | T24 |
+| 9 | Capability table, privacy ledger, CI string guard | T36, T39 |
+| 10 | No modal sessions anywhere (`docs/design.md` §2.3a) | review + C8 |
+| 11 | Pointer-sharing edges per-edge setting and hand-off hide (DD-934) | T40 unit + E2E |
+
 ## 7. Risks
 
 | # | Risk | Likelihood / impact | Mitigation |
@@ -443,4 +520,4 @@ Every feature (one worktree each) goes through these steps. A step is done only 
 3. Priority for DD-1147 (window tiles in the Edge Dock): proposed P2 in M13, decided at M9.
 4. Which of the add-ons X-1…X-8 to keep.
 5. O-1 business model, needed before M11.
-6. DD-934 pointer-sharing edges: when an Edge Dock edge is also the edge where the pointer passes to a nearby device, which default? Proposed: (b) below, plus the hand-off hide, with (c) only if the M2 spike finds a reliable public signal. See `docs/architecture.md` §"Pointer-sharing edges".
+6. ~~DD-934 pointer-sharing edges~~ **decided 2026-10-16: (b), a per-edge setting, plus the hand-off hide (M2, T40).**
