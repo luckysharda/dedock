@@ -10,7 +10,7 @@
 #   Scripts/e2e/regress.sh score <run-id> [baseline.json]
 #   Scripts/e2e/regress.sh rescore <run-id> [baseline.json]   re-judge saved logs (analyzer changed), then score
 #   Scripts/e2e/regress.sh baseline <run-id>                  write Tests/E2E/baseline/m1.json from a clean run
-#   Scripts/e2e/regress.sh comment <run-id> <pr-number>       attach the scorecard to an app PR (public repo:
+#   Scripts/e2e/regress.sh comment <run-id> <pr-number> [note.md]  attach the scorecard to an app PR (public repo:
 #                                                             only on the orchestrator's go; refuses absolute paths)
 #
 # Exit: 0 PASS, 1 FAIL (a gate broke: blocks a merge), 3 VOID (real input got in twice: rerun).
@@ -37,11 +37,13 @@ rescore)
   score $root ${2:-}; exit $? ;;
 baseline)
   python3 $E/score.py --write-baseline $B/runs/${1:?run-id} $BASELINE_DEFAULT; exit $? ;;
-comment)
-  card=$B/runs/${1:?run-id}/scorecard.md; pr=${2:?pr-number}
+comment)  # comment <run-id> <pr> [note.md]: optional human note above the scorecard
+  card=$B/runs/${1:?run-id}/scorecard.md; pr=${2:?pr-number}; note=${3:-}
   [[ -f $card ]] || { echo "no scorecard: run 'regress.sh score $1' first" >&2; exit 2 }
-  grep -qE '/U[s]ers/|/h[o]me/' $card && { echo "refusing: the scorecard contains an absolute path" >&2; exit 2 }
-  gh pr comment $pr --body-file $card; exit $? ;;
+  body=$B/runs/$1/comment.md
+  { [[ -n $note ]] && { cat $note; print; print -- '---'; print }; cat $card } > $body
+  grep -qE '/U[s]ers/|/h[o]me/' $body && { echo "refusing: the comment contains an absolute path" >&2; exit 2 }
+  gh pr comment $pr --body-file $body; exit $? ;;
 run) ;;
 *) echo "unknown mode $mode" >&2; exit 2 ;;
 esac

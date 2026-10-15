@@ -22,6 +22,8 @@ DRIFT = 0.20
 # Absolute noise floors by metric suffix: 20 % of a 1.2 ms latency is 0.24 ms, which is noise.
 DEFAULT_FLOORS = {"_ms": 2.0, "_pt": 1.0, "cpu_pct": 0.05, "wakeups_per_s": 0.2, "_mb": 5.0}
 # Counts describe the run, not the app's quality: never drift-checked.
+# Harness checks (Tests/E2E/regressions.md "gates: harness") never decide an app PR's verdict.
+HARNESS_IDS = ("REG-015", "REG-016", "REG-017")
 COUNTS = ("_trials", "reversals", "foreign_events", "leave_before_dwell", "hide_cancelled", "_n")
 
 
@@ -106,7 +108,9 @@ def write_scorecard(root, baseline_path):
     env = json.load(open(os.path.join(root, "env.json"))) if os.path.exists(os.path.join(root, "env.json")) else {}
     warns = drift(metrics, baseline)
 
-    failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in checks if not c["ok"]]
+    is_harness = lambda c: c["id"].startswith(HARNESS_IDS)
+    harness_failed = [c for c in checks if not c["ok"] and is_harness(c)]
+    failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in checks if not c["ok"] and not is_harness(c)]
     void = [s for s in scenarios if s["verdict"] == "VOID"]
     verdict = "FAIL" if failed else ("VOID" if void else "PASS")
     if not scenarios and not checks:
@@ -129,7 +133,8 @@ def write_scorecard(root, baseline_path):
     L.append("")
     L.append(f"**{verdict}** — scenarios: {sum(s['verdict'] == 'PASS' for s in scenarios)} pass, "
              f"{len([s for s in scenarios if s['verdict'] == 'FAIL'])} fail, {len(void)} void (contaminated, rerun); "
-             f"run checks: {sum(c['ok'] for c in checks)}/{len(checks)} pass; drift warnings: {len(warns)}")
+             f"run checks: {sum(c['ok'] for c in checks)}/{len(checks)} pass; drift warnings: {len(warns)}"
+             + (f"; HARNESS checks failing: {', '.join(c['id'] for c in harness_failed)} (harness bug, not an app result)" if harness_failed else ""))
     L.append("")
     L.append("| Scenario | Verdict | Failed gates | Report |")
     L.append("|---|---|---|---|")
@@ -139,7 +144,7 @@ def write_scorecard(root, baseline_path):
     L.append("| Check | Result | Detail |")
     L.append("|---|---|---|")
     for c in checks:
-        L.append(f"| {c['id']} | {'PASS' if c['ok'] else 'FAIL'} | {c['detail']} |")
+        L.append(f"| {c['id']}{' (harness)' if is_harness(c) else ''} | {'PASS' if c['ok'] else 'FAIL'} | {c['detail']} |")
     L.append("")
     if warns:
         L.append("Drift > 20 % from baseline (and above the noise floor) — inside the gate, but look:")
