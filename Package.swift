@@ -42,7 +42,7 @@ let package = Package(
         // Tests
         .target(name: "DedockTestSupport", dependencies: ["DedockCore", "EventTapKit", "EdgeDock"],
                 path: "Tests/DedockTestSupport", swiftSettings: testStrict),
-    ] + ["DedockCore", "EventTapKit", "SettingsStore", "EdgeDock", "DisplayTopology"].map {
+    ] + ["DedockCore", "EventTapKit", "SettingsStore", "EdgeDock", "DisplayTopology", "Diagnostics"].map {
         .testTarget(name: "\($0)Tests", dependencies: ($0 == "DedockCore" ? [] : ["DedockCore"]) + [.target(name: $0), "DedockTestSupport"],
                     swiftSettings: testStrict)
     },
