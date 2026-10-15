@@ -61,11 +61,14 @@ public struct HotZone: Sendable, Hashable {
     /// AppKit global, already clipped.
     public let rect: CGRect
     public let kind: SegmentKind
+    /// Contact counts only while ⌥ is held (the top edge's last-resort rule, REG-066).
+    public let requiresOption: Bool
 
-    public init(id: String, rect: CGRect, kind: SegmentKind) {
+    public init(id: String, rect: CGRect, kind: SegmentKind, requiresOption: Bool = false) {
         self.id = id
         self.rect = rect
         self.kind = kind
+        self.requiresOption = requiresOption
     }
 
     /// Inclusive containment: `NSEvent.mouseLocation` can sit exactly on the far edge
@@ -117,6 +120,31 @@ public struct EdgeEnvironment: Sendable, Hashable {
     }
 }
 
+/// Which rule produced a dock's zones (logged as `zones.computed rule=`).
+public enum ZoneRule: String, Sendable, Hashable {
+    /// Content span (or whole edge) minus the usual exclusions.
+    case primary
+    /// Whole edge on either side of the native Dock (REG-065).
+    case besideNativeDock
+    /// Top edge: the nearest free stretch of the menu bar ≥ 80 pt (REG-066).
+    case nearestFree
+    /// Top edge with no free stretch: reveal only with ⌥ held on contact (REG-066).
+    case optionOnly
+}
+
+/// The zones for one dock and how they were derived, counts and spans only.
+public struct ZoneDerivation: Sendable, Equatable {
+    public let zones: [HotZone]
+    public let rule: ZoneRule
+    /// The span before exclusions (content ± padding, or the whole edge).
+    public let candidate: Interval?
+    /// Status items subtracted (top edge).
+    public let statusItems: Int
+    public let notch: Bool
+    /// The native Dock's span, when subtracted.
+    public let nativeDock: Interval?
+}
+
 public enum EdgeGeometry {
     /// True when the native Dock shares this dock's edge: the zone then spans the whole edge
     /// minus the Dock's footprint and the corners, whatever the span mode (REG-065).
@@ -124,40 +152,68 @@ public enum EdgeGeometry {
         env.nativeDock?.edge == env.edge
     }
 
+    /// Below this total length the top edge's primary zone is too small to find (REG-066).
+    public static let minimumTopZone: CGFloat = 80
+
     /// Builds the hot zones for one dock (architecture §6.4, system-design §5.2). Run on
     /// configuration or display change only, never per sample.
     public static func zones(_ env: EdgeEnvironment, _ p: TriggerParameters) -> [HotZone] {
-        guard let display = env.layout.display(env.display) else { return [] }
+        derive(env, p).zones
+    }
+
+    /// The zones and how they were derived (`zones.computed`, so E2E can explain an empty zone).
+    public static func derive(_ env: EdgeEnvironment, _ p: TriggerParameters) -> ZoneDerivation {
+        guard let display = env.layout.display(env.display) else {
+            return ZoneDerivation(zones: [], rule: .primary, candidate: nil, statusItems: 0, notch: false, nativeDock: nil)
+        }
         let edge = env.edge
         let line = edge.line(of: display.frame)
+        let besideDock = triggersBesideNativeDock(env)
 
-        var span = IntervalSet(line)
         // Beside the native Dock on the same edge (shown or auto-hidden) the trigger is the whole
         // edge on either side of the Dock: content ± padding usually lies under the Dock and left
         // no zone at all (REG-065). Derived here, never stored; the spanMode setting is untouched.
-        if p.spanMode == .content, !Self.triggersBesideNativeDock(env), let content = env.contentSpan {
-            span = span.intersection(IntervalSet(Interval(content.lower - p.spanPadding, content.upper + p.spanPadding)))
+        var candidate = line
+        if p.spanMode == .content, !besideDock, let content = env.contentSpan {
+            candidate = Interval(max(line.lower, content.lower - p.spanPadding), min(line.upper, content.upper + p.spanPadding))
         }
 
         let (lowerCorner, upperCorner) = edge.corners
         let lowerCut = env.hotCorners.contains(lowerCorner) ? p.cornerExclusion : p.cornerExclusionWithoutHotCorner
         let upperCut = env.hotCorners.contains(upperCorner) ? p.cornerExclusion : p.cornerExclusionWithoutHotCorner
-        span = span
-            .subtracting(Interval(line.lower, line.lower + lowerCut))
-            .subtracting(Interval(line.upper - upperCut, line.upper))
-
+        // Everything on this edge that must never trigger: corners, the menu-bar band on side
+        // edges, the notch and status items on the top edge, the native Dock's span.
+        var blocked = IntervalSet([Interval(line.lower, line.lower + lowerCut), Interval(line.upper - upperCut, line.upper)])
         switch edge {
         case .left, .right:
-            span = span.subtracting(Interval(line.upper - display.menuBarHeight, line.upper))
+            blocked = blocked.union(IntervalSet(Interval(line.upper - display.menuBarHeight, line.upper)))
         case .top:
-            if let notch = display.notch { span = span.subtracting(Interval(notch.minX, notch.maxX)) }
-            for item in env.statusItemRects { span = span.subtracting(Interval(item.minX, item.maxX)) }
+            if let notch = display.notch { blocked = blocked.union(IntervalSet(Interval(notch.minX, notch.maxX))) }
+            for item in env.statusItemRects { blocked = blocked.union(IntervalSet(Interval(item.minX, item.maxX))) }
         case .bottom:
             break
         }
+        let dockSpan = besideDock ? env.nativeDock?.span : nil
+        if let dockSpan { blocked = blocked.union(IntervalSet(dockSpan)) }
 
-        if let dock = env.nativeDock, dock.edge == edge {
-            span = span.subtracting(dock.span)
+        var span = IntervalSet(candidate).subtracting(blocked)
+        var rule: ZoneRule = besideDock ? .besideNativeDock : .primary
+        var requiresOption = false
+        if edge == .top, span.totalLength < minimumTopZone {
+            // Status items cover the dock's span: the nearest free stretch of the menu bar of at
+            // least 80 pt, closest to the dock's centre; with none, ⌥ on contact (e9's top rule).
+            let centre = candidate.midpoint
+            let free = IntervalSet(line).subtracting(blocked).intervals.filter { $0.length >= minimumTopZone }
+            if let nearest = free.min(by: { distance($0, centre) < distance($1, centre) }) {
+                span = IntervalSet(nearest)
+                rule = .nearestFree
+            } else {
+                span = IntervalSet(candidate).subtracting(IntervalSet([
+                    Interval(line.lower, line.lower + lowerCut), Interval(line.upper - upperCut, line.upper),
+                ]))
+                rule = .optionOnly
+                requiresOption = true
+            }
         }
 
         let neighbours = IntervalSet(sharedSegments(of: display, edge: edge, in: env.layout))
@@ -168,14 +224,21 @@ public enum EdgeGeometry {
         for segment in wall.intervals {
             zones.append(HotZone(id: "z-\(zones.count)",
                                  rect: edge.strip(of: display.frame, along: segment, thickness: p.thickness),
-                                 kind: .wall))
+                                 kind: .wall, requiresOption: requiresOption))
         }
         for segment in shared.intervals {
             zones.append(HotZone(id: "z-\(zones.count)",
                                  rect: edge.strip(of: display.frame, along: segment, thickness: p.sharedBand),
-                                 kind: .shared))
+                                 kind: .shared, requiresOption: requiresOption))
         }
-        return zones
+        return ZoneDerivation(zones: zones, rule: rule, candidate: candidate,
+                              statusItems: edge == .top ? env.statusItemRects.count : 0,
+                              notch: edge == .top && display.notch != nil, nativeDock: dockSpan)
+    }
+
+    /// Distance from `x` to the interval (0 inside it).
+    private static func distance(_ i: Interval, _ x: CGFloat) -> CGFloat {
+        x < i.lower ? i.lower - x : (x > i.upper ? x - i.upper : 0)
     }
 
     /// Parts of `display`'s edge that touch another display within 1 pt, along the edge axis.

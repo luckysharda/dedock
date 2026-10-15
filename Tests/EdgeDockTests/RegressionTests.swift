@@ -63,6 +63,62 @@ import Testing
         #expect(zone.rect.minY == CGFloat(400) - p.spanPadding && zone.rect.maxY == CGFloat(700) + p.spanPadding)
     }
 
+    /// REG-066: the top zone was empty on a plain display. Any status-level window touching the
+    /// menu bar counted as a status item, including a tall overlay across the centre, which
+    /// removed the dock's whole content span. Only item-sized windows count now, and when items
+    /// really do cover the span the zone falls back to the nearest free stretch, then to ⌥.
+    @Test("REG-066: the top zone ignores non-item windows and falls back when items cover it")
+    func reg066() throws {
+        let d = DisplaySnapshot(identity: DisplayIdentity(uuid: "d"), frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                                visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1056),
+                                menuBarHeight: 24, menuBarAutoHides: false)
+        func window(_ x: CGFloat, _ w: CGFloat, _ h: CGFloat) -> WindowRecord {
+            WindowRecord(ownerPID: 42, layer: StatusItemGeometry.statusLayer, alpha: 1, bounds: CGRect(x: x, y: 0, width: w, height: h))
+        }
+        // An item is kept; a full-width backdrop and a tall overlay over the centre are not.
+        let found = StatusItemGeometry.classify([window(1700, 30, 24), window(0, 1920, 24), window(700, 520, 156)],
+                                                display: d, primaryHeight: 1080)
+        #expect(found.items == [CGRect(x: 1700, y: 1056, width: 30, height: 24)])
+        #expect(found.rejected == 2)
+
+        let p = TriggerParameters()
+        let content = Interval(CGFloat(832), CGFloat(1088))      // the default seed's capsule
+        func derive(_ items: [CGRect]) -> ZoneDerivation {
+            EdgeGeometry.derive(EdgeEnvironment(layout: DisplayLayout(displays: [d]), display: d.identity, edge: .top,
+                                                contentSpan: content, statusItemRects: items), p)
+        }
+        func spans(_ z: ZoneDerivation) -> [Interval] { z.zones.map { Interval($0.rect.minX, $0.rect.maxX) } }
+
+        // Primary: the content span ± 40, with the real items elsewhere on the bar.
+        let primary = derive(found.items)
+        #expect(primary.rule == .primary)
+        #expect(spans(primary) == [Interval(CGFloat(792), CGFloat(1128))])
+        #expect(primary.zones.allSatisfy { !$0.requiresOption })
+
+        // Items over the centre: the nearest free stretch ≥ 80 pt (left gap 170 pt away, right 190).
+        let centre = (0..<12).map { CGRect(x: CGFloat(790 + 30 * $0), y: 1056, width: 30, height: 24) }
+        let nearest = derive(centre)
+        #expect(nearest.rule == .nearestFree)
+        #expect(spans(nearest) == [Interval(p.cornerExclusion, CGFloat(790))])
+
+        // A bar with no free stretch ≥ 80 pt: ⌥ on contact over the content span.
+        let crowded = stride(from: CGFloat(0), to: 1920, by: 70).map { CGRect(x: $0 + 10, y: 1056, width: 60, height: 24) }
+        let option = derive(crowded)
+        #expect(option.rule == .optionOnly)
+        #expect(spans(option) == [Interval(CGFloat(792), CGFloat(1128))])
+        #expect(option.zones.allSatisfy { $0.requiresOption })
+
+        // The evaluator honours it: contact without ⌥ does nothing, with ⌥ it arms.
+        var e = TriggerEvaluator(parameters: p)
+        let at = CGPoint(x: 960, y: 1079)
+        let plain = e.evaluate(PointerSample(location: at, timestamp: .zero), zones: option.zones, capsule: nil,
+                               edge: .top, onDockDisplay: true)
+        #expect(!plain.contains(.zoneEntered(.wall)))
+        let withOption = e.evaluate(PointerSample(location: at, timestamp: .milliseconds(20), modifiers: [.option]),
+                                    zones: option.zones, capsule: nil, edge: .top, onDockDisplay: true)
+        #expect(withOption.contains(.zoneEntered(.wall)))
+    }
+
     /// REG-023: integer-literal arithmetic in test arguments compiled on macOS but not on Linux
     /// (no implicit Int → CGFloat there), and with swift-testing `#expect(cgFloat == 1080 - 48)`
     /// reads false even when equal: the macro type-checks the bare right-hand side on its own.

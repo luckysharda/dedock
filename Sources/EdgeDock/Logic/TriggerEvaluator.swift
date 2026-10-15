@@ -56,6 +56,8 @@ public struct TriggerEvaluator: Sendable {
         if let z = hit, z.kind == .shared, parameters.sharedPolicy == .modifier, !s.modifiers.contains(.option) {
             hit = nil
         }
+        // The top edge's last-resort zone counts only while ⌥ is held (REG-066).
+        if let z = hit, z.requiresOption, !s.modifiers.contains(.option) { hit = nil }
 
         if hit?.id != currentZone?.id || hit?.kind != currentZone?.kind {
             if currentZone != nil { events.append(.zoneLeft) }

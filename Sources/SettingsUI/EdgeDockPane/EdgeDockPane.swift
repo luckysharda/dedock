@@ -87,6 +87,9 @@ struct EdgeDockPane: View {
                 .labelsHidden().pickerStyle(.segmented).frame(width: 220)
                 .disabled(besideNativeDock)
             }
+            if let hint = environment.triggerHint() {
+                Text(hint).font(.caption).foregroundStyle(.secondary)
+            }
             ValueSlider(label: "Corner exclusion", value: dockBinding(\.reveal.cornerExclusionPt, custom: true),
                         range: 0...96, unit: "pt", help: "Keeps Hot Corners and the corners free.")
             SettingsRow(label: "Push through to reveal", help: "Pushing into the edge reveals before the delay ends.") {

@@ -10,10 +10,14 @@ import SwiftUI
     public var nativeDockEdge: () -> ScreenEdge
     /// Displays whose edge is shared with another display, for the shared-edge policy row.
     public var hasSharedEdge: (ScreenEdge) -> Bool
+    /// A one-line note when the dock's trigger uses a fallback rule (REG-066), else nil.
+    public var triggerHint: () -> String?
 
-    public init(nativeDockEdge: @escaping () -> ScreenEdge, hasSharedEdge: @escaping (ScreenEdge) -> Bool) {
+    public init(nativeDockEdge: @escaping () -> ScreenEdge, hasSharedEdge: @escaping (ScreenEdge) -> Bool,
+                triggerHint: @escaping () -> String? = { nil }) {
         self.nativeDockEdge = nativeDockEdge
         self.hasSharedEdge = hasSharedEdge
+        self.triggerHint = triggerHint
     }
 }
 

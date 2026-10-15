@@ -56,15 +56,34 @@ public enum StatusItemGeometry {
     /// `kCGStatusWindowLevel`: menu-bar status items (and the clock, Control Center items).
     public static let statusLayer = 25
 
+    /// Widest window still taken for a status item; anything wider is a backdrop or an overlay.
+    public static let maxItemWidth: CGFloat = 400
+
     /// Status-item rects on `display`, in AppKit global coordinates, for the top-edge zone
     /// (architecture §6.4: the top zone skips status items so they never trigger the dock).
     public static func rects(_ windows: [WindowRecord], display: DisplaySnapshot, primaryHeight: CGFloat) -> [CGRect] {
+        classify(windows, display: display, primaryHeight: primaryHeight).items
+    }
+
+    /// Item-sized windows at the status level on the menu-bar line, and how many status-level
+    /// windows touching it were rejected. A window taller than the menu bar or wider than
+    /// `maxItemWidth` (a full-width backdrop, an app's drop-down overlay) is not a status item:
+    /// taking one removed the whole top zone (REG-066).
+    public static func classify(_ windows: [WindowRecord], display: DisplaySnapshot,
+                                primaryHeight: CGFloat) -> (items: [CGRect], rejected: Int) {
         let menuBar = CGRect(x: display.frame.minX, y: display.frame.maxY - display.menuBarHeight,
                              width: display.frame.width, height: display.menuBarHeight)
-        return windows.compactMap { w in
-            guard w.layer == statusLayer, w.alpha > 0.01 else { return nil }
+        var items: [CGRect] = []
+        var rejected = 0
+        for w in windows where w.layer == statusLayer && w.alpha > 0.01 {
             let r = w.bounds.flippedVertically(primaryHeight: primaryHeight)
-            return r.intersects(menuBar) ? r : nil
+            guard r.intersects(menuBar) else { continue }
+            if r.height <= display.menuBarHeight + 1, r.width <= maxItemWidth, r.minY >= menuBar.minY - 1 {
+                items.append(r)
+            } else {
+                rejected += 1
+            }
         }
+        return (items, rejected)
     }
 }
