@@ -3,28 +3,39 @@ import CoreGraphics
 import DedockCore
 import Diagnostics
 
-/// Watches for full-screen Spaces and full-display windows per display (DD-924, T11).
+/// Watches for full-screen Spaces and full-display windows per display (DD-924, T11), and the
+/// menu-bar status items the top-edge zones avoid (REG-044).
 ///
-/// Checked on Space changes and app activation, never by polling. A change is reported only if
-/// it still holds after a 120 ms confirmation hold, which debounces Space-switch animations.
+/// Checked on Space changes, app activation, launch and quit, never by polling. A full-screen
+/// change is reported only once a reading holds for the 120 ms confirmation hold, which
+/// debounces Space-switch animations; a reading that moves during the hold starts a new hold
+/// (REG-046). macOS posts nothing when a status item appears, so launches are re-checked once
+/// more after `statusSettle`, by which time a launching app has usually added its items.
 @MainActor public final class FullscreenProbe {
     public private(set) var states: [DisplayIdentity: Bool] = [:]
     /// Called with the displays whose state changed.
     public var onChange: (([DisplayIdentity: Bool]) -> Void)?
+    /// Status-item rects per display, AppKit global coordinates.
+    public private(set) var statusItems: [DisplayIdentity: [CGRect]] = [:]
+    /// Called when any display's status items changed.
+    public var onStatusItemsChange: (() -> Void)?
 
     private let clock: any Clock<Duration>
     private let hold: Duration
+    private let statusSettle: Duration
     private let layout: () -> DisplayLayout
     private let windows: () -> [WindowRecord]
     private var observers: [any NSObjectProtocol] = []
     private var confirm: Task<Void, Never>?
+    private var settle: Task<Void, Never>?
 
     /// - Parameters:
     ///   - windows: the on-screen window source; defaults to `CGWindowListCopyWindowInfo`.
-    public init(clock: any Clock<Duration>, hold: Duration = .milliseconds(120),
+    public init(clock: any Clock<Duration>, hold: Duration = .milliseconds(120), statusSettle: Duration = .seconds(1),
                 layout: @escaping () -> DisplayLayout, windows: (() -> [WindowRecord])? = nil) {
         self.clock = clock
         self.hold = hold
+        self.statusSettle = statusSettle
         self.layout = layout
         self.windows = windows ?? FullscreenProbe.onScreenWindows
         let nc = NSWorkspace.shared.notificationCenter
@@ -33,12 +44,24 @@ import Diagnostics
                 MainActor.assumeIsolated { self?.check() }
             })
         }
-        states = FullscreenDetection.states(self.windows(), layout: layout(), ownPID: getpid())
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            observers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.check()
+                    self?.recheckStatusItemsLater()
+                }
+            })
+        }
+        let records = self.windows(), now = layout()
+        states = FullscreenDetection.states(records, layout: now, ownPID: getpid())
+        statusItems = Self.statusItems(records, layout: now)
     }
 
     /// Re-check now (after a display change, for example), confirming after the hold.
     public func check() {
-        let candidate = FullscreenDetection.states(windows(), layout: layout(), ownPID: getpid())
+        let records = windows(), now = layout()
+        updateStatusItems(records, layout: now)
+        let candidate = FullscreenDetection.states(records, layout: now, ownPID: getpid())
         guard candidate != states else {
             confirm?.cancel()
             return
@@ -49,7 +72,8 @@ import Diagnostics
             do { try await clock.sleep(for: hold, tolerance: .zero) } catch { return }
             guard let self else { return }
             let confirmed = FullscreenDetection.states(self.windows(), layout: self.layout(), ownPID: getpid())
-            guard confirmed == candidate else { return } // still moving: the next notification re-checks
+            // Still moving: the new reading becomes the candidate for another hold (REG-046).
+            guard confirmed == candidate else { self.check(); return }
             let changed = confirmed.filter { self.states[$0.key] != $0.value }
             self.states = confirmed
             guard !changed.isEmpty else { return }
@@ -60,8 +84,37 @@ import Diagnostics
         }
     }
 
+    private func updateStatusItems(_ records: [WindowRecord], layout: DisplayLayout) {
+        let next = Self.statusItems(records, layout: layout)
+        guard next != statusItems else { return }
+        statusItems = next
+        onStatusItemsChange?()
+    }
+
+    private func recheckStatusItemsLater() {
+        settle?.cancel()
+        let clock = clock, delay = statusSettle
+        settle = Task { @MainActor [weak self] in
+            do { try await clock.sleep(for: delay, tolerance: .milliseconds(100)) } catch { return }
+            guard let self else { return }
+            self.updateStatusItems(self.windows(), layout: self.layout())
+        }
+    }
+
+    static func statusItems(_ records: [WindowRecord], layout: DisplayLayout) -> [DisplayIdentity: [CGRect]] {
+        var result: [DisplayIdentity: [CGRect]] = [:]
+        for d in layout.displays {
+            // Sorted: the window list is in z-order, which changes without the items changing.
+            let rects = StatusItemGeometry.rects(records, display: d, primaryHeight: layout.primaryHeight)
+                .sorted { ($0.minX, $0.minY) < ($1.minX, $1.minY) }
+            if !rects.isEmpty { result[d.identity] = rects }
+        }
+        return result
+    }
+
     public func invalidate() {
         confirm?.cancel()
+        settle?.cancel()
         for o in observers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         observers.removeAll()
     }

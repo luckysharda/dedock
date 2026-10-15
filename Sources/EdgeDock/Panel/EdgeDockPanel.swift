@@ -145,15 +145,11 @@ import SwiftUI
 
     // MARK: Drop to pin (NSDraggingDestination)
 
-    /// Accept only applications and folders; anything else (documents, text) is refused.
+    /// Accept only application bundles and plain folders (`TileActions.pinKind`).
     static func pinnableURLs(_ info: any NSDraggingInfo) -> [URL] {
         let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self],
                                                        options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        return urls.filter { url in
-            var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
-            return url.pathExtension == "app" || isDir.boolValue
-        }
+        return urls.filter { TileActions.pinKind($0) != nil }
     }
 
     override public func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {

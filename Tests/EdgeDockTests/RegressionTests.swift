@@ -34,10 +34,21 @@ import Testing
     }
 
     /// REG-023: integer-literal arithmetic in test arguments compiled on macOS but not on Linux
-    /// (no implicit Int → CGFloat there), and with swift-testing `cgFloat == 1080 - 24` read
-    /// false. Expected values are typed explicitly.
-    @Test("REG-023: explicitly typed CGFloat arguments", arguments: [(CGFloat(1080 - 24), CGFloat(1056))])
-    func reg023(computed: CGFloat, literal: CGFloat) {
-        #expect(computed == literal)
+    /// (no implicit Int → CGFloat there), and with swift-testing `#expect(cgFloat == 1080 - 48)`
+    /// reads false even when equal: the macro type-checks the bare right-hand side on its own.
+    /// Expected values are typed explicitly; this guard fails if the wrapper is dropped.
+    @Test("REG-023: computed CGFloat geometry matches explicitly typed expectations",
+          arguments: [(ScreenEdge.left, CGFloat(1080 - 48)), (.top, CGFloat(1920 - 48))])
+    func reg023(edge: ScreenEdge, length: CGFloat) throws {
+        let d = DisplaySnapshot(identity: DisplayIdentity(uuid: "d"), frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                                visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1056),
+                                menuBarHeight: 24, menuBarAutoHides: false)
+        var p = TriggerParameters()
+        p.spanMode = .wholeEdge
+        let env = EdgeEnvironment(layout: DisplayLayout(displays: [d]), display: d.identity, edge: edge, contentSpan: nil)
+        let zone = try #require(EdgeGeometry.zones(env, p).first)
+        let computed = edge.isVertical ? zone.rect.height : zone.rect.width
+        #expect(computed == length)
+        if edge == .left { #expect(computed == CGFloat(1080 - 48)) } else { #expect(computed == CGFloat(1920 - 48)) }
     }
 }

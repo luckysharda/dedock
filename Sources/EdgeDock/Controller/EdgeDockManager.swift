@@ -45,6 +45,7 @@ import SettingsStore
             self?.fullscreen.check()
         }
         settingsObserver = settings.addObserver { [weak self] _ in self?.sync(reason: "settings") }
+        fullscreen.onStatusItemsChange = { [weak self] in self?.sync(reason: "statusItems") }
         fullscreen.onChange = { [weak self] changed in
             guard let self else { return }
             for c in self.coordinators.values {
@@ -76,7 +77,8 @@ import SettingsStore
     }
 
     private var surroundings: DockSurroundings {
-        DockSurroundings(layout: topology.layout, nativeDock: dockPrefs.current, reduceMotion: reduceMotion)
+        DockSurroundings(layout: topology.layout, nativeDock: dockPrefs.current, reduceMotion: reduceMotion,
+                         statusItems: fullscreen.statusItems, fullscreen: fullscreen.states)
     }
 
     /// Reconcile coordinators with the settings document and display layout.
@@ -98,8 +100,6 @@ import SettingsStore
                 c.onRemoveTile = { [weak self] tile in self?.remove(tile: tile, from: config.profileID) }
                 c.onReorder = { [weak self] order in self?.reorder(order, in: config.profileID) }
                 c.onPin = { [weak self] urls, index in self?.pin(urls, at: index, in: config.profileID) }
-                // A dock created while its display is full screen starts with the longer dwell.
-                if fullscreen.states[display.identity] == true { c.controller.send(.fullscreenChanged(true)) }
                 coordinators[config.id] = c
             }
         }
@@ -191,7 +191,7 @@ import SettingsStore
 
     static func tileItem(for url: URL) -> TileItem {
         let id = TileID("t-\(UUID().uuidString.prefix(8).lowercased())")
-        if url.pathExtension == "app" {
+        if TileActions.pinKind(url) == .app {
             return TileItem(id: id, kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path,
                             displayName: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
         }
