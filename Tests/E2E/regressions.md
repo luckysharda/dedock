@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-031.**
+Ask the E2E lane for the next free id. **Next free: REG-039.**
 
 ## How the suite runs
 
@@ -48,6 +48,14 @@ Ask the E2E lane for the next free id. **Next free: REG-031.**
 | REG-028 | `hiding → revealing` on pointer return ignored the 500 ms post-launch cooldown (PR #7) | unit guard; E2E planned (x-07b): SYN click on the Calculator tile (GEOM centre) → `tile.activate`, then push back into the edge within 500 ms: no `to=revealing` between the click's `cause=explicit` hide and +500 ms (a suppressed re-reveal logs nothing; the dock goes `hiding → hidden`); quit Calculator in teardown | unit (E2E planned: x-07b) | app |
 | REG-029 | `TriggerEvaluator.reset()` on a zone rebuild cleared "inside" without telling the machine: the dock could stay shown forever (PR #7) | unit guard; E2E planned: rebuild zones while the pointer is on the shown dock (a trigger-setting change once Settings is scriptable; a display change needs a second display), then leave: the hide delay must start and the dock reach `hidden` | unit (E2E planned) | app |
 | REG-030 | Release builds logged every value `.public` (bundle ids, paths, error text) — the repo and its logs are public | release launch: string-valued fields read `<private>` in `log stream`, numbers stay readable (`launch.edgeReady ms=…`); debug builds unchanged | unit + release launch check (planned in regress.sh) | app |
+| REG-031 | Folder tiles ignored the bookmark (path only) and never filled it on save (PR #7) | unit guard; E2E planned: after the first save of a seeded run, the folder tile in `layout.json` carries a bookmark | unit (E2E planned in the REG-026 step) | app |
+| REG-032 | PointerHub monitors ran with zero enabled docks (PR #7) | unit guard; E2E planned: idle run seeded with every dock disabled: CPU and wakeups at the no-dock floor, no `edge.*` lines while the driver moves | unit (E2E planned) | app |
+| REG-033 | Context-menu "Open" skipped the explicit hide and the 500 ms cooldown (PR #7) | unit guard; E2E: tile context menu ▸ Open (computer use), expect `cause=explicit` then no re-reveal for 500 ms | unit (E2E manual) | app |
+| REG-034 | A mouse button pressed while arming could not re-arm until the pointer left the zone (PR #7) | unit guard; E2E planned: SYN press + release at the edge while arming → `arming → hidden cause=button`, then re-arm and a dwell reveal without leaving the zone | unit (E2E planned: needs press/release in the driver) | app |
+| REG-035 | Hysteresis accepted up to 64 pt (spec 0–40) and dwell / delay values were not clamped to 0–5 s (PR #7) | unit guard; E2E planned: seed out-of-range values; the app clamps them (rewritten `layout.json`, and timing gates measure the clamped values) | unit (E2E planned) | app |
+| REG-036 | A corrupt `layout.json` gave no one-time notice, and a read I/O error was treated as corruption (PR #7) | unit guard; E2E with REG-009: truncated seed → `.corrupt-*` backup + one notice; unreadable file (no permission) → no backup | unit (E2E planned with REG-009) | app |
+| REG-037 | `flush()` at quit did not wait for a debounced save already writing (PR #7) | unit guard; E2E planned: change a setting through the debug command channel, quit at once, and the change is in `layout.json` | unit (E2E planned: needs the command channel) | app |
+| REG-038 | A relayout mid-slide snapped to the target instead of re-issuing the slide (DD-928) (PR #7) | unit guard; E2E planned: `setEdge` / relayout mid-slide via the command channel; `analyze frames` DD-928 continuity and max-step gates over that slide | unit (E2E planned: needs the command channel) | app |
 
 ## Adding an entry
 
