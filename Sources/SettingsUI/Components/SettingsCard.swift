@@ -48,6 +48,10 @@ struct ValueSlider: View {
     let unit: String
     var help: String?
 
+    /// The value field's accessibility name: `labelsHidden()` drops it, so VoiceOver read only
+    /// the number (REG-063).
+    var valueFieldLabel: String { unit.isEmpty ? label : "\(label), \(unit)" }
+
     private var stepped: Binding<Double> {
         Binding(get: { value }, set: { value = (($0 / step).rounded() * step).clamped(to: range) })
     }
@@ -65,6 +69,7 @@ struct ValueSlider: View {
                     .multilineTextAlignment(.trailing)
                     .frame(width: 64)
                     .labelsHidden()
+                    .accessibilityLabel(valueFieldLabel)
                     .onSubmit { value = min(range.upperBound, max(range.lowerBound, value)) }
                 Text(unit).foregroundStyle(.secondary).frame(width: 22, alignment: .leading)
             }
