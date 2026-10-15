@@ -91,6 +91,7 @@ import SettingsStore
                 c.onChange = { [weak self] in self?.dockChanged() }
                 c.onArmed = { [weak self] in self?.logEdgeReady() }
                 c.onRemoveTile = { [weak self] tile in self?.remove(tile: tile, from: config.profileID) }
+                c.onReorder = { [weak self] order in self?.reorder(order, in: config.profileID) }
                 // A dock created while its display is full screen starts with the longer dwell.
                 if fullscreen.states[display.identity] == true { c.controller.send(.fullscreenChanged(true)) }
                 coordinators[config.id] = c
@@ -147,6 +148,19 @@ import SettingsStore
         guard !edgeReadyLogged else { return }
         edgeReadyLogged = true
         DedockLog.event(.launch, "launch.firstArm", ["ms": msSinceProcessStart()])
+    }
+
+    /// Persist a reorder at once; it survives relaunch (T15 item 5).
+    private func reorder(_ order: [TileID], in profile: ProfileID) {
+        settings.update { doc in
+            guard let i = doc.profiles.firstIndex(where: { $0.id == profile }) else { return }
+            let items = doc.profiles[i].items
+            let byID = Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            let reordered = order.compactMap { byID[$0] }
+            // Keep anything the drag did not know about (added meanwhile) at the end.
+            doc.profiles[i].items = reordered + items.filter { !order.contains($0.id) }
+        }
+        Task { await settings.flush() }
     }
 
     private func remove(tile: TileID, from profile: ProfileID) {

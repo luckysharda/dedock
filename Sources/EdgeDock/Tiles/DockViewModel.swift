@@ -38,6 +38,9 @@ public struct TileModel: Identifiable, Sendable, Equatable {
     public var tileFrames: [TileID: CGRect] = [:]
     public var hoveredTile: TileID?
     public var pressedTile: TileID?
+    /// The tile being dragged and its panel-local centre, following the pointer along the axis.
+    public var draggedTile: TileID?
+    public var dragCentre: CGPoint = .zero
     /// Screen origin of the panel, for screen ↔ local conversion.
     public var panelOrigin: CGPoint = .zero
 

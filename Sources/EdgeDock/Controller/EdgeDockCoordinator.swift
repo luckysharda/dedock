@@ -4,6 +4,7 @@ import DesignSystem
 import Diagnostics
 import EventTapKit
 import SettingsStore
+import SwiftUI
 
 /// Everything outside the dock that its geometry depends on.
 public struct DockSurroundings: Sendable, Equatable {
@@ -42,6 +43,19 @@ public struct DockSurroundings: Sendable, Equatable {
     var onArmed: (() -> Void)?
     /// Called when a tile asks to be removed (context menu).
     var onRemoveTile: ((TileID) -> Void)?
+    /// Called with the new tile order after a reorder drop (DD-975).
+    var onReorder: (([TileID]) -> Void)?
+
+    /// A reorder drag: layout and order frozen at drag start, so live changes cannot corrupt it.
+    private struct ReorderSession {
+        let tile: TileID
+        let frozen: DockLayout
+        let order: [TileID]
+        var index: Int
+    }
+    private var reorder: ReorderSession?
+    /// The tile specs the current layout was built from.
+    private var specs: [TileSpec] = []
 
     init(config: DockConfig, profile: Profile?, display: DisplaySnapshot, surroundings: DockSurroundings,
          running: RunningAppsMonitor, icons: IconCache, clock: any Clock<Duration>) {
@@ -56,6 +70,7 @@ public struct DockSurroundings: Sendable, Equatable {
         model = DockViewModel(tokens: tokens, icons: icons)
         tiles = Self.tileModels(profile, running: running)
         layout = Self.layout(config, tiles: profile?.items ?? [], display: display, surroundings: surroundings)
+        specs = (profile?.items ?? []).map(\.tileSpec)
 
         panel = EdgeDockPanel(frame: layout.panelFrame, model: model)
         animator = SlideAnimator(container: panel.root.container, edge: config.edge,
@@ -73,6 +88,10 @@ public struct DockSurroundings: Sendable, Equatable {
         panel.root.onTileClick = { [weak self] id in self?.click(id) }
         model.activate = { [weak self] id in self?.click(id) }   // AXPress = click (REG-040)
         panel.root.onTileRightClick = { [weak self] id, event in self?.contextMenu(for: id, event: event) }
+        panel.root.onDragBegan = { [weak self] id, p in self?.beginReorder(id, at: p) }
+        panel.root.onDragMoved = { [weak self] p in self?.moveReorder(to: p) }
+        panel.root.onDragEnded = { [weak self] p in self?.endReorder(at: p) }
+        panel.root.plainDragReorders = { [weak self] in self?.config.appearance.dragToRearrange ?? false }
         controller.onOrder = { [weak self] on in
             guard let self else { return }
             if on { self.panel.orderFrontRegardless() } else { self.panel.orderOut(nil) }
@@ -104,6 +123,7 @@ public struct DockSurroundings: Sendable, Equatable {
         display = newDisplay
         tiles = Self.tileModels(profile, running: running)
         let newLayout = Self.layout(new, tiles: profile?.items ?? [], display: newDisplay, surroundings: surroundings)
+        specs = (profile?.items ?? []).map(\.tileSpec)
         model.tokens = new.tokens
         let geometryChanged = newLayout != layout || oldConfig.edge != new.edge
         if geometryChanged {
@@ -218,6 +238,75 @@ public struct DockSurroundings: Sendable, Equatable {
         menu.popUp(from: panel.root, event: event)
         controller.send(.hold(.menuOpen, false))
     }
+
+    // MARK: Reorder (DD-975, T15)
+
+    private func beginReorder(_ id: TileID, at p: CGPoint) {
+        let order = tiles.map(\.id)
+        guard let index = order.firstIndex(of: id) else { return }
+        reorder = ReorderSession(tile: id, frozen: layout, order: order, index: index)
+        gate.dragInFlight = true
+        controller.send(.hold(.dragging, true))
+        model.hoveredTile = nil
+        model.draggedTile = id
+        moveReorder(to: p)
+    }
+
+    private func moveReorder(to p: CGPoint) {
+        guard var session = reorder, let frame = session.frozen.tileFrames[session.tile] else { return }
+        // The dragged tile follows the pointer along the dock axis, clamped to the capsule.
+        let o = layout.panelFrame.origin
+        let c = session.frozen.capsuleFrame
+        let centre: CGPoint = config.edge.isVertical
+            ? CGPoint(x: frame.midX, y: min(c.maxY - frame.height / 2, max(c.minY + frame.height / 2, p.y)))
+            : CGPoint(x: min(c.maxX - frame.width / 2, max(c.minX + frame.width / 2, p.x)), y: frame.midY)
+        model.dragCentre = CGPoint(x: centre.x - o.x, y: centre.y - o.y)
+
+        let index = LayoutEngine.insertionIndex(for: p, in: session.frozen, order: session.order, moving: session.tile)
+        guard index != session.index else { return }
+        session.index = index
+        reorder = session
+        let preview = Self.reordered(session.order, moving: session.tile, to: index)
+        let byID = Dictionary(specs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let previewSpecs = preview.compactMap { byID[$0] }
+        let previewLayout = LayoutEngine.layout(previewSpecs, PlacementInput(display: display, edge: config.edge, alignment: config.dockAlignment,
+                                                                      nativeDockInset: layoutInset), config.tokens.metrics)
+        let frames = previewLayout.tileFrames.mapValues { $0.offsetBy(dx: -o.x, dy: -o.y) }
+        // Neighbours part with a 0.2 s critically damped spring; instant under Reduce Motion.
+        if reduceMotion {
+            model.tileFrames = frames
+        } else {
+            withAnimation(.spring(duration: 0.2, bounce: 0)) { model.tileFrames = frames }
+        }
+    }
+
+    private func endReorder(at p: CGPoint) {
+        guard let session = reorder else { return }
+        reorder = nil
+        model.draggedTile = nil
+        gate.dragInFlight = false
+        controller.send(.hold(.dragging, false))
+        // Dropping outside the capsule (plus hysteresis) cancels in M1.
+        let hysteresis = config.triggerParameters.hysteresis
+        let inside = session.frozen.capsuleFrame.insetBy(dx: -hysteresis, dy: -hysteresis).contains(p)
+        let from = session.order.firstIndex(of: session.tile) ?? 0
+        guard inside, session.index != from else {
+            model.apply(layout: layout, tiles: tiles)
+            return
+        }
+        let order = Self.reordered(session.order, moving: session.tile, to: session.index)
+        DedockLog.event(.tiles, "tile.reorder", ["id": session.tile.rawValue, "from": from, "to": session.index])
+        onReorder?(order)
+    }
+
+    /// `order` with `moving` removed and reinserted at `index` among the others.
+    static func reordered(_ order: [TileID], moving: TileID, to index: Int) -> [TileID] {
+        var others = order.filter { $0 != moving }
+        others.insert(moving, at: min(max(0, index), others.count))
+        return others
+    }
+
+    private var layoutInset: CGFloat { max(0, layout.panelFrame.minY - display.frame.minY) * (config.edge == .bottom ? 1 : 0) }
 
     // MARK: Pure helpers
 

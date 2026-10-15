@@ -15,8 +15,10 @@ struct DockContentView: View {
             // The capsule itself is `CapsuleView` (AppKit), drawn under this view.
             ForEach(model.tiles) { tile in
                 if let f = model.tileFrames[tile.id] {
+                    let centre = tile.id == model.draggedTile ? model.dragCentre : CGPoint(x: f.midX, y: f.midY)
                     TileView(tile: tile, model: model, size: f.size)
-                        .position(x: f.midX, y: h - f.midY)
+                        .position(x: centre.x, y: h - centre.y)
+                        .zIndex(tile.id == model.draggedTile ? 1 : 0)
                 }
             }
 
