@@ -45,3 +45,15 @@ import Testing
         #expect(states[b.identity] == true)
     }
 }
+
+@Suite struct StatusItemGeometryTests {
+    @Test func keepsStatusLayerWindowsInThisDisplaysMenuBar() {
+        let d = DisplaySnapshot(identity: DisplayIdentity(uuid: "a"), frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                                visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1056), menuBarHeight: 24, menuBarAutoHides: false)
+        let item = WindowRecord(ownerPID: 1, layer: 25, alpha: 1, bounds: CGRect(x: 1700, y: 0, width: 30, height: 24))   // CG, top
+        let normal = WindowRecord(ownerPID: 1, layer: 0, alpha: 1, bounds: CGRect(x: 1700, y: 0, width: 30, height: 24))
+        let lowStatus = WindowRecord(ownerPID: 1, layer: 25, alpha: 1, bounds: CGRect(x: 10, y: 500, width: 30, height: 24))
+        let rects = StatusItemGeometry.rects([item, normal, lowStatus], display: d, primaryHeight: 1080)
+        #expect(rects == [CGRect(x: 1700, y: 1056, width: 30, height: 24)])
+    }
+}

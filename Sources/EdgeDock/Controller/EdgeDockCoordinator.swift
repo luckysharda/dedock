@@ -147,9 +147,12 @@ public struct DockSurroundings: Sendable, Equatable {
     private func rebuildZones(_ s: DockSurroundings) {
         let footprint = s.nativeDock.orientation == config.edge
             ? NativeDockPreferences.footprint(prefs: s.nativeDock, display: display) : nil
+        let items = config.edge == .top
+            ? StatusItemGeometry.rects(FullscreenProbe.onScreenWindows(), display: display, primaryHeight: s.layout.primaryHeight)
+            : []
         let env = EdgeEnvironment(layout: s.layout, display: display.identity, edge: config.edge,
                                   contentSpan: layout.contentSpan, nativeDock: footprint,
-                                  hotCorners: s.nativeDock.hotCorners)
+                                  hotCorners: s.nativeDock.hotCorners, statusItemRects: items)
         let parameters = config.triggerParameters
         guard env != environmentKey || parameters != zoneParameters else { return }
         environmentKey = env

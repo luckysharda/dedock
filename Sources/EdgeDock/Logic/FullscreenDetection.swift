@@ -51,3 +51,20 @@ public enum FullscreenDetection {
         return result
     }
 }
+
+public enum StatusItemGeometry {
+    /// `kCGStatusWindowLevel`: menu-bar status items (and the clock, Control Center items).
+    public static let statusLayer = 25
+
+    /// Status-item rects on `display`, in AppKit global coordinates, for the top-edge zone
+    /// (architecture §6.4: the top zone skips status items so they never trigger the dock).
+    public static func rects(_ windows: [WindowRecord], display: DisplaySnapshot, primaryHeight: CGFloat) -> [CGRect] {
+        let menuBar = CGRect(x: display.frame.minX, y: display.frame.maxY - display.menuBarHeight,
+                             width: display.frame.width, height: display.menuBarHeight)
+        return windows.compactMap { w in
+            guard w.layer == statusLayer, w.alpha > 0.01 else { return nil }
+            let r = w.bounds.flippedVertically(primaryHeight: primaryHeight)
+            return r.intersects(menuBar) ? r : nil
+        }
+    }
+}
