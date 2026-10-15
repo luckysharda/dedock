@@ -17,8 +17,13 @@ def chk(cid, ok, detail): res.append((f"cua {cid} {side}", int(bool(ok)), detail
 ws = [w for w in rows(f"{C}/windows.jsonl") if w["w"] > 50 and w["h"] > 50]
 px, py, pw, ph = d["panel"]["topLeft"]
 ok = len(ws) == 1 and ws[0]["layer"] == 24 and ws[0]["onscreen"] and all(abs(a - b) <= 0.5 for a, b in zip((ws[0]["x"], ws[0]["y"], ws[0]["w"], ws[0]["h"]), (px, py, pw, ph)))
-chk("C1 panel window", ok, f"{len(ws)} window(s); layer {ws[0]['layer'] if ws else '-'} (exp 24); frame {[ws[0][k] for k in ('x','y','w','h')] if ws else '-'} vs GEOM {[px,py,pw,ph]}")
 tree = rows(f"{C}/tree.jsonl")
+# REG-056 (reported, not yet gated): the panel's AX window subrole and label. AXSystemDialog reads
+# as "system dialog". The fix pins subrole AXFloatingWindow and description "Edge Dock"; this becomes
+# a gate on those values once the fix lands.
+wins = [e for e in tree if e.get("depth") == 0 and e.get("role") == "AXWindow"]
+wsub = sorted({f"{e.get('subrole') or '-'} '{e.get('label', '')}'" for e in wins})
+chk("C1 panel window", ok, f"{len(ws)} window(s); layer {ws[0]['layer'] if ws else '-'} (exp 24); frame {[ws[0][k] for k in ('x','y','w','h')] if ws else '-'} vs GEOM {[px,py,pw,ph]}; AX window subrole/label {', '.join(wsub) or '-'} (REG-056; exp AXFloatingWindow 'Edge Dock' once fixed)")
 tl = [e for e in tree if e.get("label") in tiles and e.get("depth", 0) >= 1]
 # The AX element may be the icon inside the tile cell (E1: 52 pt icon in a 62x54 cell): require it to
 # lie inside the GEOM tile frame and be centred on it (±2 pt), and report the size difference. Lower

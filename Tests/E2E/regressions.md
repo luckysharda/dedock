@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-056.**
+Ask the E2E lane for the next free id. **Next free: REG-057.**
 
 ## How the suite runs
 
@@ -74,6 +74,7 @@ Ask the E2E lane for the next free id. **Next free: REG-056.**
 | REG-053 | The harness self-test ran during a candidate window: its fake app (executable named `Dedock`) showed up as a second Dedock, three scenarios logged another Dedock process, and it added CPU noise (2026-10-15, db65db3 run) | the self-test refuses while ANYONE holds the real desktop lock; the fake bundle's executable is `FakeDock` (never matches `MacOS/Dedock`). Rule: nothing else runs on the Mac during a candidate window | self-test | **harness** |
 | REG-054 | With the pointer on a shown tile, the system-wide AX hit test returns Dedock's `AXWindow` (empty label), not the tile's `AXButton`, even at the tile centre inside the button's AX frame: point-based assistive tech (VoiceOver mouse-follow, hover speech) cannot find the tile (db65db3, both edges; blocks #15 per the orchestrator) | cua check C7 "shown tile takes the hit" (`axprobe at … only=<pid>`, now with the parent chain) | regress.sh (cua checks) | app |
 | REG-055 | OS pointer sharing across devices has edge zones on the screen edges the dock uses; the harness's edge pushes can hand the pointer to another device, and its return reads as foreign input (it voided x-06-L-s3 in the db65db3 run; in other runs the zones activated without a hand-off, so a clean run was luck). It also means synthetic pushes can move a pointer outside this Mac | preflight WARNs when the feature is on (it is a user setting: the user turns it off for each window); post-run check "REG-055 no pointer hand-off" reads the system log for hand-offs during the run (fails closed); the listener records each foreign event's source pid (`src=`) and the scenario names the process in a local-only file | regress.sh (preflight + post-run check), listen / analyze contamination | **harness** |
+| REG-056 | The Edge Dock panel's `AXWindow` reports the subrole `AXSystemDialog`, so VoiceOver may announce the dock as a "system dialog" (seen in the 82d2d69 run's C7 parent chain, both edges) | unit guard pinning the panel's accessibility subrole (app); the cua C1 detail reports the live subrole (it becomes a gate once the fix lands) | regress.sh (cua checks) + unit | app |
 
 ## Adding an entry
 
