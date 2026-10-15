@@ -37,12 +37,18 @@ public actor LayoutFile {
         public let corruptFileMovedTo: URL?
     }
 
-    /// Loads the document, recovering from corruption. Never fails on bad content; throws only
-    /// if a corrupt file cannot be moved aside.
+    /// Loads the document, recovering from corruption. Never fails on bad content; throws
+    /// `unreadable` if the file cannot be read at all, or if a corrupt file cannot be moved aside.
     public func load(nativeDockEdge: ScreenEdge? = .bottom) throws -> LoadResult {
         var movedTo: URL?
         if fileManager.fileExists(atPath: fileURL.path) {
-            if let doc = try? Self.decode(Data(contentsOf: fileURL)) {
+            let data: Data
+            do {
+                data = try Data(contentsOf: fileURL)
+            } catch {
+                throw LayoutFileError.unreadable(String(describing: error))
+            }
+            if let doc = try? Self.decode(data) {
                 return LoadResult(document: doc, source: .file, corruptFileMovedTo: nil)
             }
             movedTo = try moveCorruptFileAside()
@@ -112,4 +118,7 @@ public actor LayoutFile {
 
 public enum LayoutFileError: Error, Equatable {
     case notAnObject
+    /// The file exists but could not be read (permissions, I/O). It is left untouched: only
+    /// unparsable content counts as corruption (REG-036).
+    case unreadable(String)
 }

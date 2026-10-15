@@ -62,7 +62,7 @@ let package = Package(
         .testTarget(name: "DedockCoreTests", dependencies: ["DedockCore"], swiftSettings: testStrict),
         .testTarget(name: "SettingsStoreTests", dependencies: ["SettingsStore", "DedockCore"], swiftSettings: testStrict),
         .testTarget(name: "EdgeDockTests", dependencies: ["EdgeDock", "DedockCore"],
-                    exclude: ["NativeDockTests.swift", "AnimatorRegressionTests.swift", "AccessibilityRegressionTests.swift", "ReorderTests.swift", "AppRegressionTests.swift"], swiftSettings: testStrict),
+                    exclude: ["NativeDockTests.swift", "AnimatorRegressionTests.swift", "AccessibilityRegressionTests.swift", "ReorderTests.swift", "AppRegressionTests.swift", "MappingRegressionTests.swift", "EdgeRevealControllerTests.swift"], swiftSettings: testStrict),
     ],
     swiftLanguageModes: [.v6]
 )

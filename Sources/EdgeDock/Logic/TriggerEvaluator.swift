@@ -38,8 +38,10 @@ public struct TriggerEvaluator: Sendable {
                                   edge: ScreenEdge, onDockDisplay: Bool) -> [RevealEvent] {
         var events: [RevealEvent] = []
 
+        var released = false
         if s.buttonsDown != buttonHeld {
             buttonHeld = s.buttonsDown
+            released = !buttonHeld
             events.append(.buttonHeld(buttonHeld))
         }
 
@@ -67,6 +69,12 @@ public struct TriggerEvaluator: Sendable {
                 bandEnteredAt = nil
             }
             currentZone = hit
+        } else if released, let z = hit {
+            // A press while arming disarmed the dock; releasing it still inside the zone re-arms
+            // without having to leave and come back (REG-034).
+            events.append(.zoneEntered(z.kind))
+            pushAccumulated = 0
+            pushFired = false
         }
 
         // The entry sample's delta is travel toward the edge, not push: count from the next one.

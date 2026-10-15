@@ -18,12 +18,17 @@ import Observation
     @ObservationIgnored private(set) var pendingSave: Task<Void, Never>?
     @ObservationIgnored private var isDirty = false
 
+    /// When true the model never writes: used when layout.json exists but cannot be read, so
+    /// in-memory defaults never overwrite the user's file (REG-036).
+    public let isReadOnly: Bool
+
     public init(file: LayoutFile, clock: any Clock<Duration>, document: DedockDocument,
-                saveDelay: Duration = .milliseconds(500)) {
+                saveDelay: Duration = .milliseconds(500), readOnly: Bool = false) {
         self.file = file
         self.clock = clock
         self.document = document
         self.saveDelay = saveDelay
+        self.isReadOnly = readOnly
     }
 
     /// Loads the document from `file` (with corruption recovery) and builds the model.
@@ -62,12 +67,28 @@ import Observation
 
     public func removeObserver(_ id: UUID) { observers[id] = nil }
 
-    /// Saves now if anything is pending (on quit).
+    /// The save currently writing, if any. Saves are serialized through it.
+    private var writing: Task<Void, Never>?
+    /// True while a save is writing to disk.
+    public var isWriting: Bool { writing != nil }
+
+    /// Saves now if anything is pending, after waiting for a save already writing (on quit).
+    /// Returning early while the debounced save was mid-write let the app quit before the file
+    /// was complete (REG-037).
     public func flush() async {
         pendingSave?.cancel()
         pendingSave = nil
+        await waitForWrite()
         guard isDirty else { return }
         await saveNow()
+    }
+
+    /// Waits until no save is writing. Whoever resumes first clears the finished task.
+    private func waitForWrite() async {
+        while let w = writing {
+            await w.value
+            if writing == w { writing = nil }
+        }
     }
 
     private func scheduleSave() {
@@ -82,14 +103,22 @@ import Observation
     }
 
     private func saveNow() async {
+        guard !isReadOnly else { return }
+        await waitForWrite()
         let snapshot = document
         isDirty = false
-        do {
-            try await file.save(snapshot)
-            lastSaveError = nil
-        } catch {
-            isDirty = true
-            lastSaveError = String(describing: error)
+        let file = self.file
+        let task = Task { @MainActor [weak self] in
+            do {
+                try await file.save(snapshot)
+                self?.lastSaveError = nil
+            } catch {
+                self?.isDirty = true
+                self?.lastSaveError = String(describing: error)
+            }
         }
+        writing = task
+        await task.value
+        if writing == task { writing = nil }
     }
 }

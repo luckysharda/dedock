@@ -30,6 +30,9 @@ import SettingsStore
     public private(set) var firstArmMs: Int?
     private let launchTime = ProcessInfo.processInfo.systemUptime - EdgeDockManager.processAge()
     private var geometryWritePending = false
+    private var debugCommands: DebugCommandListener?
+    /// Set by the app to open the Settings window (debug command `openSettings`).
+    public var onOpenSettings: (() -> Void)?
 
     public init(settings: SettingsModel, topology: DisplayTopology, hub: PointerHub,
                 clock: any Clock<Duration> = ContinuousClock(), dataDirectory: URL) {
@@ -61,8 +64,8 @@ import SettingsStore
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.sync(reason: "reduceMotion") } }
         hub.addSink(self)
+        debugCommands = DebugCommandListener { [weak self] in self?.perform($0) }
         sync(reason: "launch")
-        hub.start()
         // Edge sensing is live: zones built, panels parked, monitors installed.
         edgeReadyMs = msSinceProcessStart()
         DedockLog.event(.launch, "launch.edgeReady", ["ms": edgeReadyMs!, "docks": coordinators.count])
@@ -81,8 +84,30 @@ import SettingsStore
                          statusItems: fullscreen.statusItems, fullscreen: fullscreen.states)
     }
 
+    /// Folder tiles saved with only a path (hand-written seeds, older files) get their bookmark
+    /// on the first save (evaluation.md §7.5, REG-031). Returns nil when nothing is missing.
+    static func fillingBookmarks(_ doc: DedockDocument) -> DedockDocument? {
+        var next = doc
+        var changed = false
+        for p in next.profiles.indices {
+            for i in next.profiles[p].items.indices {
+                let item = next.profiles[p].items[i]
+                guard item.kind == .folder, item.bookmark == nil, let path = item.path,
+                      FileManager.default.fileExists(atPath: path),
+                      let data = try? URL(fileURLWithPath: path, isDirectory: true).bookmarkData() else { continue }
+                next.profiles[p].items[i].bookmark = data
+                changed = true
+            }
+        }
+        return changed ? next : nil
+    }
+
     /// Reconcile coordinators with the settings document and display layout.
     func sync(reason: String) {
+        if let filled = Self.fillingBookmarks(settings.document) {
+            settings.update { $0 = filled }   // re-enters sync through the observer, then saves
+            return
+        }
         let doc = settings.document
         let s = surroundings
         var keep: Set<DockID> = []
@@ -106,6 +131,12 @@ import SettingsStore
         for (id, c) in coordinators where !keep.contains(id) {
             c.teardown()
             coordinators[id] = nil
+        }
+        // Pointer monitors run only while at least one dock is enabled (architecture §6.3, REG-032).
+        if coordinators.isEmpty {
+            if hub.isRunning { hub.stop() }
+        } else if !hub.isRunning {
+            hub.start()
         }
         DedockLog.event(.app, "docks.sync", ["reason": reason, "docks": coordinators.count])
         dockChanged()
@@ -203,6 +234,26 @@ import SettingsStore
         settings.update { doc in
             guard let i = doc.profiles.firstIndex(where: { $0.id == profile }) else { return }
             doc.profiles[i].items.removeAll { $0.id == tile }
+        }
+    }
+
+    /// E2E debug commands (debug bundle + DEDOCK_E2E=1 only).
+    func perform(_ command: DebugCommand) {
+        switch command {
+        case .setEdge(let edge):
+            settings.update { doc in
+                guard !doc.docks.isEmpty else { return }
+                doc.docks[0].edge = edge
+                doc.docks[0].scenario = "custom"
+            }
+        case .rebuildZones:
+            for c in coordinators.values { c.forceRebuildZones(surroundings) }
+        case .reveal:
+            reveal(dock: nil)
+        case .hide:
+            hide(dock: nil, animated: true)
+        case .openSettings:
+            onOpenSettings?()
         }
     }
 

@@ -18,6 +18,9 @@ import QuartzCore
     private var activeGeneration: UInt64?
     private var activeKind = "none"
     private var activeTarget: AnimationRequest.Target = .hidden
+    /// The request in flight and the progress it started from (to re-issue it on a relayout).
+    private var activeRequest: AnimationRequest?
+    private var activeStartProgress: Double = 0
     private static let generationKey = "dedock.generation"
     private var displayLink: CADisplayLink?
     private let frameLog = DedockEnvironment.current.frameLog
@@ -34,24 +37,31 @@ import QuartzCore
     }
 
     /// Update the geometry after a relayout. At rest the current progress is kept. If a slide is
-    /// in flight it is completed at its target and its generation reported, so the reveal machine
-    /// never waits for an `animationFinished` that would otherwise never come (PR #7 review item 1).
+    /// in flight it is re-issued toward the same target from where it is, with its duration scaled
+    /// by the remaining travel (DD-928, REG-038). The same generation completes, so the reveal
+    /// machine never waits for an `animationFinished` that never comes (REG-027).
     public func update(edge: ScreenEdge, hiddenOffset: CGVector, reduceMotion: Bool) {
         let p = presentationProgress
         let pending = activeGeneration.flatMap { g in completion.map { (g, $0) } }
+        let request = activeRequest
+        let startProgress = activeStartProgress
         completion = nil
         activeGeneration = nil
         layer.removeAnimation(forKey: Self.key)
         self.edge = edge
         self.hiddenOffset = hiddenOffset
         self.reduceMotion = reduceMotion
-        if let (generation, done) = pending {
-            apply(progress: activeTarget == .shown ? 1 : 0)
-            stopFrameLog()
-            done(generation)
-        } else {
-            apply(progress: p)
-        }
+        apply(progress: p)
+        guard let (generation, done) = pending, let request else { return }
+
+        let target: Double = request.target == .shown ? 1 : 0
+        let remainingAtStart = abs(target - startProgress)
+        let remainingNow = abs(target - p)
+        let scaled = remainingAtStart > 0 ? request.duration.seconds * remainingNow / remainingAtStart : 0
+        let duration = Duration.milliseconds(Int((max(0.06, scaled) * 1000).rounded()))
+        let curve: MotionCurve = reduceMotion ? .fade : (request.target == .shown ? .revealBezier : .hideEaseIn)
+        run(AnimationRequest(target: request.target, curve: curve, duration: duration, generation: generation),
+            completion: done)
     }
 
     /// The animation currently on the layer (tests).
@@ -111,6 +121,8 @@ import QuartzCore
         self.completion = completion
         activeGeneration = request.generation
         activeTarget = request.target
+        activeRequest = request
+        activeStartProgress = from
         let kind = fadePath ? (request.target == .shown ? "fadeIn" : "fadeOut") : (request.target == .shown ? "reveal" : "hide")
         activeKind = kind
 

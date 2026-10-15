@@ -428,3 +428,45 @@ final class TestClock: Clock, @unchecked Sendable {
         #expect(model.document.docks[0].edge == .bottom)
     }
 }
+
+@Suite("Regression", .tags(.regression)) struct LoadRegressionTests {
+    /// REG-036: a layout.json that exists but cannot be read (I/O, permissions) was treated as
+    /// corrupt and moved aside, and the defaults then overwrote it on the next save.
+    @Test("REG-036: an unreadable layout.json is left untouched, never treated as corrupt")
+    @MainActor func reg036() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dedock-reg036-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // A directory named layout.json: it exists, but reading it fails with an I/O error.
+        let path = dir.appendingPathComponent("layout.json", isDirectory: true)
+        try FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
+        let file = LayoutFile(directory: dir)
+        await #expect(throws: LayoutFileError.self) { _ = try await file.load() }
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        #expect(names == ["layout.json"])   // not moved aside as "corrupt"
+
+        // The read-only model never writes over it.
+        let model = SettingsModel(file: file, clock: ContinuousClock(), document: .makeDefault(), readOnly: true)
+        model.update { $0.docks[0].edge = .right }
+        await model.flush()
+        var isDir: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: path.path, isDirectory: &isDir) && isDir.boolValue)
+    }
+}
+
+@Suite("Regression", .tags(.regression)) struct FlushRegressionTests {
+    /// REG-037: flush() at quit returned at once when the debounced save had already started
+    /// writing (nothing was dirty any more), so the app could quit mid-write.
+    @Test("REG-037: flush waits for a save that is already writing")
+    @MainActor func reg037() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dedock-reg037-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let model = SettingsModel(file: LayoutFile(directory: dir), clock: ContinuousClock(), document: .makeDefault(),
+                                  saveDelay: .zero)
+        model.update { $0.docks[0].edge = .right }       // the debounced save starts writing at once
+        for _ in 0..<200 where !model.isWriting { await Task.yield() }
+        await model.flush()
+        #expect(!model.isWriting)
+        let saved = try LayoutFile.decode(Data(contentsOf: dir.appendingPathComponent("layout.json")))
+        #expect(saved.docks[0].edge == .right)
+    }
+}
