@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-039.**
+Ask the E2E lane for the next free id. **Next free: REG-040.**
 
 ## How the suite runs
 
@@ -56,6 +56,7 @@ Ask the E2E lane for the next free id. **Next free: REG-039.**
 | REG-036 | A corrupt `layout.json` gave no one-time notice, and a read I/O error was treated as corruption (PR #7) | unit guard; E2E with REG-009: truncated seed → `settings.recovered source=backup|default moved=<file>` + exactly one `settings.notice kind=recovered`; unreadable file (I/O error) → `settings.readFailed`, file left in place, no `settings.recovered` | unit (E2E planned with REG-009) | app |
 | REG-037 | `flush()` at quit did not wait for a debounced save already writing (PR #7) | unit guard; E2E planned: change a setting through the debug command channel, quit at once, and the change is in `layout.json` | unit (E2E planned: needs the command channel) | app |
 | REG-038 | A relayout mid-slide snapped to the target instead of re-issuing the slide (DD-928) (PR #7) | unit guard; E2E planned: `setEdge` / relayout mid-slide via the command channel; `analyze frames` DD-928 continuity and max-step gates over that slide | unit (E2E planned: needs the command channel) | app |
+| REG-039 | A reversal's new animation effectively restarts ~1 frame (≈ 17 ms) after its commit: the first frame follows the new curve, later frames lag it by a frame, so the dock steps back toward its start (0.07 pt seen at an ease-in start; several pt possible at speed). Found by regress.sh on PR #7 head `c207730`, x-06 right, reversal 29 | `analyze frames` "DD-928 no flicker" (direction change inside one animation) and continuity worst offset; x-06 per edge | regress.sh | app |
 
 ## Adding an entry
 

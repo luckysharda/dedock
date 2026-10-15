@@ -252,8 +252,15 @@ if (( idle )); then
 fi
 
 # Post-run harness checks (they gate the harness, not the app).
+# A posted move lands asynchronously: reading the position right after posting can still return
+# the old point. Post, then poll for up to 1 s (re-posting once) before judging.
 $B/pointer -q move ${cursor0[1]} ${cursor0[2]}
-now=($($B/pointer pos | sed 's/[xy]=//g'))
+for i in {1..10}; do
+  sleep 0.1
+  now=($($B/pointer pos | sed 's/[xy]=//g'))
+  python3 -c "import sys; sys.exit(not (abs(float(sys.argv[1])-float(sys.argv[3]))<=1 and abs(float(sys.argv[2])-float(sys.argv[4]))<=1))" ${cursor0[1]} ${cursor0[2]} ${now[1]} ${now[2]} && break
+  (( i == 5 )) && $B/pointer -q move ${cursor0[1]} ${cursor0[2]}
+done
 check "REG-016 cursor restored" $(python3 -c "import sys; a=[float(x) for x in sys.argv[1:3]]; b=[float(x) for x in sys.argv[3:5]]; print(int(abs(a[0]-b[0])<=1 and abs(a[1]-b[1])<=1))" ${cursor0[1]} ${cursor0[2]} ${now[1]} ${now[2]}) "before ${cursor0[*]}, after ${now[*]}"
 mods=$($B/pointer mods)
 check "REG-017 no modifier held" $([[ $mods == mods=0* ]] && echo 1 || echo 0) "$mods"

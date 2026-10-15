@@ -55,8 +55,8 @@ def collect(root):
         for name in sorted(os.listdir(sub_dir)):
             d = os.path.join(sub_dir, name)
             report = os.path.join(d, "report.txt")
-            if not (os.path.isdir(d) and os.path.exists(report)):
-                continue
+            if not (os.path.isdir(d) and os.path.exists(report)) or ".void-" in name:
+                continue  # *.void-N: a contaminated attempt that was re-run; the re-run is the result
             text = open(report).read()
             m = re.search(r"^VERDICT (\w+)", text, re.M)
             if m:
