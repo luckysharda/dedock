@@ -9,14 +9,18 @@ import DedockCore
 public enum TileLength: Double, Codable, Sendable { case unit = 1.0, compact = 1.5, medium = 2.25, wide = 3.0, extraWide = 4.0 }
 
 public enum TileShape: Sendable, Hashable {
+    /// Widgets: `lengthUnits × t` along the dock axis.
     case square(TileLength)
+    /// Apps and folders: a bare icon in a cell of `DockMetrics.appCellLength` along the axis.
+    case app
+    /// The divider between sections.
     case separator
 }
 
 public struct TileSpec: Sendable, Hashable, Identifiable {
     public let id: TileID
     public let shape: TileShape
-    public init(id: TileID, shape: TileShape = .square(.unit)) {
+    public init(id: TileID, shape: TileShape = .app) {
         self.id = id
         self.shape = shape
     }
@@ -34,12 +38,16 @@ public struct DockMetrics: Sendable, Hashable {
     /// `g`: gap between tiles.
     public var gap: CGFloat
     public var separatorLength: CGFloat
+    /// Length of an app or folder cell along the dock axis (defaults to `t`, a square cell).
+    public var appCellLength: CGFloat?
     /// DD-925 distance from the edge, 0–48 pt.
     public var edgeGap: CGFloat
     /// Lane toward the screen centre for the instant tile label.
     public var labelLane: CGFloat
+    /// Shadow reach around the capsule: panel margin and part of the hidden travel.
     public var shadowMargin: CGFloat
-    /// Margin kept free at each end of the available length.
+    /// Margin kept free at each end of the available length (design.md §7.1: max length =
+    /// visible edge − 48 pt, i.e. 24 pt per end).
     public var endMargin: CGFloat = 8
     public var minimumScale: CGFloat = 0.6
 
@@ -105,7 +113,8 @@ public enum LayoutEngine {
         func length(_ shape: TileShape, _ scale: CGFloat) -> CGFloat {
             switch shape {
             case .square(let units): CGFloat(units.rawValue) * t * scale
-            case .separator: m.separatorLength * scale
+            case .app: (m.appCellLength ?? t) * scale
+            case .separator: max(1, m.separatorLength * scale)
             }
         }
         func contentLength(_ scale: CGFloat) -> CGFloat {
@@ -190,7 +199,8 @@ public enum LayoutEngine {
             panel = panel.intersection(CGRect(x: f.minX, y: f.minY, width: f.width, height: f.height - d.menuBarHeight))
         }
 
-        let travel = m.thickness + m.edgeGap + 8
+        // Hidden offset = T + edge inset + shadow reach (design.md §4.2), so no shadow shows.
+        let travel = m.thickness + m.edgeGap + max(8, m.shadowMargin)
         let o = edge.outward
         return DockLayout(
             panelFrame: panel, capsuleFrame: capsule, tileFrames: frames, order: tiles.map(\.id),

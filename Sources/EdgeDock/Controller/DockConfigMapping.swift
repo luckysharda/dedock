@@ -1,3 +1,4 @@
+import AppKit
 import DedockCore
 import DesignSystem
 import Foundation
@@ -42,14 +43,18 @@ extension DockConfig {
         }
     }
 
-    public var tokens: DockTokens {
+    @MainActor public var tokens: DockTokens {
         let size: DockTokens.Size = switch appearance.size {
         case .s: .s
         case .m: .m
         case .l: .l
         case .xl: .xl
         }
-        var t = DockTokens.placeholder(size)
+        let ws = NSWorkspace.shared
+        let light = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
+        var t = DockTokens.capsule(size, style: .darkGlass,
+                                   reduceTransparency: ws.accessibilityDisplayShouldReduceTransparency,
+                                   lightAppearance: light)
         t.edgeGap = CGFloat(min(48, max(0, placement.edgeGapPt)))
         return t
     }
@@ -57,8 +62,11 @@ extension DockConfig {
 
 extension DockTokens {
     public var metrics: DockMetrics {
-        DockMetrics(thickness: thickness, padding: padding, gap: gap, separatorLength: separatorLength,
-                    edgeGap: edgeGap, labelLane: labelLane, shadowMargin: shadowMargin)
+        var m = DockMetrics(thickness: thickness, padding: padding, gap: gap, separatorLength: separatorLength,
+                            edgeGap: edgeGap, labelLane: labelLane, shadowMargin: shadowMargin)
+        m.appCellLength = appCellLength
+        m.endMargin = endMargin
+        return m
     }
 }
 
@@ -79,6 +87,6 @@ extension TileItem {
     }
 
     public var tileSpec: TileSpec {
-        TileSpec(id: id, shape: kind == .separator ? .separator : .square(.unit))
+        TileSpec(id: id, shape: kind == .separator ? .separator : (kind == .widget ? .square(.unit) : .app))
     }
 }

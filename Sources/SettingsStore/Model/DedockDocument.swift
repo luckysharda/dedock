@@ -394,7 +394,7 @@ public struct PlacementSettings: JSONObjectModel, Sendable, Equatable {
     public var edgeGapPt: Double
     public var unknown: [String: JSONValue]
 
-    public init(alignment: Alignment = .center, edgeGapPt: Double = 6, unknown: [String: JSONValue] = [:]) {
+    public init(alignment: Alignment = .center, edgeGapPt: Double = 8, unknown: [String: JSONValue] = [:]) {
         self.alignment = alignment
         self.edgeGapPt = edgeGapPt
         self.unknown = unknown
@@ -405,7 +405,7 @@ public struct PlacementSettings: JSONObjectModel, Sendable, Equatable {
     public init(object: [String: JSONValue]) {
         let r = JSONReader(object)
         alignment = r.enumValue("alignment", default: Alignment.center)
-        edgeGapPt = r.double("edgeGapPt", default: 6)
+        edgeGapPt = r.double("edgeGapPt", default: PlacementSettings().edgeGapPt)
         unknown = Self.unknownKeys(of: object)
     }
 

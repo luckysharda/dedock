@@ -91,7 +91,7 @@ import Testing
     @Test(arguments: ScreenEdge.allCases)
     func hiddenOffsetPointsOutward(edge: ScreenEdge) {
         let o = layout(edge).hiddenOffset
-        let travel: CGFloat = 68 + 6 + 8
+        let travel: CGFloat = 68 + 6 + 12   // T + edge inset + shadow reach
         #expect(o.dx == edge.outward.dx * travel && o.dy == edge.outward.dy * travel)
     }
 
@@ -119,6 +119,15 @@ import Testing
         let l = layout(.left, tiles: withSep)
         #expect(l.tileFrames["s"]!.height == 10)
         let expected: CGFloat = 56 + 10 + 56 + 16 + 12
+        #expect(l.capsuleFrame.height == expected)
+    }
+
+    @Test func appCellsUseTheirOwnLength() {
+        var cells = m
+        cells.appCellLength = 54
+        let l = LayoutEngine.layout(tiles, PlacementInput(display: d, edge: .left), cells)
+        for f in l.tileFrames.values { #expect(f.size == CGSize(width: 56, height: 54)) }
+        let expected: CGFloat = 4 * 54 + 3 * 8 + 12
         #expect(l.capsuleFrame.height == expected)
     }
 

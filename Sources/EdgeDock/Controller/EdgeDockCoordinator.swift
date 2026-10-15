@@ -65,6 +65,7 @@ public struct DockSurroundings: Sendable, Equatable {
                                           clock: clock, animator: animator, gate: gate, edge: config.edge)
 
         model.apply(layout: layout, tiles: tiles)
+        panel.root.applyCapsule()
         rebuildZones(surroundings)
         gate.updateHitRegion(hitRegion)
 
@@ -117,6 +118,7 @@ public struct DockSurroundings: Sendable, Equatable {
             animator.update(edge: new.edge, hiddenOffset: layout.hiddenOffset, reduceMotion: reduceMotion)
         }
         model.apply(layout: layout, tiles: tiles)
+        panel.root.applyCapsule()
         evaluator.parameters = new.triggerParameters
         rebuildZones(surroundings)
         controller.reconfigure(new.revealConfig(reduceMotion: surroundings.reduceMotion))
