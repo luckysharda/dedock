@@ -42,7 +42,7 @@ import Testing
         }
     }
 
-    @Test(arguments: [(DockAlignment.start, CGFloat(1056 - 8)), (.end, 75 + 8)])
+    @Test(arguments: [(DockAlignment.start, CGFloat(1056 - 8)), (.end, CGFloat(75 + 8))])
     func sideAlignmentStartIsTheTop(alignment: DockAlignment, anchor: CGFloat) {
         let c = layout(.left, alignment).capsuleFrame
         if alignment == .start { #expect(c.maxY == anchor) } else { #expect(c.minY == anchor) }
