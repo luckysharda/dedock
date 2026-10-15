@@ -1,20 +1,32 @@
 #!/bin/bash
 # Builds build/Dedock.app from the SwiftPM `Dedock` product (architecture.md §5).
 # Usage: Scripts/make-app.sh [debug|release]
-# Env:   DEDOCK_SIGN_IDENTITY  codesign identity (default "-" = ad hoc)
+# Env:   CONFIGURATION         debug|release, used when no argument is given (CI)
+#        ARCH                  native (default) | universal (arm64 + x86_64) | arm64 | x86_64
+#        DEDOCK_SIGN_IDENTITY  codesign identity (default "-" = ad hoc)
 #        DEDOCK_SCRATCH_PATH   SwiftPM scratch dir (default .build); use your own when several
 #                              sessions build the same worktree.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CONFIG="${1:-debug}"
+CONFIG="${1:-${CONFIGURATION:-debug}}"
+CONFIG="$(echo "$CONFIG" | tr '[:upper:]' '[:lower:]')"
+ARCH="${ARCH:-native}"
 case "$CONFIG" in debug|release) ;; *) echo "usage: $0 [debug|release]" >&2; exit 2 ;; esac
 
 SCRATCH="${DEDOCK_SCRATCH_PATH:-$ROOT/.build}"
 if [ "$CONFIG" = debug ]; then BUNDLE_ID="app.dedock.Dedock.debug"; else BUNDLE_ID="app.dedock.Dedock"; fi
 
-swift build --package-path "$ROOT" --scratch-path "$SCRATCH" -c "$CONFIG" --product Dedock
-BIN_DIR="$(swift build --package-path "$ROOT" --scratch-path "$SCRATCH" -c "$CONFIG" --show-bin-path)"
+ARCH_ARGS=()
+case "$ARCH" in
+    native) ;;
+    universal) ARCH_ARGS=(--arch arm64 --arch x86_64) ;;
+    arm64|x86_64) ARCH_ARGS=(--arch "$ARCH") ;;
+    *) echo "unknown ARCH=$ARCH" >&2; exit 2 ;;
+esac
+BUILD=(swift build --package-path "$ROOT" --scratch-path "$SCRATCH" -c "$CONFIG" ${ARCH_ARGS[@]+"${ARCH_ARGS[@]}"})
+"${BUILD[@]}" --product Dedock
+BIN_DIR="$("${BUILD[@]}" --show-bin-path)"
 
 APP="$ROOT/build/Dedock.app"
 rm -rf "$APP"
@@ -38,4 +50,4 @@ SIGN_ARGS=(--force --sign "$IDENTITY" --identifier "$BUNDLE_ID" --timestamp=none
 [ "$CONFIG" = debug ] && SIGN_ARGS+=(--entitlements "$ROOT/Support/Debug.entitlements")
 codesign "${SIGN_ARGS[@]}" "$APP"
 codesign --verify --deep --strict "$APP"
-echo "built $APP ($BUNDLE_ID $SHORT, signed: $IDENTITY)"
+echo "built $APP ($BUNDLE_ID $SHORT, $CONFIG, $ARCH: $(lipo -archs "$APP/Contents/MacOS/Dedock"), signed: $IDENTITY)"

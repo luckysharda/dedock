@@ -13,7 +13,7 @@ EXTRA=()
 CLT_TESTING_PLUGINS="/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing"
 [ -d "$CLT_TESTING_PLUGINS" ] && EXTRA=(-Xswiftc -plugin-path -Xswiftc "$CLT_TESTING_PLUGINS")
 for attempt in 1 2 3; do
-    swift test --package-path "$ROOT" --scratch-path "$SCRATCH" "${EXTRA[@]}" "$@" 2>&1 | tee "$LOG"
+    swift test --package-path "$ROOT" --scratch-path "$SCRATCH" ${EXTRA[@]+"${EXTRA[@]}"} "$@" 2>&1 | tee "$LOG"
     status=${PIPESTATUS[0]}
     [ "$status" -eq 0 ] && exit 0
     if grep -q "plugin for module 'TestingMacros' not found" "$LOG"; then
