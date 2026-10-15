@@ -43,7 +43,7 @@ public enum Scenario: String, Sendable, CaseIterable, Identifiable {
     /// (the top edge's longer dwell, a thicker trigger beside the native Dock) are NOT stored:
     /// they are derived from the edge at mapping time, so a later edge change cannot leave them
     /// behind in layout.json (REG-062).
-    public func apply(to dock: DockConfig, nativeDockEdge: ScreenEdge) -> DockConfig {
+    public func apply(to dock: DockConfig) -> DockConfig {
         var d = dock
         var reveal = RevealSettings()
         reveal.unknown = dock.reveal.unknown

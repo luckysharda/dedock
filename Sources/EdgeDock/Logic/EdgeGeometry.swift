@@ -118,6 +118,12 @@ public struct EdgeEnvironment: Sendable, Hashable {
 }
 
 public enum EdgeGeometry {
+    /// True when the native Dock shares this dock's edge: the zone then spans the whole edge
+    /// minus the Dock's footprint and the corners, whatever the span mode (REG-065).
+    public static func triggersBesideNativeDock(_ env: EdgeEnvironment) -> Bool {
+        env.nativeDock?.edge == env.edge
+    }
+
     /// Builds the hot zones for one dock (architecture §6.4, system-design §5.2). Run on
     /// configuration or display change only, never per sample.
     public static func zones(_ env: EdgeEnvironment, _ p: TriggerParameters) -> [HotZone] {
@@ -126,7 +132,10 @@ public enum EdgeGeometry {
         let line = edge.line(of: display.frame)
 
         var span = IntervalSet(line)
-        if p.spanMode == .content, let content = env.contentSpan {
+        // Beside the native Dock on the same edge (shown or auto-hidden) the trigger is the whole
+        // edge on either side of the Dock: content ± padding usually lies under the Dock and left
+        // no zone at all (REG-065). Derived here, never stored; the spanMode setting is untouched.
+        if p.spanMode == .content, !Self.triggersBesideNativeDock(env), let content = env.contentSpan {
             span = span.intersection(IntervalSet(Interval(content.lower - p.spanPadding, content.upper + p.spanPadding)))
         }
 

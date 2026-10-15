@@ -13,7 +13,7 @@ import Testing
 
     @Test(arguments: [(Scenario.revealLeft, ScreenEdge.left), (.revealRight, .right), (.revealBottom, .bottom), (.revealTop, .top)])
     func revealCardsSetEdgeModeAndScenario(card: Scenario, edge: ScreenEdge) {
-        let d = card.apply(to: base, nativeDockEdge: .left)
+        let d = card.apply(to: base)
         #expect(d.edge == edge)
         #expect(d.mode == .reveal)
         #expect(d.scenario == card.rawValue)
@@ -25,7 +25,7 @@ import Testing
         custom.reveal.hideDelayMs = 50
         custom.placement.alignment = .end
         custom.profileID = "work"
-        let d = Scenario.revealRight.apply(to: custom, nativeDockEdge: .bottom)
+        let d = Scenario.revealRight.apply(to: custom)
         #expect(d.reveal.showDwellMs == RevealSettings().showDwellMs)
         #expect(d.reveal.hideDelayMs == RevealSettings().hideDelayMs)
         #expect(d.placement.alignment == .end)
@@ -36,24 +36,22 @@ import Testing
     @Test func cardsStoreNoEdgeDerivedValues() {
         let defaults = RevealSettings()
         for card in Scenario.allCases {
-            for native in ScreenEdge.allCases {
-                let d = card.apply(to: base, nativeDockEdge: native)
-                #expect(d.reveal.showDwellMs == defaults.showDwellMs, "\(card) native=\(native)")
-                #expect(d.reveal.triggerThicknessPt == defaults.triggerThicknessPt, "\(card) native=\(native)")
-            }
+            let d = card.apply(to: base)
+            #expect(d.reveal.showDwellMs == defaults.showDwellMs, "\(card)")
+            #expect(d.reveal.triggerThicknessPt == defaults.triggerThicknessPt, "\(card)")
         }
     }
 
     @Test func pinnedKeepsTheEdge() {
         var right = base
         right.edge = .right
-        let d = Scenario.pinned.apply(to: right, nativeDockEdge: .bottom)
+        let d = Scenario.pinned.apply(to: right)
         #expect(d.edge == .right)
         #expect(d.mode == .pinned)
     }
 
     @Test func manualChangeMarksCustom() {
-        var d = Scenario.revealLeft.apply(to: base, nativeDockEdge: .bottom)
+        var d = Scenario.revealLeft.apply(to: base)
         #expect(Scenario.current(d) == .revealLeft)
         d.markCustom()
         #expect(Scenario.current(d) == nil)

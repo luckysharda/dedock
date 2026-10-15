@@ -33,6 +33,36 @@ import Testing
         #expect(!entry.contains(.pushThrough))
     }
 
+    /// REG-065: in content-span mode the bottom zone was content ± padding minus the native
+    /// Dock's span. A typical Dock is wider than the content, so no zone was left and Reveal at
+    /// Bottom could not trigger. Beside the native Dock the zone is the whole edge on either side.
+    @Test("REG-065: beside the native Dock the trigger spans the edge on both sides of it",
+          arguments: [CGFloat(328), CGFloat(840), CGFloat(1352)])
+    func reg065(dockLength: CGFloat) throws {
+        let d = DisplaySnapshot(identity: DisplayIdentity(uuid: "d"), frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                                visibleFrame: CGRect(x: 0, y: 78, width: 1920, height: 978),
+                                menuBarHeight: 24, menuBarAutoHides: false)
+        let dock = Interval(CGFloat(960) - dockLength / 2, CGFloat(960) + dockLength / 2)
+        let p = TriggerParameters()
+        for autohide in [false, true] {
+            let native = NativeDockFootprint(edge: .bottom, span: dock, thickness: 78, autohide: autohide)
+            for content in [CGFloat(300), CGFloat(600), CGFloat(1200)] {
+                let env = EdgeEnvironment(layout: DisplayLayout(displays: [d]), display: d.identity, edge: .bottom,
+                                          contentSpan: Interval(CGFloat(960) - content / 2, CGFloat(960) + content / 2),
+                                          nativeDock: native)
+                let spans = EdgeGeometry.zones(env, p).map { Interval($0.rect.minX, $0.rect.maxX) }
+                #expect(spans == [Interval(p.cornerExclusion, dock.lower), Interval(dock.upper, CGFloat(1920) - p.cornerExclusion)],
+                        "dock \(dockLength) content \(content) autohide \(autohide)")
+            }
+        }
+
+        // A dock on a side edge, with the native Dock at the bottom, keeps its content span.
+        let side = EdgeEnvironment(layout: DisplayLayout(displays: [d]), display: d.identity, edge: .left,
+                                   contentSpan: Interval(CGFloat(400), CGFloat(700)), nativeDock: nil)
+        let zone = try #require(EdgeGeometry.zones(side, p).first)
+        #expect(zone.rect.minY == CGFloat(400) - p.spanPadding && zone.rect.maxY == CGFloat(700) + p.spanPadding)
+    }
+
     /// REG-023: integer-literal arithmetic in test arguments compiled on macOS but not on Linux
     /// (no implicit Int → CGFloat there), and with swift-testing `#expect(cgFloat == 1080 - 48)`
     /// reads false even when equal: the macro type-checks the bare right-hand side on its own.

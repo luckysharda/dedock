@@ -113,7 +113,7 @@ extension MappingRegressionTests {
     @Test("REG-062: edge-derived dwell and trigger thickness follow the current edge")
     func reg062() {
         let base = DedockDocument.makeDefault().docks[0]
-        var dock = Scenario.revealTop.apply(to: base, nativeDockEdge: .bottom)
+        var dock = Scenario.revealTop.apply(to: base)
         #expect(dock.revealConfig(reduceMotion: false).showDwell == .milliseconds(300))   // top: derived 300
 
         dock.edge = .left                       // status menu / EdgePicker / setEdge
@@ -122,7 +122,7 @@ extension MappingRegressionTests {
         #expect(dock.triggerParameters(nativeDockEdge: .bottom).thickness == 3)
 
         // Beside the native Dock the zone is thicker, derived; moving away drops it again.
-        var bottom = Scenario.revealBottom.apply(to: base, nativeDockEdge: .bottom)
+        var bottom = Scenario.revealBottom.apply(to: base)
         #expect(bottom.reveal.triggerThicknessPt == 3)                                    // stored default
         #expect(bottom.triggerParameters(nativeDockEdge: .bottom).thickness == 6)
         bottom.edge = .right
