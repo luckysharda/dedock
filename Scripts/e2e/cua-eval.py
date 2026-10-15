@@ -16,6 +16,9 @@ notes = [l.strip() for l in open(f"{C}/pair.txt")] if os.path.exists(f"{C}/pair.
 pair_note = (" [" + "; ".join(notes) + "]") if notes else ""
 tiles = {t["name"]: t["frame"]["topLeft"] for t in d["tiles"]}
 def rows(f): return [json.loads(l) for l in open(f) if l.strip()]
+def first_line(f):
+    try: return open(f).readline().strip()
+    except OSError: return "0 not recorded"
 res = []
 def chk(cid, ok, detail): res.append((f"cua {cid} {side}", int(bool(ok)), detail))
 ws = [w for w in rows(f"{C}/windows.jsonl") if w["w"] > 50 and w["h"] > 50]
@@ -80,10 +83,8 @@ try:
         + (" (REG-061: exp AXButton '" + first + "')" if REG061 else " (REG-061 pending: role reported, not gated)"))
 except Exception as ex:
     chk("C7 tile cell edge stays in the dock", False, f"not probed or unreadable: {type(ex).__name__}")
-chk("C7 4 pt outside passes through", o.get("pid") != pid, f"4 pt outside the capsule: hit {'Dedock' if o.get('pid') == pid else 'other app'}")
-def first_line(f):
-    try: return open(f).readline().strip()
-    except OSError: return "0 not recorded"
+gate_note = first_line(f"{C}/gate-outside.txt") if os.path.exists(f"{C}/gate-outside.txt") else ""
+chk("C7 4 pt outside passes through", o.get("pid") != pid, f"4 pt outside the capsule: hit {'Dedock' if o.get('pid') == pid else 'other app'}" + (f"; {gate_note}" if gate_note else ""))
 # C9: dd.dock.style in GEOM (Settings builds): the harness seed uses the default, Dark Glass, whose
 # material is hudWindow ('solid' under Reduce Transparency). SKIP when the build writes no style.
 MATERIALS = {"darkGlass": {"hudWindow", "solid"}, "black": {"hudWindow", "solid"}, "lightGlass": {"popover", "solid"}}

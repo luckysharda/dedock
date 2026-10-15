@@ -25,7 +25,9 @@ kill -0 $APP_PID 2>/dev/null && { kill -9 $APP_PID 2>/dev/null || true; echo "WA
 
 rc=0
 defaults read com.apple.dock > $R/dock-after.plist
-if diff -q $R/dock-before.plist $R/dock-after.plist >/dev/null; then
+# Keys the Dock writes on its own while being used (timestamps), not settings: ignored.
+DOCK_VOLATILE='lastShowIndicatorTime'
+if diff -q <(grep -vE "\"?($DOCK_VOLATILE)\"? = " $R/dock-before.plist) <(grep -vE "\"?($DOCK_VOLATILE)\"? = " $R/dock-after.plist) >/dev/null; then
   echo "PASS REG-006 native Dock prefs unchanged"
 else
   echo "FAIL REG-006 native Dock prefs changed:"; diff $R/dock-before.plist $R/dock-after.plist | head -20

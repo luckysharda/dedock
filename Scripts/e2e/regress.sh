@@ -315,7 +315,12 @@ import json; d = json.load(open('$R/data/e2e/geometry.json'))['docks'][0]; x, y,
 print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (x + w / 2, y + 2), 'top': (x + w / 2, y + h - 2)}[d['edge']])"))
   $B/pointer -q move ${cell[1]} ${cell[2]}; sleep 0.15
   $B/axprobe at ${cell[1]} ${cell[2]} only=$pid > $C/hit-shown-cell.json
-  $B/pointer -q move ${out[1]} ${out[2]}; sleep 0.15
+  # Probe 4 pt outside only once the mouse gate has closed (gate.mouse ignores=true after the move),
+  # up to 1 s: an AX hit taken before the app processed the move measured timing, not click-through.
+  local g0=$(wc -l < $R/log.ndjson) k gated=0
+  $B/pointer -q move ${out[1]} ${out[2]}
+  for k in {1..20}; do sleep 0.05; (( $(log_count $R/log.ndjson $pid '^gate[.]mouse .*ignores=true' $g0) > 0 )) && { gated=1; break }; done
+  print -r -- "gate closed after the move: $( (( gated )) && echo "yes ($(( k * 50 )) ms)" || echo 'no (1 s)')" > $C/gate-outside.txt
   $B/axprobe at ${out[1]} ${out[2]} only=$pid > $C/hit-shown-outside.json
   $B/axprobe front > $C/front-shown.json
   $B/pointer -q move ${awy[1]} ${awy[2]}   # leave: the dock hides before the next step
@@ -654,7 +659,7 @@ if (( idle )); then
       sed 's/^verdict=FAIL/FAIL idle gate (NFR-1\/NFR-2)/' $O/report.raw.txt > $O/report.txt
       echo "VERDICT $v idle left" >> $O/report.txt; rm $O/report.raw.txt
       [[ $v != VOID ]] && break
-      mv $O $O.void-$attempt
+      (( attempt < 2 )) && mv $O $O.void-$attempt   # the last attempt stays: a VOID idle is a VOID row, never missing
     done
     echo "  idle: $v"
     teardown_check $sub; check "REG-006 I" $(( $? == 0 )) "native Dock prefs unchanged"
