@@ -1,0 +1,119 @@
+# CI for dedock. Spec: docs/ci-cd.md
+# Cheap Linux jobs run on every push; macOS jobs (10x minute cost on a private repo)
+# run only on PRs into develop/staging/main, pushes to staging/main, and manual runs.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [develop, staging, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - 'Package.swift'
+              - 'Package.resolved'
+              - 'Sources/**'
+              - 'Tests/**'
+              - 'Scripts/**'
+              - 'ci/**'
+              - 'docker/**'
+              - '.github/workflows/**'
+            docs:
+              - 'docs/**'
+              - '**/*.md'
+
+  guards:
+    name: guards
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: ci/guards.sh
+
+  docs:
+    name: docs
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Markdown lint (Docker)
+        run: docker compose -f docker/compose.yml run --rm docs-lint
+      - name: Relative link check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --offline --no-progress --include-fragments 'docs/**/*.md' 'README.md'
+          fail: true
+
+  linux-core:
+    name: linux-core
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    # Non-blocking until Package.swift gates Apple-only targets behind canImport(AppKit)
+    # (docs/ci-cd.md §4). Flip the repo variable LINUX_CORE_REQUIRED to "true" afterwards.
+    continue-on-error: ${{ vars.LINUX_CORE_REQUIRED != 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Platform-neutral logic tests in swift:6.2 (Docker)
+        if: hashFiles('Package.swift') != ''
+        run: docker compose -f docker/compose.yml run --rm linux-core
+
+  macos:
+    name: macos
+    needs: [changes, guards]
+    if: >-
+      (needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch') &&
+      (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' ||
+       github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Package present?
+        if: hashFiles('Package.swift') == ''
+        run: echo "::notice::No Package.swift on this ref yet; Swift steps skipped"
+      - name: Toolchain
+        if: hashFiles('Package.swift') != ''
+        # CI compiles with the runner's Swift 6.2 on purpose: anything that only builds with
+        # the local 6.4 toolchain must fail here, loudly (docs/ci-cd.md §3).
+        run: ci/macos-toolchain.sh
+      - name: Build (debug)
+        if: hashFiles('Package.swift') != ''
+        run: swift build --build-tests
+      - name: Unit tests (swift-testing)
+        if: hashFiles('Package.swift') != ''
+        run: swift test --skip-build --parallel
+      - name: Build release
+        if: hashFiles('Package.swift') != ''
+        run: swift build -c release
+      - name: Assemble Dedock.app
+        if: hashFiles('Package.swift') != ''
+        run: ci/build-app.sh release
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('Package.swift') != ''
+        with:
+          name: Dedock-${{ github.sha }}
+          path: build/Dedock-*.zip
+          retention-days: 14
+          if-no-files-found: warn

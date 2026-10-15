@@ -1,0 +1,13 @@
+{
+  // Docs are dense reference tables; keep only rules that catch real breakage.
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD033": false,
+    "MD041": false,
+    "MD024": { "siblings_only": true },
+    "MD036": false,
+    "MD060": false
+  },
+  "ignores": [".build/**", "build/**", ".worktrees/**"]
+}

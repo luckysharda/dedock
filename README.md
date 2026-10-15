@@ -8,6 +8,7 @@ A native macOS app (Swift 6 + SwiftUI hosted in AppKit, macOS 14+) that combines
 dedock is clean-room: it reproduces features, not code or visual design. See `docs/`.
 
 ## Branches
+
 - `main` — released
 - `staging` — release candidates
 - `develop` — integration; every feature is built in its own worktree under `.worktrees/` on a `feature/*` branch off `develop`.

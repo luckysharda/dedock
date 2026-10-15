@@ -1,0 +1,20 @@
+# Local + CI entry points. Run from the repo root:
+#   docker compose -f docker/compose.yml run --rm linux-core
+#   docker compose -f docker/compose.yml run --rm docs-lint
+name: dedock-ci
+services:
+  linux-core:
+    build:
+      context: ..
+      dockerfile: docker/linux-core.Dockerfile
+    volumes:
+      - ..:/src
+      - linux-build:/build
+  docs-lint:
+    image: davidanson/markdownlint-cli2:v0.22.1
+    working_dir: /workdir
+    volumes:
+      - ..:/workdir:ro
+    command: ["docs/**/*.md", "README.md"]
+volumes:
+  linux-build:
