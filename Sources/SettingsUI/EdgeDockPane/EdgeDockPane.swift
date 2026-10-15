@@ -122,6 +122,14 @@ struct EdgeDockPane: View {
                 }
                 .labelsHidden().pickerStyle(.segmented).frame(width: 200)
             }
+            SettingsRow(label: "Style") {
+                Picker("Style", selection: dockBinding(\.appearance.style, custom: false)) {
+                    Text("Dark Glass").tag(AppearanceSettings.Style.darkGlass)
+                    Text("Black").tag(AppearanceSettings.Style.black)
+                    Text("Light Glass").tag(AppearanceSettings.Style.lightGlass)
+                }
+                .labelsHidden().pickerStyle(.segmented).frame(width: 260)
+            }
             SettingsRow(label: "Drag to rearrange", help: "⌘-drag always rearranges.") {
                 Toggle("Drag to rearrange", isOn: dockBinding(\.appearance.dragToRearrange, custom: false)).labelsHidden()
             }

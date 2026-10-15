@@ -23,6 +23,7 @@ import SettingsStore
     private var topologyToken: ObservationToken?
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
+    private var appearanceObservation: NSKeyValueObservation?
     private var edgeReadyLogged = false
     /// Set once edge sensing is live (end of init), independent of any pointer activity.
     public private(set) var edgeReadyMs: Int?
@@ -70,6 +71,10 @@ import SettingsStore
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.sync(reason: "reduceMotion") } }
+        // Light / Dark switches re-derive the tokens: label colours follow the system appearance.
+        appearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in self?.sync(reason: "appearance") }
+        }
         hub.addSink(self)
         debugCommands = DebugCommandListener { [weak self] in self?.perform($0) }
         sync(reason: "launch")
@@ -189,12 +194,24 @@ import SettingsStore
     }
 
     public func writeGeometry() {
-        let docks = coordinators.values.sorted { $0.id.rawValue < $1.id.rawValue }.map {
-            DockGeometrySnapshot(id: $0.id, display: $0.display, edge: $0.config.edge,
-                                 mode: $0.config.mode == .pinned ? .pinned : .reveal, phase: $0.phase,
-                                 layout: $0.layout, zones: $0.zones, tiles: $0.tiles)
+        let docks = coordinators.values.sorted { $0.id.rawValue < $1.id.rawValue }.map { c in
+            let tokens = c.model.tokens
+            return DockGeometrySnapshot(id: c.id, display: c.display, edge: c.config.edge,
+                                        mode: c.config.mode == .pinned ? .pinned : .reveal, phase: c.phase,
+                                        layout: c.layout, zones: c.zones, tiles: c.tiles,
+                                        style: tokens.style.rawValue, material: Self.materialName(tokens.blurMaterial))
         }
         geometryWriter.write(layout: topology.layout, docks: docks)
+    }
+
+    /// GEOM's `material` value: the blur material's name, or `solid` under Reduce Transparency.
+    static func materialName(_ m: NSVisualEffectView.Material?) -> String {
+        switch m {
+        case nil: "solid"
+        case .hudWindow?: "hudWindow"
+        case .popover?: "popover"
+        default: "other"
+        }
     }
 
     /// The first zone arming after launch (includes however long the user took to get there).

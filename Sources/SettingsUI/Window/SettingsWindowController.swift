@@ -40,7 +40,7 @@ import SwiftUI
             let w = NSWindow(contentRect: CGRect(origin: .zero, size: SettingsTokens.windowSize),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                              backing: .buffered, defer: false)
-            w.title = "dedock Settings"
+            w.title = "Dedock Settings"
             w.titlebarAppearsTransparent = true
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: root)

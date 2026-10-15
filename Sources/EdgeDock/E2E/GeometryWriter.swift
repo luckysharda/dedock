@@ -12,6 +12,10 @@ public struct DockGeometrySnapshot: Sendable {
     public let layout: DockLayout?
     public let zones: [HotZone]
     public let tiles: [TileModel]
+    /// `dd.dock.style` in effect (`darkGlass`, `black`, `lightGlass`).
+    public var style: String = "darkGlass"
+    /// The capsule material: the blur material's name, or `solid` (Reduce Transparency).
+    public var material: String = "solid"
 }
 
 /// Writes `<data dir>/e2e/geometry.json` (E2E contract §4) atomically after every layout pass
@@ -37,7 +41,7 @@ public struct GeometryWriter: Sendable {
         let dockObjects: [[String: Any]] = docks.map { dock in
             var o: [String: Any] = [
                 "id": dock.id.rawValue, "screen": Int(dock.display.displayID), "edge": dock.edge.rawValue,
-                "mode": dock.mode.rawValue, "state": dock.phase.name,
+                "mode": dock.mode.rawValue, "state": dock.phase.name, "style": dock.style, "material": dock.material,
                 "zones": dock.zones.map { ["id": $0.id, "kind": $0.kind.rawValue, "rect": rect($0.rect)] as [String: Any] },
             ]
             if let l = dock.layout {

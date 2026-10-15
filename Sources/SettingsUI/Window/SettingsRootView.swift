@@ -120,7 +120,7 @@ struct AboutPane: View {
     var body: some View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         VStack(alignment: .leading, spacing: 8) {
-            Text("dedock").font(.title2.weight(.semibold))
+            Text("Dedock").font(.title2.weight(.semibold))
             Text("Version \(version)").foregroundStyle(.secondary)
             Text("A second dock on the edge of your screen.").foregroundStyle(.secondary)
         }

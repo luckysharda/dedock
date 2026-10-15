@@ -45,18 +45,26 @@ extension DockConfig {
         }
     }
 
+    /// Tokens for the current system state: appearance (label colours) and Reduce Transparency.
     @MainActor public var tokens: DockTokens {
+        tokens(lightAppearance: NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua,
+               reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency)
+    }
+
+    /// Tokens for this dock's size and `dd.dock.style`, in the given system state.
+    public func tokens(lightAppearance: Bool, reduceTransparency: Bool) -> DockTokens {
         let size: DockTokens.Size = switch appearance.size {
         case .s: .s
         case .m: .m
         case .l: .l
         case .xl: .xl
         }
-        let ws = NSWorkspace.shared
-        let light = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
-        var t = DockTokens.capsule(size, style: .darkGlass,
-                                   reduceTransparency: ws.accessibilityDisplayShouldReduceTransparency,
-                                   lightAppearance: light)
+        let style: DockTokens.Style = switch appearance.style {
+        case .darkGlass: .darkGlass
+        case .black: .black
+        case .lightGlass: .lightGlass
+        }
+        var t = DockTokens.capsule(size, style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance)
         t.edgeGap = CGFloat(min(48, max(0, placement.edgeGapPt)))
         return t
     }

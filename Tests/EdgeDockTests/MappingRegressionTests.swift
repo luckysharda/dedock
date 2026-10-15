@@ -105,3 +105,41 @@ import Testing
         #expect(EdgeDockManager.fillingBookmarks(filled) == nil)
     }
 }
+
+@Suite @MainActor struct DockStyleMappingTests {
+    /// The dock's `dd.dock.style` picks the capsule material; the system appearance only picks
+    /// the label colours (design.md §7.1: the style is chosen apart from Light / Dark).
+    @Test func styleAndAppearanceMapToTokens() {
+        var config = DedockDocument.makeDefault().docks[0]
+        #expect(config.tokens(lightAppearance: false, reduceTransparency: false).style == .darkGlass)
+        config.appearance.style = .black
+        #expect(config.tokens(lightAppearance: false, reduceTransparency: false).style == .black)
+        config.appearance.style = .lightGlass
+        let light = config.tokens(lightAppearance: false, reduceTransparency: false)
+        #expect(light.style == .lightGlass)
+        #expect(light.blurMaterial == .popover)
+        #expect(config.tokens(lightAppearance: false, reduceTransparency: true).blurMaterial == nil)
+
+        // Light / Dark changes the label, not the style.
+        config.appearance.style = .darkGlass
+        let dark = config.tokens(lightAppearance: false, reduceTransparency: false)
+        let aqua = config.tokens(lightAppearance: true, reduceTransparency: false)
+        #expect(aqua.style == .darkGlass)
+        #expect(dark.labelText != aqua.labelText)
+        #expect(dark.labelFill != aqua.labelFill)
+    }
+
+    @Test func geometryNamesTheCapsuleMaterial() {
+        #expect(EdgeDockManager.materialName(.hudWindow) == "hudWindow")
+        #expect(EdgeDockManager.materialName(.popover) == "popover")
+        #expect(EdgeDockManager.materialName(nil) == "solid")
+    }
+
+    /// VoiceOver reads a window's AXTitle, so the borderless panel carries one too.
+    @Test(.enabled(if: NSScreen.main != nil)) func panelIsTitledEdgeDock() {
+        let model = DockViewModel(tokens: DedockDocument.makeDefault().docks[0].tokens, icons: IconCache())
+        let panel = EdgeDockPanel(frame: CGRect(x: 0, y: 0, width: 78, height: 400), model: model)
+        defer { panel.close() }
+        #expect(panel.title == "Edge Dock")
+    }
+}
