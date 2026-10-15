@@ -70,11 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .recovered: DedockLog.event(.settings, "settings.notice", ["kind": "recovered"])
         case .readOnly: DedockLog.event(.settings, "settings.notice", ["kind": "readOnly"])
         }
-        var panel: LaunchNoticePanel?
-        panel = LaunchNoticePanel(notice) { [weak self] in
-            self?.noticePanels.removeAll { $0 === panel }
+        let panel = LaunchNoticePanel(notice) { [weak self] closed in
+            self?.noticePanels.removeAll { $0 === closed }
         }
-        guard let panel else { return }
         noticePanels.append(panel)
         panel.show()
     }

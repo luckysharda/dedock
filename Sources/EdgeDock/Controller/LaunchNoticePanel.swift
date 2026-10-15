@@ -3,37 +3,40 @@ import AppKit
 /// The one-time launch notice (a damaged or unreadable layout), as a small floating panel. It is
 /// never modal: `NSAlert.runModal` ran a modal session on the main thread, and the pointer
 /// monitors and reveal timers stalled until OK was clicked, so the dock could not reveal while
-/// the alert was up (REG-057). The panel does not activate Dedock, so the user's app keeps focus;
-/// as a non-activating panel it still takes the keyboard, so Return dismisses it.
+/// the alert was up (REG-057). The panel neither activates Dedock nor becomes key on its own, so
+/// the user's app keeps both focus and keystrokes (typing at login never lands here, and a stray
+/// Return cannot dismiss it unread). OK works by click; Return works once the user clicks in.
 @MainActor public final class LaunchNoticePanel: NSObject {
     public let panel: NSPanel
-    private let onClose: () -> Void
+    private let onClose: (LaunchNoticePanel) -> Void
 
     public static func text(for notice: LaunchNotices.Notice) -> (title: String, body: String) {
         switch notice {
         case let .recovered(movedTo, fromBackup):
             ("Your Edge Dock layout was damaged",
              fromBackup
-                 ? "dedock restored the most recent backup. The damaged file was kept as \(movedTo)."
-                 : "dedock started with a fresh layout. The damaged file was kept as \(movedTo).")
+                 ? "Dedock restored the most recent backup. The damaged file was kept as \(movedTo)."
+                 : "Dedock started with a fresh layout. The damaged file was kept as \(movedTo).")
         case .readOnly:
-            ("dedock can't read its layout file",
+            ("Dedock can't read its layout file",
              "The Edge Dock is using the default layout. Changes you make won't be saved until the file can be read again.")
         }
     }
 
-    public init(_ notice: LaunchNotices.Notice, onClose: @escaping () -> Void = {}) {
+    /// - Parameter onClose: called with this notice after OK closes it (no capture needed).
+    public init(_ notice: LaunchNotices.Notice, onClose: @escaping (LaunchNoticePanel) -> Void = { _ in }) {
         self.onClose = onClose
         panel = NSPanel(contentRect: CGRect(x: 0, y: 0, width: 380, height: 140),
                         styleMask: [.titled, .nonactivatingPanel, .utilityWindow], backing: .buffered, defer: false)
         super.init()
         let text = Self.text(for: notice)
-        panel.title = text.title
+        panel.title = text.title          // read as AXTitle; the bold label shows it once
+        panel.titleVisibility = .hidden
         panel.level = .floating
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.becomesKeyOnlyIfNeeded = false
+        panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         let title = NSTextField(labelWithString: text.title)
@@ -67,11 +70,10 @@ import AppKit
         panel.layoutIfNeeded()
         panel.center()
         panel.orderFrontRegardless()
-        panel.makeKey()
     }
 
     @objc func dismiss() {
         panel.close()
-        onClose()
+        onClose(self)
     }
 }

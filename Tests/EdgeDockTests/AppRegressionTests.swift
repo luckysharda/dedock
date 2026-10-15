@@ -291,16 +291,17 @@ extension AppRegressionTests {
 
         // The notice itself is never modal: `NSAlert.runModal` froze the pointer monitors and the
         // reveal timers until OK. `show()` returns at once with no modal session, and OK closes it.
-        var closed = 0
-        let notice = LaunchNoticePanel(.recovered(movedTo: "layout.corrupt.json", fromBackup: false)) { closed += 1 }
+        var closed: [LaunchNoticePanel] = []
+        let notice = LaunchNoticePanel(.recovered(movedTo: "layout.corrupt.json", fromBackup: false)) { closed.append($0) }
         notice.show()
         #expect(notice.panel.isVisible)
         #expect(NSApplication.shared.modalWindow == nil)
+        #expect(!notice.panel.isKeyWindow)              // keystrokes stay with the user's app
         #expect(notice.panel.styleMask.contains(.nonactivatingPanel))
         #expect(notice.panel.title == "Your Edge Dock layout was damaged")
         notice.dismiss()
         #expect(!notice.panel.isVisible)
-        #expect(closed == 1)
+        #expect(closed.count == 1 && closed.first === notice)
     }
 
     /// REG-058: the REG-046 re-hold had no limit, so a full-display window that keeps flapping
