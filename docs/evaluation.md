@@ -450,72 +450,72 @@ Verdict: Done / Not done — signed: ____
 
 ## 11. M1 Edge Dock acceptance list (filled in)
 
-Status on 2026-10-15: nothing is implemented, so every row is **Not run**. "x" = run for left and right.
+Status on 2026-10-16 (develop `4bc4f61`; card `be64d3c`, edges L and R): **15 Pass, 38 Partial, 4 Missing.** Each Status cell gives the evidence, then what is still missing. "x" = run for left and right.
 
 | # | ID | Criterion | Layers | Test / scenario | Status |
 |---|---|---|---|---|---|
-| 1 | DD-901 | The native Dock is never hidden, moved or reconfigured | E2E | REG-006 teardown diff | Not run |
-| 2 | DD-901 | Non-activating panel: a tile click launches or focuses the app; dedock never becomes the active app | E2E | x-07 | Not run |
-| 3 | DD-901 | Works over full-screen apps (`.fullScreenAuxiliary`), no Space switch | E2E | x-10 | Not run |
-| 4 | DD-901 | System overlays (Control Center, Notification Center, banners, menu-bar menus) draw above a right dock | E2E | R-12 | Not run |
-| 5 | DD-901 | Runs with no Accessibility or Screen Recording grant; no prompt | E2E | x-00 | Not run |
-| 6 | DD-902 | Edge ∈ {left, right} (bottom, top-below-menu-bar optional); slide axis X on sides, Y on bottom/top | L1, E2E | §3.2, x-01, x-18 | Not run |
-| 7 | DD-902 | Trigger, hysteresis maths are axis-generic; one suite runs for all edges | L1 | §3.2 parameterised over edges | Not run |
-| 8 | DD-902 | Changing the edge re-lays out and re-animates within one reveal cycle | L1, L2 | §3.5 "Edge change", §4 | Not run |
-| 9 | DD-903 | Thickness / length grammar, concentric radii, top-to-bottom flow on side docks | L1, L6 | §3.5, §9.3 | Not run |
-| 10 | DD-903 | Hover label toward the screen centre, shown instantly (`dd.motion.tile.label`) | L1, E2E, L7 | §3.5, x-07 screenshot | Not run |
-| 11 | DD-903 | Running indicator on the inner side (`docs/design.md` §4.2); its look per `docs/design.md` §7.1 (4 pt white dot, inner side) | L1, L6 | §3.5, §9.3 | Not run |
-| 12 | DD-910 (subset) | Cards: Reveal on Left, Reveal on Right, Reveal at Bottom (beta), Pinned, Reveal at Top (beta) (`docs/plan.md` T17) | E2E | x-13 | Not run |
-| 13 | DD-910 | Recommended badge follows the native Dock edge (bottom → Reveal on Left) | L1, E2E | §3.6 Defaults, x-13 | Not run |
-| 14 | DD-910 | A card applies all its settings in one step and shows a 2 s hint at the edge | L1, E2E | §3.6 Scenario cards, x-13 | Not run |
-| 15 | DD-910 | A later manual change marks the card "Custom" | L1, E2E | §3.6, x-13 | Not run |
-| 16 | DD-911 | Pinned: always visible; start / center / end alignment | E2E, L6 | x-13 | Not run |
-| 17 | DD-912 | State machine `hidden → arming → revealing → shown → armingHide → hiding → hidden`, all transitions | L1 | §3.3 transition table (100 %) | Not run |
-| 18 | DD-912 | Leaving before the dwell returns to hidden with no animation | L1, E2E | §3.3, x-02 | Not run |
-| 19 | DD-912 | One-shot timers, no polling, fire within 16 ms | L1, L2, L5 | §3.3, §4 timer accuracy, §6 wakeups | Not run |
-| 20 | DD-912 | No relayout while moving inside the zone or the shown dock | L1 | §3.3 | Not run |
-| 21 | DD-912 | Push-through (40 pt) reveals before the dwell | L1, E2E | §3.2, x-03 | Not run |
-| 22 | DD-921 | Show delay 0–5 s, default 120 ms, reveal starts ≤ show delay + 16 ms | L1, L5, E2E | §3.3, §6, x-01 | Not run |
-| 23 | DD-922 | Hide delay 0–5 s, default 400 ms; inhibitors pause it | L1, E2E | §3.3, x-04, x-16 | Not run |
-| 24 | DD-923 | Zone 1–20 pt from `screen.frame`; span = content + 40 pt or whole edge; corner and menu-bar exclusions | L1 | §3.2 | Not run |
-| 25 | DD-924 | Full-screen dwell 400 ms, separate from the normal dwell | L1, E2E | §3.3, x-10 | Not run |
-| 26 | DD-925 | Alignment start / center / end; distance from edge 0–48 pt | L1, L6 | §3.5, §9.3 | Not run |
-| 27 | DD-926 | One size control scales tiles, gaps and padding; live preview while dragging the slider | L1, E2E | §3.5, x-13 | Not run |
-| 28 | DD-927 | Panel frame fixed; only the content layer's translation animates | L2, L7 | §4 FakeLayer, §8 | Not run |
-| 29 | DD-927 | Reveal = `dd.motion.edge.reveal`, hide = `dd.motion.edge.hide`, frame counts per §8 | L7 | §8 | Not run |
-| 30 | DD-927 | Reduce Motion: 0.15 s opacity fade in place | E2E, L7 | x-17 | Not run |
-| 31 | DD-928 | Reversal from the presentation value, duration × remaining, floor 0.06 s | L1, E2E | §3.3, x-05 | Not run |
-| 32 | DD-928 | Requesting the current target is a no-op | L1 | §3.3 | Not run |
-| 33 | DD-928 | 20 crossings in 2 s: continuity ≤ 8 pt at reversals, no step above a clean run, no flicker | L1, E2E, L7 | §3.3, x-06 | Not run |
-| 34 | DD-929 | Inhibitors block hiding (M1 tokens: dragging, menuOpen, popoverOpen, editing, pinnedByUser; previewOpen stubbed) | L1, E2E | §3.3, x-16 | Not run |
-| 35 | DD-929 | Menu-tracking 30 Hz `.common` timer replaces stalled monitors | L1, L2 | §3.3, §4 | Not run |
-| 36 | DD-931 | Shared edges: wall / shared split, slow dwell, crossing guard, Modifier option, topology recompute | L1, L2 | §3.2, §4 | Not run (E2E x-11 deferred: one display) |
-| 37 | DD-933 | Hidden or faded: ignores mouse events; shown: hit test nil outside tiles | L1, E2E | §3.4, x-08 | Not run |
-| 38 | DD-933 | Click 4 pt outside the container reaches the window underneath | E2E | x-08 (a) | Not run |
-| 39 | DD-961 | Pinned app tiles: click launches or activates; icons at 256 pt nominal | L1, E2E | §3.7, x-07 | Not run |
-| 40 | DD-962 | Running dot, frontmost highlight, hidden dimmed, update ≤ 100 ms | L1, E2E | §3.7, x-14 | Not run |
-| 41 | DD-964 (basic) | Folder tile opens Finder or a stack list toward the screen centre | L1, E2E | §3.7, x-15 | Not run |
-| 42 | DD-975 | ⌘-drag always reorders; plain drag only when enabled; insertion follows the pointer; persisted at once | L1, E2E | §3.7, x-09 | Not run |
-| 43 | DD-975 | Drop outside the dock removes the tile after confirmation | L1, E2E | §3.7, x-09 variant | Not run |
-| 44 | DD-801 (minimal) | Status item per `docs/plan.md` T18 (Show/Hide Edge Dock, Edge ▸, Mode ▸, Keep Dock Open, Settings…, Quit dedock); agent app with no Dock icon | E2E | x-00, x-13 | Not run |
-| 45 | DD-802 (Edge Dock pane) | Pane exposes cards, edge, mode, delays, trigger, alignment, inset, size, drag to rearrange, shared-edge policy | E2E | x-13 | Not run |
-| 46 | SettingsStore | Round-trip, defaults, clamping, unknown keys, v0 → v1 migration, corrupt-file recovery, atomic write | L1 | §3.6 | Not run |
-| 47 | NFR-1 | Idle CPU < 0.5 % over 60 s; no timer > 1 Hz | L5 | §6 | Not run |
-| 48 | NFR-2 | RSS ≤ 120 MB with one Edge Dock; 0 leaks after 100 cycles | L5 | §6 | Not run |
-| 49 | NFR-4 | Dwell → reveal start ≤ show delay + 16 ms (p95, 50 trials) | L5 | §6 | Not run |
-| 50 | Perf | Pointer sample ≤ 20 µs p99; cold launch → armed ≤ 400 ms; 0 dropped frames at 60 Hz | L5 | §6 | Not run |
-| 51 | Visual | Placement, sizing, distinctness table signed; `docs/design.md` pixel check within tolerance | L6 | §9 | Not run |
-| 52 | Clean-room | PR lists "Sources consulted"; no DockDoor code or strings | review | `docs/organization.md` | Not run |
+| 1 | DD-901 | The native Dock is never hidden, moved or reconfigured | E2E | REG-006 teardown diff | **Pass**: REG-006 teardown diff after every launch |
+| 2 | DD-901 | Non-activating panel: a tile click launches or focuses the app; dedock never becomes the active app | E2E | x-07 | **Partial**: cua C5, C3 pressable, REG-040; missing: x-07 real tile click |
+| 3 | DD-901 | Works over full-screen apps (`.fullScreenAuxiliary`), no Space switch | E2E | x-10 | **Partial**: full-screen detection + dwell unit tests; missing: x-10 (REG-007/008) |
+| 4 | DD-901 | System overlays (Control Center, Notification Center, banners, menu-bar menus) draw above a right dock | E2E | R-12 | **Partial**: geom-check below the menu bar; missing: x-12 overlays |
+| 5 | DD-901 | Runs with no Accessibility or Screen Recording grant; no prompt | E2E | x-00 | **Pass**: x-00 rows (UIElement, status item, no prompt, starts hidden) |
+| 6 | DD-902 | Edge ∈ {left, right} (bottom, top-below-menu-bar optional); slide axis X on sides, Y on bottom/top | L1, E2E | §3.2, x-01, x-18 | **Partial**: edge-parameterised unit tests; x-01 L/R; missing: bottom/top on the card (x-18; REG-065/066) |
+| 7 | DD-902 | Trigger, hysteresis maths are axis-generic; one suite runs for all edges | L1 | §3.2 parameterised over edges | **Partial**: push direction and zone tests over all edges; missing: hysteresis suite per edge |
+| 8 | DD-902 | Changing the edge re-lays out and re-animates within one reveal cycle | L1, L2 | §3.5 "Edge change", §4 | **Partial**: REG-062 unit + card row; REG-027/038; missing: "within one reveal cycle" timing |
+| 9 | DD-903 | Thickness / length grammar, concentric radii, top-to-bottom flow on side docks | L1, L6 | §3.5, §9.3 | **Partial**: tile grammar, top-to-bottom flow; geom-check; missing: concentric radii; L6 |
+| 10 | DD-903 | Hover label toward the screen centre, shown instantly (`dd.motion.tile.label`) | L1, E2E, L7 | §3.5, x-07 screenshot | **Missing**: —; missing: hover label position and instant show |
+| 11 | DD-903 | Running indicator on the inner side (`docs/design.md` §4.2); its look per `docs/design.md` §7.1 (4 pt white dot, inner side) | L1, L6 | §3.5, §9.3 | **Partial**: indicators face the centre (unit); missing: L6 look (4 pt dot) |
+| 12 | DD-910 (subset) | Cards: Reveal on Left, Reveal on Right, Reveal at Bottom (beta), Pinned, Reveal at Top (beta) (`docs/plan.md` T17) | E2E | x-13 | **Partial**: scenario card unit tests; missing: x-13 |
+| 13 | DD-910 | Recommended badge follows the native Dock edge (bottom → Reveal on Left) | L1, E2E | §3.6 Defaults, x-13 | **Partial**: recommended-edge unit tests; missing: badge UI, x-13 |
+| 14 | DD-910 | A card applies all its settings in one step and shows a 2 s hint at the edge | L1, E2E | §3.6 Scenario cards, x-13 | **Partial**: card apply resets timing (unit); missing: 2 s edge hint; x-13 |
+| 15 | DD-910 | A later manual change marks the card "Custom" | L1, E2E | §3.6, x-13 | **Partial**: manual change marks Custom (unit); missing: x-13 |
+| 16 | DD-911 | Pinned: always visible; start / center / end alignment | E2E, L6 | x-13 | **Partial**: pinned and alignment unit tests; missing: E2E / L6 |
+| 17 | DD-912 | State machine `hidden → arming → revealing → shown → armingHide → hiding → hidden`, all transitions | L1 | §3.3 transition table (100 %) | **Pass**: transition table tests (every phase reached and left) |
+| 18 | DD-912 | Leaving before the dwell returns to hidden with no animation | L1, E2E | §3.3, x-02 | **Pass**: leave-before-dwell unit test; x-02 L/R |
+| 19 | DD-912 | One-shot timers, no polling, fire within 16 ms | L1, L2, L5 | §3.3, §4 timer accuracy, §6 wakeups | **Pass**: REG-019, timer tests, no timer while still; x-01/x-04 lateness; idle wakeups |
+| 20 | DD-912 | No relayout while moving inside the zone or the shown dock | L1 | §3.3 | **Missing**: —; missing: no-relayout-while-moving assertion |
+| 21 | DD-912 | Push-through (40 pt) reveals before the dwell | L1, E2E | §3.2, x-03 | **Pass**: push-through unit test, REG-020, x-03 L/R |
+| 22 | DD-921 | Show delay 0–5 s, default 120 ms, reveal starts ≤ show delay + 16 ms | L1, L5, E2E | §3.3, §6, x-01 | **Pass**: REG-035 clamp, default 120 ms; x-01 lateness p95 ≤ 16 ms |
+| 23 | DD-922 | Hide delay 0–5 s, default 400 ms; inhibitors pause it | L1, E2E | §3.3, x-04, x-16 | **Partial**: x-04 L/R; hold tests; cua C8 hold; missing: 400 ms default pinned; x-16 |
+| 24 | DD-923 | Zone 1–20 pt from `screen.frame`; span = content + 40 pt or whole edge; corner and menu-bar exclusions | L1 | §3.2 | **Partial**: zone geometry unit tests; missing: 1–20 pt clamp |
+| 25 | DD-924 | Full-screen dwell 400 ms, separate from the normal dwell | L1, E2E | §3.3, x-10 | **Partial**: full-screen dwell unit test; missing: x-10 |
+| 26 | DD-925 | Alignment start / center / end; distance from edge 0–48 pt | L1, L6 | §3.5, §9.3 | **Partial**: alignment and inset unit tests; geom-check; missing: 0–48 pt clamp; L6 |
+| 27 | DD-926 | One size control scales tiles, gaps and padding; live preview while dragging the slider | L1, E2E | §3.5, x-13 | **Missing**: —; missing: size control and live preview |
+| 28 | DD-927 | Panel frame fixed; only the content layer's translation animates | L2, L7 | §4 FakeLayer, §8 | **Partial**: REG-027/038/039; frame-curve fit; missing: panel frame fixed asserted |
+| 29 | DD-927 | Reveal = `dd.motion.edge.reveal`, hide = `dd.motion.edge.hide`, frame counts per §8 | L7 | §8 | **Pass**: reveal/hide durations and curves (unit); analyze per-curve gate |
+| 30 | DD-927 | Reduce Motion: 0.15 s opacity fade in place | E2E, L7 | x-17 | **Partial**: Reduce Motion fade (unit), REG-025; missing: x-17 |
+| 31 | DD-928 | Reversal from the presentation value, duration × remaining, floor 0.06 s | L1, E2E | §3.3, x-05 | **Pass**: reverse durations (unit); 0.06 s floor in x-05a/b |
+| 32 | DD-928 | Requesting the current target is a no-op | L1 | §3.3 | **Pass**: fuzz invariant: never restart toward the target in flight |
+| 33 | DD-928 | 20 crossings in 2 s: continuity ≤ 8 pt at reversals, no step above a clean run, no flicker | L1, E2E, L7 | §3.3, x-06 | **Pass**: fuzz tests; x-06 L/R continuity, max step, flicker |
+| 34 | DD-929 | Inhibitors block hiding (M1 tokens: dragging, menuOpen, popoverOpen, editing, pinnedByUser; previewOpen stubbed) | L1, E2E | §3.3, x-16 | **Partial**: menuOpen, dragging, editing (REG-064), REG-048; missing: popoverOpen, pinnedByUser; x-16 |
+| 35 | DD-929 | Menu-tracking 30 Hz `.common` timer replaces stalled monitors | L1, L2 | §3.3, §4 | **Partial**: menu-tracking swap tests; missing: 30 Hz and `.common` asserted |
+| 36 | DD-931 | Shared edges: wall / shared split, slow dwell, crossing guard, Modifier option, topology recompute | L1, L2 | §3.2, §4 | **Pass**: shared-edge geometry and trigger tests; topology refresh; missing: E2E x-11 deferred (one display; owner to approve) |
+| 37 | DD-933 | Hidden or faded: ignores mouse events; shown: hit test nil outside tiles | L1, E2E | §3.4, x-08 | **Pass**: gate opens before the reveal; cua C6/C7; REG-054 |
+| 38 | DD-933 | Click 4 pt outside the container reaches the window underneath | E2E | x-08 (a) | **Partial**: cua C7 4 pt outside (AX hit test); missing: x-08 real click |
+| 39 | DD-961 | Pinned app tiles: click launches or activates; icons at 256 pt nominal | L1, E2E | §3.7, x-07 | **Partial**: REG-040 press = click path; REG-033; cua C3/C5; missing: x-07 real launch; 256 pt icons |
+| 40 | DD-962 | Running dot, frontmost highlight, hidden dimmed, update ≤ 100 ms | L1, E2E | §3.7, x-14 | **Partial**: REG-014; missing: x-14 |
+| 41 | DD-964 (basic) | Folder tile opens Finder or a stack list toward the screen centre | L1, E2E | §3.7, x-15 | **Partial**: REG-031; folder label; missing: x-15 |
+| 42 | DD-975 | ⌘-drag always reorders; plain drag only when enabled; insertion follows the pointer; persisted at once | L1, E2E | §3.7, x-09 | **Partial**: reorder and insertion unit tests; REG-048; missing: ⌘ vs plain drag, persistence; x-09 |
+| 43 | DD-975 | Drop outside the dock removes the tile after confirmation | L1, E2E | §3.7, x-09 variant | **Missing**: —; missing: drag-out-to-remove with confirmation (implementer, M1) |
+| 44 | DD-801 (minimal) | Status item per `docs/plan.md` T18 (Show/Hide Edge Dock, Edge ▸, Mode ▸, Keep Dock Open, Settings…, Quit dedock); agent app with no Dock icon | E2E | x-00, x-13 | **Partial**: x-00 status item; cua C4; missing: menu contents per T18 |
+| 45 | DD-802 (Edge Dock pane) | Pane exposes cards, edge, mode, delays, trigger, alignment, inset, size, drag to rearrange, shared-edge policy | E2E | x-13 | **Partial**: cua C8 labelled; REG-063; missing: per-control presence; x-13 |
+| 46 | SettingsStore | Round-trip, defaults, clamping, unknown keys, v0 → v1 migration, corrupt-file recovery, atomic write | L1 | §3.6 | **Partial**: round-trip, defaults, unknown keys, migration, corrupt/backup, REG-036/037; missing: atomic write; a concrete v0 → v1 step |
+| 47 | NFR-1 | Idle CPU < 0.5 % over 60 s; no timer > 1 Hz | L5 | §6 | **Pass**: idle 60 s gate, REG-004 |
+| 48 | NFR-2 | RSS ≤ 120 MB with one Edge Dock; 0 leaks after 100 cycles | L5 | §6 | **Partial**: idle RSS and footprint gated; missing: 0 leaks after 100 cycles |
+| 49 | NFR-4 | Dwell → reveal start ≤ show delay + 16 ms (p95, 50 trials) | L5 | §6 | **Partial**: x-01 lateness p95 ≤ 16 ms (n = 4 per edge); missing: 50 trials |
+| 50 | Perf | Pointer sample ≤ 20 µs p99; cold launch → armed ≤ 400 ms; 0 dropped frames at 60 Hz | L5 | §6 | **Partial**: launch times recorded as metrics; missing: pointer µs benchmark; launch ≤ 400 ms gate; dropped frames |
+| 51 | Visual | Placement, sizing, distinctness table signed; `docs/design.md` pixel check within tolerance | L6 | §9 | **Partial**: geom-check placement and sizing; missing: signed table; pixel check (owner) |
+| 52 | Clean-room | PR lists "Sources consulted"; no DockDoor code or strings | review | `docs/organization.md` | **Partial**: PR template "Sources consulted"; missing: review method to be accepted by the owner |
 
 Rows added because `docs/plan.md` §4.1 puts them in M1 scope (beyond the brief's list):
 
 | # | ID | Criterion | Layers | Test / scenario | Status |
 |---|---|---|---|---|---|
-| 53 | DD-1141 (beta) | Top edge: reveals below the menu bar, never over it; zone spans only the dock's length, excludes the notch and status items; with an auto-hiding menu bar only ⌥ reveals | L1, E2E | §3.2 top rows, x-18 | Not run |
-| 54 | DD-941 (partial) | Dock on the main display, falls back to the built-in display when it is disconnected | L2 | §4 "Display removed while shown" | Not run |
-| 55 | DD-991 / DD-992 (partial) | Native Dock prefs read only, never written; change picked up within 1 s; bottom dock sits above a visible native Dock with its span excluded | L1, L2, E2E | §3.2 bottom rows, REG-006, x-18 | Not run |
-| 56 | DD-978 (basic) | Basic appearance renders the `docs/design.md` style in light and dark, with its Reduce Transparency solid form | L6 | §9.3 | Not run |
-| 57 | DD-814 (subset) | Edge trace logs every transition with monotonic time, position, zone and inhibitors; no window titles | L2, E2E | LOG checks in §7 | Not run |
+| 53 | DD-1141 (beta) | Top edge: reveals below the menu bar, never over it; zone spans only the dock's length, excludes the notch and status items; with an auto-hiding menu bar only ⌥ reveals | L1, E2E | §3.2 top rows, x-18 | **Partial**: top zone unit test (zone on the menu-bar line, dock below it), REG-044; missing: top on the card (REG-066); ⌥-only reveal |
+| 54 | DD-941 (partial) | Dock on the main display, falls back to the built-in display when it is disconnected | L2 | §4 "Display removed while shown" | **Partial**: main and built-in display selection; missing: L2 display removed while shown |
+| 55 | DD-991 / DD-992 (partial) | Native Dock prefs read only, never written; change picked up within 1 s; bottom dock sits above a visible native Dock with its span excluded | L1, L2, E2E | §3.2 bottom rows, REG-006, x-18 | **Partial**: native Dock parse and footprint; bottom dock above the Dock; span excluded; REG-006; missing: bottom on the card (REG-065); 1 s pickup |
+| 56 | DD-978 (basic) | Basic appearance renders the `docs/design.md` style in light and dark, with its Reduce Transparency solid form | L6 | §9.3 | **Partial**: style and appearance tokens (unit); cua C9; missing: L6 rendering (owner) |
+| 57 | DD-814 (subset) | Edge trace logs every transition with monotonic time, position, zone and inhibitors; no window titles | L2, E2E | LOG checks in §7 | **Partial**: contract checks (REG-018/043/059); trace causes; capped text; missing: required fields; no window titles |
 
 M1 is done when rows 1–57 are Pass, Waived with user approval, or Deferred with a reason (the visual parts of rows 11, 51 and 56 wait for `docs/design.md` §7; row 36's E2E waits for a second display).
 
