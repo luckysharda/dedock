@@ -244,6 +244,16 @@ Rules:
 | ⌘Tab overlay | preview strip attached to the system switcher |
 | Sheets | widget gallery, profile editor, onboarding |
 
+### 5.5 Names in UI text
+
+| Name | In UI text | Elsewhere |
+|---|---|---|
+| The app | **Dedock**, capitalised as a proper noun, matching the bundle name `Dedock.app` that Finder, the menu bar and System Settings already show: "Quit Dedock", "Dedock 0.1", "Dedock restored the most recent backup." | lower case only in identifiers: bundle ids (`app.dedock.*`), the repo, paths, log subsystems, notification names |
+| The side dock | **Edge Dock** (title case, two words): "Show Edge Dock", the panel's accessibility title | `EdgeDock` in code |
+| The system's dock | **the Dock** | `native Dock` in docs and code, to tell it apart from the Edge Dock |
+
+Accessibility descriptions follow the same rule (the status item's image description is "Dedock"). The E2E check `x-00 status item` matches the description, so it must match case-insensitively before the strings change. Docs prose may keep writing "dedock" in lower case until it is next edited; new UI strings use the forms above. The owner can still override this default.
+
 ---
 
 ## 6. Accessibility
