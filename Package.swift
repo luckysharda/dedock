@@ -56,7 +56,9 @@ let package = Package(
     targets: [
         .target(name: "DedockCore", swiftSettings: strict),
         .target(name: "SettingsStore", dependencies: ["DedockCore"], swiftSettings: strict),
-        .target(name: "EdgeDock", dependencies: ["DedockCore"], sources: ["Logic"], swiftSettings: strict),
+        .target(name: "EdgeDock", dependencies: ["DedockCore"],
+                exclude: ["Controller", "Panel", "Tiles", "NativeDock", "Displays", "E2E"],
+                sources: ["Logic"], swiftSettings: strict),
         .testTarget(name: "DedockCoreTests", dependencies: ["DedockCore"], swiftSettings: testStrict),
         .testTarget(name: "SettingsStoreTests", dependencies: ["SettingsStore", "DedockCore"], swiftSettings: testStrict),
         .testTarget(name: "EdgeDockTests", dependencies: ["EdgeDock", "DedockCore"],
