@@ -1,0 +1,61 @@
+{
+ "provenance": {
+  "app_commit": "7e7ae7e",
+  "config": "debug",
+  "harness_commit": "assembled from runs L1/L2/L3/x00-7e7/dbg-7e7-verify",
+  "macos": "27.0.1 (26A434)",
+  "display": "w=1920.0 h=1080.0",
+  "date": "2026-10-15T16:04:00Z",
+  "edges": [
+   "L"
+  ],
+  "partial": true,
+  "source_run": "build/e2e/runs/today-L"
+ },
+ "rule": "WARN when |now - baseline| > 20 % of baseline AND > the floor for the metric's suffix; counts are not drift-checked",
+ "floors": {
+  "_ms": 2.0,
+  "_pt": 1.0,
+  "cpu_pct": 0.05,
+  "wakeups_per_s": 0.2,
+  "_mb": 5.0
+ },
+ "metrics": {
+  "I.idle-L.idle.cpu_pct": 0.017,
+  "I.idle-L.idle.footprint_mb": 34.0,
+  "I.idle-L.idle.rss_mb": 90.0,
+  "I.idle-L.idle.wakeups_per_s": 0.05,
+  "L.x-01-L.curve_dev_max_pt": 0.768,
+  "L.x-01-L.dwell_late_p95_ms": 1.171,
+  "L.x-01-L.hide_late_p95_ms": 1.223,
+  "L.x-01-L.hide_motion_ms": 192.44,
+  "L.x-01-L.max_step_pt": 14.98,
+  "L.x-01-L.nfr4_p95_ms": 1.306,
+  "L.x-01-L.reveal99_ms": 222.886,
+  "L.x-03-L.dwell_late_p95_ms": 2.026,
+  "L.x-03-L.hide_late_p95_ms": 1.606,
+  "L.x-03-L.nfr4_p95_ms": 2.543,
+  "L.x-03-L.push_ms_max": 12.909,
+  "L.x-04-L.dwell_late_p95_ms": 1.706,
+  "L.x-04-L.hide_late_p95_ms": 1.522,
+  "L.x-04-L.nfr4_p95_ms": 2.15,
+  "L.x-05a-L.curve_dev_max_pt": 0.809,
+  "L.x-05a-L.dwell_late_p95_ms": 1.484,
+  "L.x-05a-L.hide_late_p95_ms": 1.472,
+  "L.x-05a-L.hide_motion_ms": 189.058,
+  "L.x-05a-L.max_step_pt": 14.74,
+  "L.x-05a-L.nfr4_p95_ms": 1.859,
+  "L.x-05a-L.reveal99_ms": 228.487,
+  "L.x-05a-L.reversal_offset_max_pt": 0.056,
+  "L.x-06-L.curve_dev_max_pt": 0.559,
+  "L.x-06-L.dwell_late_p95_ms": 1.288,
+  "L.x-06-L.hide_late_p95_ms": 2.186,
+  "L.x-06-L.hide_motion_ms": 191.555,
+  "L.x-06-L.max_step_pt": 14.58,
+  "L.x-06-L.nfr4_p95_ms": 1.601,
+  "L.x-06-L.reveal99_ms": 217.682,
+  "L.x-06-L.reversal_offset_max_pt": 0.111,
+  "geom.L_fails": 0,
+  "launch.L_ms": 78
+ }
+}
