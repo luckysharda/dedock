@@ -126,7 +126,7 @@ import Foundation
         let clock = clock
         timers[id] = Task { @MainActor [weak self] in
             do {
-                try await clock.sleep(for: delay)
+                try await clock.sleep(for: delay, tolerance: .zero)
             } catch {
                 return
             }

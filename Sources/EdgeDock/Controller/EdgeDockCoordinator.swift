@@ -32,6 +32,9 @@ public struct DockSurroundings: Sendable, Equatable {
     private let env = DedockEnvironment.current
     private var lastPush: CGFloat = 0
     private var environmentKey: EdgeEnvironment?
+    /// Trigger parameters the current zones were built with.
+    private var zoneParameters: TriggerParameters?
+    private var reduceMotion: Bool
 
     /// Called when geometry or state changed (GEOM output, near regions).
     var onChange: (() -> Void)?
@@ -47,6 +50,7 @@ public struct DockSurroundings: Sendable, Equatable {
         self.display = display
         self.running = running
         evaluator = TriggerEvaluator(parameters: config.triggerParameters)
+        reduceMotion = surroundings.reduceMotion
 
         let tokens = config.tokens
         model = DockViewModel(tokens: tokens, icons: icons)
@@ -99,12 +103,17 @@ public struct DockSurroundings: Sendable, Equatable {
         tiles = Self.tileModels(profile, running: running)
         let newLayout = Self.layout(new, tiles: profile?.items ?? [], display: newDisplay, surroundings: surroundings)
         model.tokens = new.tokens
-        if newLayout != layout || oldConfig.edge != new.edge {
+        let geometryChanged = newLayout != layout || oldConfig.edge != new.edge
+        if geometryChanged {
             layout = newLayout
             panel.place(layout.panelFrame)
-            animator.update(edge: new.edge, hiddenOffset: layout.hiddenOffset, reduceMotion: surroundings.reduceMotion)
             gate.updateHitRegion(hitRegion)
             logLayout(reason: "update")
+        }
+        // Reduce Motion switches the animator between slide and fade; update it on either change.
+        if geometryChanged || reduceMotion != surroundings.reduceMotion {
+            reduceMotion = surroundings.reduceMotion
+            animator.update(edge: new.edge, hiddenOffset: layout.hiddenOffset, reduceMotion: reduceMotion)
         }
         model.apply(layout: layout, tiles: tiles)
         evaluator.parameters = new.triggerParameters
@@ -131,9 +140,11 @@ public struct DockSurroundings: Sendable, Equatable {
         let env = EdgeEnvironment(layout: s.layout, display: display.identity, edge: config.edge,
                                   contentSpan: layout.contentSpan, nativeDock: footprint,
                                   hotCorners: s.nativeDock.hotCorners)
-        guard env != environmentKey || evaluator.parameters != config.triggerParameters else { return }
+        let parameters = config.triggerParameters
+        guard env != environmentKey || parameters != zoneParameters else { return }
         environmentKey = env
-        zones = EdgeGeometry.zones(env, config.triggerParameters)
+        zoneParameters = parameters
+        zones = EdgeGeometry.zones(env, parameters)
         evaluator.reset()
     }
 

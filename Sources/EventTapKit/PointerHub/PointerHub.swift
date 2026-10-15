@@ -142,7 +142,7 @@ import Diagnostics
         guard trailingTask == nil else { return }
         let clock = clock
         trailingTask = Task { @MainActor [weak self] in
-            do { try await clock.sleep(for: delay) } catch { return }
+            do { try await clock.sleep(for: delay, tolerance: .zero) } catch { return }
             guard let self, !Task.isCancelled else { return }
             self.trailingTask = nil
             if let pending = self.pending { self.deliver(pending) }
