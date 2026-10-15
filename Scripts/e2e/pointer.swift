@@ -365,7 +365,8 @@ if first == "script" {
     }
     schedule.resync()
     for raw in text.split(separator: "\n") {
-        let line = raw.split(separator: "#", maxSplits: 1).first.map(String.init) ?? ""
+        // keep empty pieces: a line that starts with "#" must yield "" (a comment), not the comment text
+        let line = raw.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
         let words = line.split(separator: " ").map(String.init)
         if !words.isEmpty { run(words, &schedule) }
     }

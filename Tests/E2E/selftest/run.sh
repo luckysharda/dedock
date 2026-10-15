@@ -31,6 +31,7 @@ done
 
 echo "-- pointer (no events posted)"
 check "screen size" "$B/pointer screen | grep -q 'w='"
+check "script: full-line comments are skipped, not executed" "printf '# x-01 left probe\\nmark ok # trailing comment\\n' | $B/pointer script - > $T/comment.txt 2>&1 && grep -q 'label=ok' $T/comment.txt"
 check "help lists every command" "$B/pointer help | grep -q crossings && $B/pointer help | grep -q nudge"
 
 echo "-- measure-pixels (exact on RGB images)"
