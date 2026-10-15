@@ -373,15 +373,24 @@ struct TileListSection: View {
             panel.allowedContentTypes = [.application]
             panel.directoryURL = URL(fileURLWithPath: "/Applications")
         }
-        guard panel.runModal() == .OK else { return }
-        for url in panel.urls {
-            if apps {
-                append(TileItem(id: newID(), kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path,
-                                displayName: url.deletingPathExtension().lastPathComponent))
-            } else {
-                append(TileItem(id: newID(), kind: .folder, path: url.path, bookmark: try? url.bookmarkData(),
-                                displayName: FileManager.default.displayName(atPath: url.path)))
+        // A sheet, never runModal: a modal session would stall the pointer monitors and the dock
+        // the Settings window is holding open (as REG-057 showed for the launch notice).
+        let add = { (response: NSApplication.ModalResponse) in
+            guard response == .OK else { return }
+            for url in panel.urls {
+                if apps {
+                    append(TileItem(id: newID(), kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path,
+                                    displayName: url.deletingPathExtension().lastPathComponent))
+                } else {
+                    append(TileItem(id: newID(), kind: .folder, path: url.path, bookmark: try? url.bookmarkData(),
+                                    displayName: FileManager.default.displayName(atPath: url.path)))
+                }
             }
+        }
+        if let window = NSApp.keyWindow {
+            panel.beginSheetModal(for: window, completionHandler: add)
+        } else {
+            panel.begin(completionHandler: add)
         }
     }
 }
