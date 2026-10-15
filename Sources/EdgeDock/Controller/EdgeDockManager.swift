@@ -23,6 +23,9 @@ import SettingsStore
     private var topologyToken: ObservationToken?
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
+    private var appearanceObservation: NSKeyValueObservation?
+    /// The document as of the last settings notification (for `settings.changed`).
+    private var lastDocument: DedockDocument
     private var edgeReadyLogged = false
     /// Set once edge sensing is live (end of init), independent of any pointer activity.
     public private(set) var edgeReadyMs: Int?
@@ -43,6 +46,7 @@ import SettingsStore
     public init(settings: SettingsModel, topology: DisplayTopology, hub: PointerHub,
                 clock: any Clock<Duration> = ContinuousClock(), dataDirectory: URL, notices: LaunchNotices? = nil) {
         self.settings = settings
+        lastDocument = settings.document
         self.topology = topology
         self.hub = hub
         self.clock = clock
@@ -53,7 +57,10 @@ import SettingsStore
             self?.sync(reason: "displays")
             self?.fullscreen.check()
         }
-        settingsObserver = settings.addObserver { [weak self] _ in self?.sync(reason: "settings") }
+        settingsObserver = settings.addObserver { [weak self] _ in
+            self?.logSettingChanges()
+            self?.sync(reason: "settings")
+        }
         // Only top-edge zones avoid status items; side and bottom docks are left alone.
         fullscreen.onStatusItemsChange = { [weak self] in self?.sync(reason: "statusItems", updating: { $0.config.edge == .top }) }
         fullscreen.onChange = { [weak self] changed in
@@ -70,6 +77,10 @@ import SettingsStore
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.sync(reason: "reduceMotion") } }
+        // Light / Dark switches re-derive the tokens: label colours follow the system appearance.
+        appearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in self?.sync(reason: "appearance") }
+        }
         hub.addSink(self)
         debugCommands = DebugCommandListener { [weak self] in self?.perform($0) }
         sync(reason: "launch")
@@ -189,12 +200,46 @@ import SettingsStore
     }
 
     public func writeGeometry() {
-        let docks = coordinators.values.sorted { $0.id.rawValue < $1.id.rawValue }.map {
-            DockGeometrySnapshot(id: $0.id, display: $0.display, edge: $0.config.edge,
-                                 mode: $0.config.mode == .pinned ? .pinned : .reveal, phase: $0.phase,
-                                 layout: $0.layout, zones: $0.zones, tiles: $0.tiles)
+        let docks = coordinators.values.sorted { $0.id.rawValue < $1.id.rawValue }.map { c in
+            let tokens = c.model.tokens
+            return DockGeometrySnapshot(id: c.id, display: c.display, edge: c.config.edge,
+                                        mode: c.config.mode == .pinned ? .pinned : .reveal, phase: c.phase,
+                                        layout: c.layout, zones: c.zones, tiles: c.tiles,
+                                        style: tokens.style.rawValue, material: Self.materialName(tokens.blurMaterial),
+                                        showDwellMs: Self.ms(c.config.revealConfig(reduceMotion: reduceMotion).showDwell))
         }
         geometryWriter.write(layout: topology.layout, docks: docks)
+    }
+
+    /// `settings.changed` lines (E2E contract) for the keys the harness tracks, between two documents.
+    static func settingChanges(from old: DedockDocument, to new: DedockDocument) -> [(key: String, value: String, scenario: String)] {
+        let before = Dictionary(old.docks.map { ($0.id, $0.appearance.style) }, uniquingKeysWith: { a, _ in a })
+        return new.docks.compactMap { dock in
+            guard let was = before[dock.id], was != dock.appearance.style else { return nil }
+            return ("dd.dock.style", dock.appearance.style.rawValue, dock.scenario)
+        }
+    }
+
+    private func logSettingChanges() {
+        let doc = settings.document
+        for change in Self.settingChanges(from: lastDocument, to: doc) {
+            DedockLog.event(.settings, "settings.changed", ["key": change.key, "value": change.value, "scenario": change.scenario])
+        }
+        lastDocument = doc
+    }
+
+    static func ms(_ d: Duration) -> Int {
+        Int(d.components.seconds) * 1000 + Int(d.components.attoseconds / 1_000_000_000_000_000)
+    }
+
+    /// GEOM's `material` value: the blur material's name, or `solid` under Reduce Transparency.
+    static func materialName(_ m: NSVisualEffectView.Material?) -> String {
+        switch m {
+        case nil: "solid"
+        case .hudWindow?: "hudWindow"
+        case .popover?: "popover"
+        default: "other"
+        }
     }
 
     /// The first zone arming after launch (includes however long the user took to get there).
@@ -238,13 +283,7 @@ import SettingsStore
     }
 
     static func tileItem(for url: URL) -> TileItem {
-        let id = TileID("t-\(UUID().uuidString.prefix(8).lowercased())")
-        if TileActions.pinKind(url) == .app {
-            return TileItem(id: id, kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path,
-                            displayName: FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
-        }
-        return TileItem(id: id, kind: .folder, path: url.path, bookmark: try? url.bookmarkData(),
-                        displayName: FileManager.default.displayName(atPath: url.path))
+        TileActions.pinKind(url) == .app ? .app(at: url) : .folder(at: url)
     }
 
     private func remove(tile: TileID, from profile: ProfileID) {

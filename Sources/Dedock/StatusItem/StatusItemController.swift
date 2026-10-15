@@ -8,12 +8,14 @@ import SettingsStore
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let settings: SettingsModel
     private let docks: EdgeDockManager
+    private let openSettings: () -> Void
 
-    init(settings: SettingsModel, docks: EdgeDockManager) {
+    init(settings: SettingsModel, docks: EdgeDockManager, openSettings: @escaping () -> Void) {
         self.settings = settings
         self.docks = docks
+        self.openSettings = openSettings
         super.init()
-        item.button?.image = NSImage(systemSymbolName: "rectangle.lefthalf.inset.filled", accessibilityDescription: "dedock")
+        item.button?.image = NSImage(systemSymbolName: "rectangle.lefthalf.inset.filled", accessibilityDescription: "Dedock")
         item.button?.image?.isTemplate = true
         let menu = NSMenu()
         menu.delegate = self
@@ -25,7 +27,7 @@ import SettingsStore
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-        menu.addItem(withTitle: "dedock \(version)", action: nil, keyEquivalent: "").isEnabled = false
+        menu.addItem(withTitle: "Dedock \(version)", action: nil, keyEquivalent: "").isEnabled = false
         menu.addItem(.separator())
         add(menu, "Show Edge Dock", #selector(showDock))
         let keep = add(menu, "Keep Edge Dock Open", #selector(toggleKeepOpen))
@@ -48,7 +50,8 @@ import SettingsStore
         menu.addItem(withTitle: "Mode", action: nil, keyEquivalent: "").submenu = modeMenu
 
         menu.addItem(.separator())
-        add(menu, "Quit dedock", #selector(NSApplication.terminate(_:)), key: "q", target: NSApp)
+        add(menu, "Settings…", #selector(showSettings), key: ",")
+        add(menu, "Quit Dedock", #selector(NSApplication.terminate(_:)), key: "q", target: NSApp)
     }
 
     // The dock stays put while this menu is open (the hub swaps to its timer fallback).
@@ -63,6 +66,7 @@ import SettingsStore
     }
 
     @objc private func showDock() { docks.reveal(dock: nil) }
+    @objc private func showSettings() { openSettings() }
 
     @objc private func toggleKeepOpen() {
         let on = !docks.isHeldOpen
@@ -75,7 +79,7 @@ import SettingsStore
         settings.update { doc in
             guard !doc.docks.isEmpty else { return }
             doc.docks[0].edge = edge
-            doc.docks[0].scenario = "custom"
+            doc.docks[0].markCustom()
         }
     }
 
@@ -84,7 +88,7 @@ import SettingsStore
         settings.update { doc in
             guard !doc.docks.isEmpty else { return }
             doc.docks[0].mode = mode
-            doc.docks[0].scenario = "custom"
+            doc.docks[0].markCustom()
         }
     }
 }

@@ -19,6 +19,8 @@ import SwiftUI
         level = Self.restingLevel
         contentView = root
         ignoresMouseEvents = true
+        // VoiceOver reads a window's AXTitle; a borderless panel never shows it (REG-056).
+        title = "Edge Dock"
     }
 
     /// AppKit reported this borderless, non-activating panel as `AXSystemDialog`, so VoiceOver could call

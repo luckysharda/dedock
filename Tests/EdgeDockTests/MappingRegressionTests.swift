@@ -105,3 +105,81 @@ import Testing
         #expect(EdgeDockManager.fillingBookmarks(filled) == nil)
     }
 }
+
+extension MappingRegressionTests {
+    /// REG-062: Scenario.apply stored edge-derived values (300 ms for Reveal at Top, 6 pt beside
+    /// the native Dock) in layout.json. A later edge change only marked the dock Custom, so
+    /// Top → Left kept a 300 ms dwell. The values are now derived from the edge at mapping time.
+    @Test("REG-062: edge-derived dwell and trigger thickness follow the current edge")
+    func reg062() {
+        let base = DedockDocument.makeDefault().docks[0]
+        var dock = Scenario.revealTop.apply(to: base, nativeDockEdge: .bottom)
+        #expect(dock.revealConfig(reduceMotion: false).showDwell == .milliseconds(300))   // top: derived 300
+
+        dock.edge = .left                       // status menu / EdgePicker / setEdge
+        dock.markCustom()
+        #expect(dock.revealConfig(reduceMotion: false).showDwell == .milliseconds(120))
+        #expect(dock.triggerParameters(nativeDockEdge: .bottom).thickness == 3)
+
+        // Beside the native Dock the zone is thicker, derived; moving away drops it again.
+        var bottom = Scenario.revealBottom.apply(to: base, nativeDockEdge: .bottom)
+        #expect(bottom.reveal.triggerThicknessPt == 3)                                    // stored default
+        #expect(bottom.triggerParameters(nativeDockEdge: .bottom).thickness == 6)
+        bottom.edge = .right
+        #expect(bottom.triggerParameters(nativeDockEdge: .bottom).thickness == 3)
+    }
+}
+
+@Suite @MainActor struct DockStyleMappingTests {
+    /// The dock's `dd.dock.style` picks the capsule material; the system appearance only picks
+    /// the label colours (design.md §7.1: the style is chosen apart from Light / Dark).
+    @Test func styleAndAppearanceMapToTokens() {
+        var config = DedockDocument.makeDefault().docks[0]
+        #expect(config.tokens(lightAppearance: false, reduceTransparency: false).style == .darkGlass)
+        config.appearance.style = .black
+        #expect(config.tokens(lightAppearance: false, reduceTransparency: false).style == .black)
+        config.appearance.style = .lightGlass
+        let light = config.tokens(lightAppearance: false, reduceTransparency: false)
+        #expect(light.style == .lightGlass)
+        #expect(light.blurMaterial == .popover)
+        #expect(config.tokens(lightAppearance: false, reduceTransparency: true).blurMaterial == nil)
+
+        // Light / Dark changes the label, not the style.
+        config.appearance.style = .darkGlass
+        let dark = config.tokens(lightAppearance: false, reduceTransparency: false)
+        let aqua = config.tokens(lightAppearance: true, reduceTransparency: false)
+        #expect(aqua.style == .darkGlass)
+        #expect(dark.labelText != aqua.labelText)
+        #expect(dark.labelFill != aqua.labelFill)
+    }
+
+    /// A style change logs `settings.changed key=dd.dock.style value=<style>` (E2E contract).
+    @Test func styleChangeIsReportedOnce() {
+        let old = DedockDocument.makeDefault()
+        var new = old
+        #expect(EdgeDockManager.settingChanges(from: old, to: new).isEmpty)
+        new.docks[0].appearance.style = .lightGlass
+        let changes = EdgeDockManager.settingChanges(from: old, to: new)
+        #expect(changes.count == 1)
+        #expect(changes.first?.key == "dd.dock.style")
+        #expect(changes.first?.value == "lightGlass")
+        #expect(changes.first?.scenario == old.docks[0].scenario)
+        new.docks[0].appearance.size = .l          // other keys are not reported here
+        new.docks[0].appearance.style = old.docks[0].appearance.style
+        #expect(EdgeDockManager.settingChanges(from: old, to: new).isEmpty)
+    }
+
+    @Test func geometryNamesTheCapsuleMaterial() {
+        #expect(EdgeDockManager.materialName(.hudWindow) == "hudWindow")
+        #expect(EdgeDockManager.materialName(.popover) == "popover")
+        #expect(EdgeDockManager.materialName(nil) == "solid")
+    }
+
+    /// VoiceOver reads a window's AXTitle, so the borderless panel carries one too.
+    @Test(.enabled(if: NSScreen.main != nil)) func panelIsTitledEdgeDock() {
+        let model = DockViewModel(tokens: DedockDocument.makeDefault().docks[0].tokens, icons: IconCache())
+        let panel = EdgeDockPanel(frame: CGRect(x: 0, y: 0, width: 78, height: 400), model: model)
+        defer { panel.close() }
+        #expect(panel.title == "Edge Dock")
+    }
+}

@@ -170,6 +170,10 @@ public struct RevealStateMachine: Sendable {
             awaitingFirstVisit = false
         case .hold(let token, let on):
             if on { holds.insert(token) } else { holds.remove(token) }
+            // Settings revealed the dock explicitly (which waits for a first pointer visit,
+            // S-13) and held it while open. Closing Settings returns the dock to normal
+            // behaviour: with the pointer away it hides after the hide delay.
+            if token == .editing, !on { awaitingFirstVisit = false }
         case .fullscreenChanged(let on): isFullscreen = on
         case .timerFired(.cooldown): isCoolingDown = false
         case .suppression(let s, let on): return handleSuppression(s, on, p)

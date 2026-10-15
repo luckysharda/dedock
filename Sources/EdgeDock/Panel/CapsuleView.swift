@@ -43,6 +43,8 @@ import QuartzCore
         blur.frame = bounds
         radius = t.capsuleRadius
 
+        // Light Glass blurs in the light appearance; the dark styles in the dark one.
+        blur.appearance = NSAppearance(named: t.style == .lightGlass ? .aqua : .darkAqua)
         if let material = t.blurMaterial {
             blur.material = material
             blur.isHidden = false

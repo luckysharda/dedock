@@ -5,6 +5,7 @@ import DisplayTopology
 import EdgeDock
 import EventTapKit
 import SettingsStore
+import SettingsUI
 
 /// Composition root and lifecycle (architecture §8). The only place that sees every module.
 @MainActor
@@ -14,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hub: PointerHub?
     private var manager: EdgeDockManager?
     private var statusItem: StatusItemController?
+    private var settingsWindow: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let env = DedockEnvironment.current
@@ -56,7 +58,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.topology = topology
         self.hub = hub
         self.manager = manager
-        statusItem = StatusItemController(settings: settings, docks: manager)
+        let settingsWindow = SettingsWindowController(settings: settings, environment: SettingsEnvironment(
+            nativeDockEdge: { DockPreferencesReader.readOrientation() },
+            hasSharedEdge: { [weak topology] edge in
+                guard let layout = topology?.layout, let main = layout.main else { return false }
+                return !EdgeGeometry.sharedSegments(of: main, edge: edge, in: layout).isEmpty
+            }))
+        // While Settings is open the dock stays revealed, so every change shows live.
+        settingsWindow.onVisibilityChange = { [weak manager] open in
+            manager?.setHold(.editing, open, dock: nil)
+            if open { manager?.reveal(dock: nil) }
+        }
+        self.settingsWindow = settingsWindow
+        // Debug command `openSettings` (E2E): opens the same window as Settings… ⌘,.
+        manager.onOpenSettings = { [weak settingsWindow] in settingsWindow?.show() }
+        statusItem = StatusItemController(settings: settings, docks: manager) { [weak settingsWindow] in settingsWindow?.show() }
     }
 
     /// Notices on screen; each is released when its OK is clicked.
@@ -77,8 +93,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.show()
     }
 
+    /// Launching dedock again while it runs opens Settings (plan T18 item 3).
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        manager?.reveal(dock: nil)
+        settingsWindow?.show()
         return false
     }
 

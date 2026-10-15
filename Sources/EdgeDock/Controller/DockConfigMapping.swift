@@ -22,9 +22,15 @@ extension DockConfig {
         return c
     }
 
-    public var triggerParameters: TriggerParameters {
+    /// The trigger as configured. Beside the native Dock use `triggerParameters(nativeDockEdge:)`.
+    public var triggerParameters: TriggerParameters { triggerParameters(nativeDockEdge: nil) }
+
+    /// The trigger for this dock with the native Dock on `nativeDockEdge`: where both share an
+    /// edge the zone is at least 6 pt thick (plan §6 table). Derived here, never stored (REG-062).
+    public func triggerParameters(nativeDockEdge: ScreenEdge?) -> TriggerParameters {
         var p = TriggerParameters()
         p.thickness = CGFloat(min(20, max(1, reveal.triggerThicknessPt)))
+        if nativeDockEdge == edge { p.thickness = max(p.thickness, 6) }
         p.spanMode = reveal.spanMode == .wholeEdge ? .wholeEdge : .content
         p.cornerExclusion = CGFloat(min(96, max(0, reveal.cornerExclusionPt)))
         p.pushThrough = reveal.pushThroughPt.map { CGFloat(min(200, max(16, $0))) }   // 16–200 pt or off
@@ -45,18 +51,26 @@ extension DockConfig {
         }
     }
 
+    /// Tokens for the current system state: appearance (label colours) and Reduce Transparency.
     @MainActor public var tokens: DockTokens {
+        tokens(lightAppearance: NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua,
+               reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency)
+    }
+
+    /// Tokens for this dock's size and `dd.dock.style`, in the given system state.
+    public func tokens(lightAppearance: Bool, reduceTransparency: Bool) -> DockTokens {
         let size: DockTokens.Size = switch appearance.size {
         case .s: .s
         case .m: .m
         case .l: .l
         case .xl: .xl
         }
-        let ws = NSWorkspace.shared
-        let light = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
-        var t = DockTokens.capsule(size, style: .darkGlass,
-                                   reduceTransparency: ws.accessibilityDisplayShouldReduceTransparency,
-                                   lightAppearance: light)
+        let style: DockTokens.Style = switch appearance.style {
+        case .darkGlass: .darkGlass
+        case .black: .black
+        case .lightGlass: .lightGlass
+        }
+        var t = DockTokens.capsule(size, style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance)
         t.edgeGap = CGFloat(min(48, max(0, placement.edgeGapPt)))
         return t
     }

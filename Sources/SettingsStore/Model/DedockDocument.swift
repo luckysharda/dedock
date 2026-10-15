@@ -416,28 +416,34 @@ public struct PlacementSettings: JSONObjectModel, Sendable, Equatable {
 
 public struct AppearanceSettings: JSONObjectModel, Sendable, Equatable {
     public enum Size: String, Sendable, Equatable, CaseIterable { case s, m, l, xl }
+    /// `dd.dock.style` (design.md §7.1): the dock's material, chosen apart from the system
+    /// appearance.
+    public enum Style: String, Sendable, Equatable, CaseIterable { case darkGlass, black, lightGlass }
 
     public var size: Size
+    public var style: Style
     public var dragToRearrange: Bool
     public var unknown: [String: JSONValue]
 
-    public init(size: Size = .m, dragToRearrange: Bool = false, unknown: [String: JSONValue] = [:]) {
+    public init(size: Size = .m, style: Style = .darkGlass, dragToRearrange: Bool = false, unknown: [String: JSONValue] = [:]) {
         self.size = size
+        self.style = style
         self.dragToRearrange = dragToRearrange
         self.unknown = unknown
     }
 
-    public static let knownKeys: Set<String> = ["size", "dragToRearrange"]
+    public static let knownKeys: Set<String> = ["size", "style", "dragToRearrange"]
 
     public init(object: [String: JSONValue]) {
         let r = JSONReader(object)
         size = r.enumValue("size", default: Size.m)
+        style = r.enumValue("style", default: Style.darkGlass)
         dragToRearrange = r.bool("dragToRearrange", default: false)
         unknown = Self.unknownKeys(of: object)
     }
 
     public var knownObject: [String: JSONValue] {
-        ["size": .string(size.rawValue), "dragToRearrange": .bool(dragToRearrange)]
+        ["size": .string(size.rawValue), "style": .string(style.rawValue), "dragToRearrange": .bool(dragToRearrange)]
     }
 }
 
@@ -491,5 +497,29 @@ extension JSONObjectModel {
         var merged = unknown
         for (k, v) in knownObject { merged[k] = v }
         return .object(merged)
+    }
+}
+
+extension TileItem {
+    /// A fresh tile id (`t-` + 8 hex characters).
+    public static func newID() -> TileID { TileID("t-\(UUID().uuidString.prefix(8).lowercased())") }
+
+    /// A new app tile for the application bundle at `url`. Drop-to-pin and Settings' Add both
+    /// use this, so the two never drift (REG-047 decides *what* may be pinned).
+    public static func app(at url: URL, id: TileID = newID()) -> TileItem {
+        var name = FileManager.default.displayName(atPath: url.path)
+        if name.hasSuffix(".app") { name.removeLast(4) }
+        return TileItem(id: id, kind: .app, bundleID: Bundle(url: url)?.bundleIdentifier, path: url.path, displayName: name)
+    }
+
+    /// A new folder tile for the folder at `url`, with a bookmark where the platform has them.
+    public static func folder(at url: URL, id: TileID = newID()) -> TileItem {
+        #if canImport(Darwin)
+        let bookmark = try? url.bookmarkData()
+        #else
+        let bookmark: Data? = nil
+        #endif
+        return TileItem(id: id, kind: .folder, path: url.path, bookmark: bookmark,
+                        displayName: FileManager.default.displayName(atPath: url.path))
     }
 }

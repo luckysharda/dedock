@@ -470,3 +470,32 @@ final class TestClock: Clock, @unchecked Sendable {
         #expect(saved.docks[0].edge == .right)
     }
 }
+
+@Suite struct DockStyleSettingTests {
+    /// `dd.dock.style` defaults to Dark Glass, round-trips, and an unknown value falls back.
+    @Test func styleDefaultsRoundTripsAndFallsBack() {
+        #expect(AppearanceSettings().style == .darkGlass)
+        #expect(AppearanceSettings(object: [:]).style == .darkGlass)
+        for style in AppearanceSettings.Style.allCases {
+            let a = AppearanceSettings(style: style)
+            #expect(AppearanceSettings(object: a.knownObject).style == style)
+        }
+        #expect(AppearanceSettings(object: ["style": .string("neon")]).style == .darkGlass)
+        #expect(AppearanceSettings.knownKeys.contains("style"))
+    }
+}
+
+@Suite struct TileItemFactoryTests {
+    /// Drop-to-pin and Settings' Add build tiles through the same helpers.
+    @Test func appAndFolderTiles() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dedock-tileitem-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let folder = TileItem.folder(at: dir, id: "f")
+        #expect(folder.kind == .folder && folder.id == "f" && folder.path == dir.path)
+        let app = TileItem.app(at: dir.appendingPathComponent("Example.app"), id: "a")
+        #expect(app.kind == .app && app.displayName == "Example")
+        #expect(TileItem.newID().rawValue.hasPrefix("t-"))
+        #expect(TileItem.newID() != TileItem.newID())
+    }
+}
