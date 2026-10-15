@@ -452,3 +452,21 @@ final class TestClock: Clock, @unchecked Sendable {
         #expect(FileManager.default.fileExists(atPath: path.path, isDirectory: &isDir) && isDir.boolValue)
     }
 }
+
+@Suite("Regression", .tags(.regression)) struct FlushRegressionTests {
+    /// REG-037: flush() at quit returned at once when the debounced save had already started
+    /// writing (nothing was dirty any more), so the app could quit mid-write.
+    @Test("REG-037: flush waits for a save that is already writing")
+    @MainActor func reg037() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dedock-reg037-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let model = SettingsModel(file: LayoutFile(directory: dir), clock: ContinuousClock(), document: .makeDefault(),
+                                  saveDelay: .zero)
+        model.update { $0.docks[0].edge = .right }       // the debounced save starts writing at once
+        for _ in 0..<200 where !model.isWriting { await Task.yield() }
+        await model.flush()
+        #expect(!model.isWriting)
+        let saved = try LayoutFile.decode(Data(contentsOf: dir.appendingPathComponent("layout.json")))
+        #expect(saved.docks[0].edge == .right)
+    }
+}
