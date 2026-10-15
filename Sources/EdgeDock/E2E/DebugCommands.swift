@@ -16,10 +16,10 @@ import Foundation
             let raw = note.userInfo?["cmd"] as? String ?? ""
             MainActor.assumeIsolated {
                 guard let command = DebugCommand.parse(raw) else {
-                    DedockLog.event(.app, "debug.command", ["cmd": raw, "ok": false])
+                    DedockLog.event(.app, "debug.command", ["cmd": DebugCommand.logged(raw), "ok": false])
                     return
                 }
-                DedockLog.event(.app, "debug.command", ["cmd": raw, "ok": true])
+                DedockLog.event(.app, "debug.command", ["cmd": DebugCommand.logged(raw), "ok": true])
                 handler(command)
             }
         }

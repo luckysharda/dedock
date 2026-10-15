@@ -11,9 +11,19 @@ import Foundation
 /// `reveal`, `hide`, `openSettings`. Each logs `debug.command cmd=… ok=…`.
 ///
 /// SECURITY RULE: any process in the user's session can post a distributed notification, so
-/// commands stay benign and closed: no command may write files, launch apps, or take an
-/// argument beyond an enum value or a number. Unknown or malformed input is rejected.
+/// commands stay benign and closed: a command may change only what the status menu can change
+/// (`setEdge` saves the layout exactly as the status menu's edge choice does), must not write
+/// any other file or launch apps, and takes no argument beyond an enum value or a number.
+/// Unknown or malformed input is rejected, and the logged text is capped (`logged(_:)`).
 public enum DebugCommand: Equatable, Sendable {
+    /// At most this many characters of a posted command reach the log.
+    public static let maxLoggedLength = 64
+
+    /// The posted text as logged: any process can post arbitrary text into the debug log.
+    public static func logged(_ raw: String) -> String {
+        raw.count > maxLoggedLength ? String(raw.prefix(maxLoggedLength)) + "…" : raw
+    }
+
     case setEdge(ScreenEdge)
     case rebuildZones
     case reveal

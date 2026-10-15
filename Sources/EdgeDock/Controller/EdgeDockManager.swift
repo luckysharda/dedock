@@ -34,8 +34,14 @@ import SettingsStore
     /// Set by the app to open the Settings window (debug command `openSettings`).
     public var onOpenSettings: (() -> Void)?
 
+    /// The outer `sync` reason while a bookmark fill re-enters `sync` through the observer (REG-059).
+    private var fillingReason: String?
+    /// The reason of the last `docks.sync` line (for the REG-059 guard).
+    private(set) var lastSyncReason: String?
+
+    /// - Parameter notices: launch notices, released once edge sensing is live (REG-057).
     public init(settings: SettingsModel, topology: DisplayTopology, hub: PointerHub,
-                clock: any Clock<Duration> = ContinuousClock(), dataDirectory: URL) {
+                clock: any Clock<Duration> = ContinuousClock(), dataDirectory: URL, notices: LaunchNotices? = nil) {
         self.settings = settings
         self.topology = topology
         self.hub = hub
@@ -48,7 +54,8 @@ import SettingsStore
             self?.fullscreen.check()
         }
         settingsObserver = settings.addObserver { [weak self] _ in self?.sync(reason: "settings") }
-        fullscreen.onStatusItemsChange = { [weak self] in self?.sync(reason: "statusItems") }
+        // Only top-edge zones avoid status items; side and bottom docks are left alone.
+        fullscreen.onStatusItemsChange = { [weak self] in self?.sync(reason: "statusItems", updating: { $0.config.edge == .top }) }
         fullscreen.onChange = { [weak self] changed in
             guard let self else { return }
             for c in self.coordinators.values {
@@ -69,6 +76,8 @@ import SettingsStore
         // Edge sensing is live: zones built, panels parked, monitors installed.
         edgeReadyMs = msSinceProcessStart()
         DedockLog.event(.launch, "launch.edgeReady", ["ms": edgeReadyMs!, "docks": coordinators.count])
+        // Only now may a notice take the screen: the docks are already live behind it.
+        notices?.docksAreLive()
     }
 
     private func msSinceProcessStart() -> Int {
@@ -103,11 +112,17 @@ import SettingsStore
     }
 
     /// Reconcile coordinators with the settings document and display layout.
-    func sync(reason: String) {
+    /// - Parameter updating: which existing docks to update; new and removed docks are always handled.
+    func sync(reason outer: String, updating: (EdgeDockCoordinator) -> Bool = { _ in true }) {
         if let filled = Self.fillingBookmarks(settings.document) {
-            settings.update { $0 = filled }   // re-enters sync through the observer, then saves
+            // Re-enters sync through the observer, then saves. The nested pass logs the outer
+            // reason, so the first launch still reads `reason=launch` (REG-059).
+            fillingReason = outer
+            settings.update { $0 = filled }
+            fillingReason = nil
             return
         }
+        let reason = fillingReason ?? outer
         let doc = settings.document
         let s = surroundings
         var keep: Set<DockID> = []
@@ -116,6 +131,7 @@ import SettingsStore
             keep.insert(config.id)
             let profile = doc.profile(config.profileID)
             if let existing = coordinators[config.id] {
+                guard updating(existing) else { continue }
                 existing.update(config: config, profile: profile, display: display, surroundings: s)
             } else {
                 let c = EdgeDockCoordinator(config: config, profile: profile, display: display, surroundings: s,
@@ -138,6 +154,7 @@ import SettingsStore
         } else if !hub.isRunning {
             hub.start()
         }
+        lastSyncReason = reason
         DedockLog.event(.app, "docks.sync", ["reason": reason, "docks": coordinators.count])
         dockChanged()
     }
