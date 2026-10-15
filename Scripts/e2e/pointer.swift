@@ -181,6 +181,11 @@ func run(_ args: [String], _ s: inout Schedule) {
         let t = mach_absolute_time()
         print("mach=\(t) ns=\(ticksToNs(t))")
 
+    case "mods": // current modifier state, posts nothing: "mods=<raw> cmd=0 opt=0 ctrl=0 shift=0"
+        let f = CGEventSource.flagsState(.combinedSessionState)
+        let bit = { (m: CGEventFlags) in f.contains(m) ? 1 : 0 }
+        print("mods=\(f.rawValue & 0x00FF_0000) cmd=\(bit(.maskCommand)) opt=\(bit(.maskAlternate)) ctrl=\(bit(.maskControl)) shift=\(bit(.maskShift))")
+
     case "screen":
         let b = screenBounds()
         print("x=\(b.minX) y=\(b.minY) w=\(b.width) h=\(b.height)")
@@ -320,7 +325,7 @@ func run(_ args: [String], _ s: inout Schedule) {
 let help = """
 pointer — synthetic pointer driver for dedock E2E (global top-left points)
 
-  pos | screen | now                          (now: mach clock, no event posted)
+  pos | screen | now | mods                   (no event posted; mods: held modifier keys)
   move x y                                    one move event (delta = from current point)
   glide x y ms [hz=120]                       straight line from the current point
   wait ms                                     keep still (no events)
@@ -348,7 +353,7 @@ guard let first = argv.first, first != "help", first != "-h", first != "--help" 
     print(help)
     exit(0)
 }
-if !["pos", "screen", "now"].contains(first) && !CGPreflightPostEventAccess() {
+if !["pos", "screen", "now", "mods"].contains(first) && !CGPreflightPostEventAccess() {
     fatal("this process may not post events: grant Accessibility to the terminal host")
 }
 

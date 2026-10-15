@@ -1,0 +1,57 @@
+# Regression catalogue (REG-nnn)
+
+**This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
+
+Ask the E2E lane for the next free id. **Next free: REG-031.**
+
+## How the suite runs
+
+| Piece | What it does |
+|---|---|
+| `Scripts/e2e/regress.sh run <app-worktree>` | The M1 E2E set in one desktop-lock take on a **debug** build: x-00 + first-launch checks, then per edge (L, R) geometry, log contract, x-01…x-05a, then x-05b and x-06 in a hide-delay-0 run, then 60 s idle, then harness post-checks. Writes `build/e2e/runs/<id>/scorecard.md`. About 5 minutes of cursor time; needs the user's hands off the mouse. |
+| Verdicts | **FAIL**: a gate broke (blocks a merge). **VOID**: real input got into a scenario twice (no app verdict; rerun). **PASS**. Drift **WARN**: a metric moved > 20 % from `Tests/E2E/baseline/m1.json` *and* more than its noise floor (2 ms, 1 pt, 0.05 % CPU, 0.2 wakeups/s, 5 MB), even though it is inside the gate. |
+| `regress.sh rescore <id>` | Re-judges saved logs after an analyzer change: no new desktop run. |
+| `regress.sh baseline <id>` | Writes the baseline from a fully clean run, after the user has looked at its scorecard. The current baseline is **partial** (left edge only, `7e7ae7e` debug) until a full run lands. |
+| Merge gate | `regress.sh run` must PASS on the head build of every app PR before it merges into `develop`, and the scorecard is attached to the PR as a comment. GitHub runners cannot post synthetic input (no TCC grant), so this runs locally in a hands-off window the orchestrator schedules. Harness-only items (marked **harness**) gate harness changes, not app PRs. |
+
+## Catalogue
+
+| ID | What must not regress | Detector | Runs in | Gates |
+|---|---|---|---|---|
+| REG-001 | Left and right reveal, by dwell and by push-through | `analyze timing`: dwell lateness p95 ≤ 16 ms, never early; push reveals before the dwell (x-01, x-03 per edge) | regress.sh | app |
+| REG-002 | 20 rapid crossings in 2 s: no jump, no flicker | `analyze frames`: DD-928 continuity ≤ 8 pt (target 1), max step ≤ clean-run max + 1, direction changes only at reversals, ≥ 1 reversal happened (x-06 per edge) | regress.sh | app |
+| REG-003 | A click 4 pt outside the capsule, and on a hidden dock's area, reaches the window underneath | x-08 on a harness-owned TextEdit window (computer use) | manual until x-08 is scripted | app |
+| REG-004 | No timer faster than 1 Hz while idle; idle CPU < 0.5 % | `measure-idle.sh` 60 s with the listener (`contamination idle=1`): CPU, idle wakeups/s, footprint | regress.sh | app |
+| REG-005 | Dock never covers the menu bar, Control Center, Notification Center or menus (right edge) | geom-check "inside visibleFrame" and "zone below the menu bar" (both edges); overlays on screen: x-12 (computer use) | regress.sh (geometry); manual (overlays) | app |
+| REG-006 | The native Dock's prefs are never written | `teardown.sh`: `defaults read com.apple.dock` before = after, after **every** launch | regress.sh | app |
+| REG-007 | No Space switch when revealing over a full-screen app | x-10 | pending (full-screen probe T11 not built) | app |
+| REG-008 | Five full-screen enter / exit cycles keep the dock working | x-10 × 5 | pending (T11) | app |
+| REG-009 | Settings survive relaunch; a corrupt `layout.json` falls back to defaults | relaunch with the same data dir and diff `layout.json`; launch on a truncated `layout.json` and expect a `.corrupt-*` backup | planned for regress.sh | app |
+| REG-010 | Dedock idles with no Accessibility or Screen Recording grant and asks for neither | x-00 after `tccutil reset All`: no TCC / notification windows (`cua-driver list_windows`), UIElement, status item present, starts hidden | regress.sh | app |
+| REG-011 | Native-Dock 9-cell matrix (DD-991) | — | later (bottom edge, M2) | app |
+| REG-012 | DockDoor regression set #472, #297, #1222, #277, #1001 | — | later (previews, M3) | app |
+| REG-013 | Capsule / panel on half points when `visibleFrame` height is odd (blurry edges on 1×) | geom-check "pixel-aligned frames" | regress.sh + unit guard | app |
+| REG-014 | `tile.indicator` logged for every running app, not just dock tiles (noise; leaks the user's app list into logs) | every `tile.indicator bundle=` ∈ GEOM tile bundles, per launch | regress.sh + unit guard | app |
+| REG-015 | Two Dedock instances at once (a hidden one slid out and took another session's click) | `launch.sh` refuses without the lock or with another Dedock running; `scenario.sh` warns when another Dedock logged; post-run "no Dedock left running" | regress.sh, launch.sh | **harness** |
+| REG-016 | Cursor not restored after a run | post-run: pointer position before = after (± 1 pt) | regress.sh | **harness** |
+| REG-017 | A modifier (⌘) left held after a drag | post-run: `pointer mods` reports no modifier down | regress.sh | **harness** |
+| REG-018 | `launch.edgeReady` fired at the first arm instead of when edge sensing goes live | log contract: exactly one `launch.edgeReady`, after `layout.pass` / `docks.sync`; `launch.firstArm` separate | regress.sh + unit guard | app |
+| REG-019 | One-shot reveal timers ~26 ms late (default sleep tolerance) | dwell and hide-delay lateness p95 ≤ 16 ms, plus drift vs baseline (today ~1–2 ms) | regress.sh + unit guard | app |
+| REG-020 | Push-through counted the entry sample's travel delta (a fast move onto the edge revealed instantly) | x-01: the driver jumps ~150 pt into the edge in one event; a clean x-01 has **zero** `cause=push` | regress.sh + unit guard | app |
+| REG-021 | `NSRunningApplication` KVO observed after dealloc (crash risk) | unit guard; E2E indirectly: every launch / teardown cycle exits cleanly | unit (+ regress.sh launches) | app |
+| REG-022 | `CGVector` missing on Linux | Linux CI build | CI | app |
+| REG-023 | Int → CGFloat literal arithmetic in test arguments (Linux compile, swift-testing false negatives) | Linux CI build + unit run | CI | app |
+| REG-024 | Zones not rebuilt when only trigger settings change | unit guard; E2E once Settings exists (relaunch with a patched seed meanwhile) | unit | app |
+| REG-025 | Reduce Motion toggle not reaching the animator | x-17 (toggle the system setting, expect `curve=fade`) | manual until x-17 is scripted | app |
+| REG-026 | First launch never wrote `layout.json`; decoder inset default ≠ model default | launch on an empty data dir (`launch.sh --no-seed`): `layout.json` exists, `edgeGapPt` = GEOM inset | regress.sh + unit guard | app |
+| REG-027 | `SlideAnimator.update()` during a slide dropped the in-flight animation without completing it: the machine stuck in `revealing` / `hiding` (PR #7) | unit guard; E2E planned: change the edge from the status menu mid-slide, expect a settled state (`shown` / `hidden`) within 1 s and no `reveal.transition` left open | unit (E2E planned: debug command channel `app.dedock.debug.command` `setEdge=`, coming from the implementer) | app |
+| REG-028 | `hiding → revealing` on pointer return ignored the 500 ms post-launch cooldown (PR #7) | unit guard; E2E planned (x-07b): SYN click on the Calculator tile (GEOM centre) → `tile.activate`, then push back into the edge within 500 ms: no `to=revealing` between the click's `cause=explicit` hide and +500 ms (a suppressed re-reveal logs nothing; the dock goes `hiding → hidden`); quit Calculator in teardown | unit (E2E planned: x-07b) | app |
+| REG-029 | `TriggerEvaluator.reset()` on a zone rebuild cleared "inside" without telling the machine: the dock could stay shown forever (PR #7) | unit guard; E2E planned: rebuild zones while the pointer is on the shown dock (a trigger-setting change once Settings is scriptable; a display change needs a second display), then leave: the hide delay must start and the dock reach `hidden` | unit (E2E planned) | app |
+| REG-030 | Release builds logged every value `.public` (bundle ids, paths, error text) — the repo and its logs are public | release launch: string-valued fields read `<private>` in `log stream`, numbers stay readable (`launch.edgeReady ms=…`); debug builds unchanged | unit + release launch check (planned in regress.sh) | app |
+
+## Adding an entry
+
+1. Take the next free id (update "Next free" above) and add the row **before** the fix lands.
+2. Name the detector precisely: which script, which gate or log line, which scenario.
+3. If the E2E suite cannot catch it yet, say where it is caught instead (unit, CI, manual) and what is missing.
+4. Tell the planner (mirror into `docs/evaluation.md` §5) and the implementer (unit guard named after the id).

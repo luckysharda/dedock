@@ -52,7 +52,7 @@ check "diff different fails" "$B/measure-pixels diff $T/a.png $T/series/f0.png |
 
 echo "-- analyze (fake-dock good passes, bad fails on its seeded defects)"
 for m in good bad; do
-  /usr/bin/log stream --style ndjson --level debug --predicate 'subsystem == "app.dedock.Dedock"' > $T/$m.ndjson 2>&1 &
+  /usr/bin/log stream --style ndjson --level debug --predicate 'subsystem == "app.dedock.Dedock" AND process == "fake-dock"' > $T/$m.ndjson 2>&1 &
   lp=$!; sleep 1.5; $B/fake-dock $m; sleep 1.5; kill $lp
   $B/analyze timing $T/$m.ndjson > $T/$m-timing.txt; echo $? > $T/$m-timing.rc
   $B/analyze frames $T/$m.ndjson > $T/$m-frames.txt; echo $? > $T/$m-frames.rc
@@ -78,6 +78,41 @@ check "contamination: foreign input fails" "! $B/analyze contamination $T/dirty.
 check "contamination: idle run with no input passes" "$B/analyze contamination $T/empty.txt idle=1 >/dev/null"
 check "contamination: pointer run with no input fails" "! $B/analyze contamination $T/empty.txt >/dev/null"
 check "contamination: untagged fails" "! $B/analyze contamination $T/untagged.txt >/dev/null"
+
+echo "-- score.py (verdicts, drift with noise floors, baseline, repo-relative paths)"
+SR=$B/runs
+mkfix() {  # mkfix <root> <verdict> <dwell_ms> [check_ok]
+  rm -rf $SR/$1 $SR/$1-L; mkdir -p $SR/$1 $SR/$1-L/x-01-L
+  print "L $1-L" > $SR/$1/index.txt
+  print "PASS dwell\nVERDICT $2 x-01 left" > $SR/$1-L/x-01-L/report.txt
+  [[ $2 == FAIL ]] && print "FAIL dwell: late\nVERDICT FAIL x-01 left" > $SR/$1-L/x-01-L/report.txt
+  print "{\"metric\":\"dwell_late_p95_ms\",\"value\":$3}\n{\"metric\":\"dwell_trials\",\"value\":4}" > $SR/$1-L/x-01-L/metrics.jsonl
+  print "{\"id\":\"REG-006 L\",\"ok\":${4:-true},\"detail\":\"prefs\"}" > $SR/$1/checks.jsonl
+  print '{"app_commit":"abc1234","config":"debug","date":"t"}' > $SR/$1/env.json
+}
+mkfix selftest-sbase PASS 1.2
+python3 Scripts/e2e/score.py --write-baseline $SR/selftest-sbase $T/m1.json > /dev/null
+check "score: baseline written, counts excluded" "python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not ('L.x-01-L.dwell_late_p95_ms' in d['metrics'] and 'L.x-01-L.dwell_trials' not in d['metrics'] and d['provenance']['partial']))\" $T/m1.json"
+mkfix selftest-spass PASS 1.6
+python3 Scripts/e2e/score.py $SR/selftest-spass $T/m1.json > $T/s-pass.txt; echo $? > $T/s-pass.rc
+check "score: PASS exits 0" "[[ \$(cat $T/s-pass.rc) == 0 ]]"
+check "score: +33 % under the 2 ms floor is not drift" "grep -q 'drift warnings: 0' $T/s-pass.txt"
+mkfix selftest-sdrift PASS 9.0
+python3 Scripts/e2e/score.py $SR/selftest-sdrift $T/m1.json > $T/s-drift.txt; echo $? > $T/s-drift.rc
+check "score: drift above floor warns but still passes" "[[ \$(cat $T/s-drift.rc) == 0 ]] && grep -q 'drift warnings: 1' $T/s-drift.txt"
+mkfix selftest-sfail FAIL 1.2
+python3 Scripts/e2e/score.py $SR/selftest-sfail $T/m1.json > /dev/null; echo $? > $T/s-fail.rc
+check "score: FAIL exits 1" "[[ \$(cat $T/s-fail.rc) == 1 ]]"
+mkfix selftest-svoid VOID 1.2
+python3 Scripts/e2e/score.py $SR/selftest-svoid $T/m1.json > /dev/null; echo $? > $T/s-void.rc
+check "score: VOID exits 3" "[[ \$(cat $T/s-void.rc) == 3 ]]"
+mkfix selftest-scheck PASS 1.2 false
+python3 Scripts/e2e/score.py $SR/selftest-scheck $T/m1.json > /dev/null; echo $? > $T/s-check.rc
+check "score: a failed run check exits 1" "[[ \$(cat $T/s-check.rc) == 1 ]]"
+python3 Scripts/e2e/score.py --write-baseline $SR/selftest-sfail $T/m1-bad.json > $T/s-refuse.txt  # exits 1 by design
+check "score: refuses a baseline from an unclean run" "grep -q refusing $T/s-refuse.txt && [[ ! -e $T/m1-bad.json ]]"
+check "score: scorecards hold no absolute paths" "! grep -lE '/U[s]ers/' $SR/selftest-s*/scorecard.md"
+rm -rf $SR/selftest-s*
 
 echo "-- launch / teardown (fake-dock serve)"
 echo '{"schemaVersion":1,"docks":[{"id":"dock-0","edge":"left","reveal":{"showDwellMs":120,"hideDelayMs":400}}]}' > $T/seed.json

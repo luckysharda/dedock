@@ -22,6 +22,8 @@ Coordinates: computer-use space (top-left, 1920 × 1080, 1 pt = 1 px). Probe poi
 
 **Clicks only on harness-owned targets** (the TextEdit fixture, the dock itself, dedock's own menus and windows). Never on the user's windows.
 
+**Regression suite.** For a whole-build check use `Scripts/e2e/regress.sh run <app worktree>` (one lock take, about 5 minutes, scorecard in `build/e2e/runs/<id>/scorecard.md`); the catalogue of what it guards is `Tests/E2E/regressions.md`. The commands below run single scenarios.
+
 ---
 
 ## 1. SYN scenarios (`scenario.sh <run> <L|R> <id> [n=] [seed=] [dry=1]`)

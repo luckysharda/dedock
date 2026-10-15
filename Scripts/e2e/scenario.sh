@@ -116,7 +116,7 @@ sleep 0.5
 
 # Only this scenario's log lines: between the driver's first and last marks (+1 s for trailing hides).
 # Only this run's process: another session's Dedock logs to the same subsystem.
-python3 - $RUN_DIR/log.ndjson $O/driver.txt $O/log.ndjson $APP_PID <<'EOF'
+python3 - $RUN_DIR/log.ndjson $O/driver.txt $O/log.ndjson $APP_PID > $O/slice.txt <<'EOF'
 import json, re, sys
 marks = [int(m) for m in re.findall(r"^mach=(\d+) .*ev=mark", open(sys.argv[2]).read(), re.M)]
 lo, hi = marks[0], marks[-1] + 24_000_000  # 1 s of mach ticks (24 MHz)
@@ -132,21 +132,7 @@ with open(sys.argv[3], "w") as out:
 if other: print(f"WARN other Dedock processes logged during the scenario: {sorted(other)} (excluded; they may also have reacted to the pointer)")
 EOF
 
-{
-  echo "== $scn $edge ($run) $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  $B/analyze contamination $O/listen.txt || true
-  case $scn in
-    x-01|x-02|x-03|x-04) $B/analyze timing $O/log.ndjson show=$show hide=$hide || true ;;
-    x-05a|x-05b|x-06) $B/analyze timing $O/log.ndjson show=$show hide=$hide || true; $B/analyze frames $O/log.ndjson || true
-      # A reversal scenario in which nothing reversed tested nothing: fail it explicitly.
-      case $scn in
-        x-05a) pat='"eventMessage":"reveal.transition[^"]*from=hiding to=revealing'; need=$n ;;
-        x-05b) pat='"eventMessage":"reveal.transition[^"]*from=revealing to=hiding'; need=$n ;;
-        x-06)  pat='"eventMessage":"reveal.transition[^"]*from=(hiding to=revealing|revealing to=hiding)'; need=1 ;;
-      esac
-      got=$(grep -cE "$pat" $O/log.ndjson || true)
-      if (( got >= need )); then echo "PASS reversals occurred: $got (need ≥ $need)"; else echo "FAIL expected reversals: $got occurred (need ≥ $need); the scenario did not exercise reverse-in-place"; fi ;;
-    perf-move) cat $O/perf.txt ;;
-  esac
-} | tee $O/report.txt
-grep -q '^FAIL' $O/report.txt && exit 1 || exit 0
+
+# Judge it (also re-runnable later on the saved files: regress.sh rescore).
+print -r -- "scn=$scn edge=$edge show=$show hide=$hide n=$n run=$run" > $O/params.env
+exec $HARNESS/Scripts/e2e/judge.sh $O

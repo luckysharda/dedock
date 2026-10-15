@@ -71,6 +71,16 @@ func pct(_ xs: [Double], _ p: Double) -> Double {
     return s[min(s.count - 1, Int((Double(s.count - 1) * p).rounded(.up)))]
 }
 
+/// `metrics=<file>`: machine-readable numbers for Scripts/e2e/regress.sh (one JSON object
+/// per line). Scoring reads these, never the PASS/FAIL text.
+let metricsPath: String? = CommandLine.arguments.dropFirst(2).first { $0.hasPrefix("metrics=") }.map { String($0.dropFirst(8)) }
+func metric(_ name: String, _ value: Double) {
+    guard let path = metricsPath, value.isFinite else { return }
+    let line = String(format: "{\"metric\":\"%@\",\"value\":%.4f}\n", name, value)
+    if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(line.data(using: .utf8)!); h.closeFile() }
+    else { FileManager.default.createFile(atPath: path, contents: line.data(using: .utf8)) }
+}
+
 var failures = 0
 func gate(_ ok: Bool, _ label: String, _ detail: String) {
     print("\(ok ? "PASS" : "FAIL") \(label): \(detail)")
@@ -160,12 +170,15 @@ func cmdTiming(_ ev: [Event], _ o: [String: Double]) {
         }
     }
     if !dwellErr.isEmpty {
+        metric("dwell_late_p95_ms", pct(dwellErr, 0.95)); metric("dwell_trials", Double(dwellErr.count))
         gate(pct(dwellErr, 0.95) <= tol && early == 0, "dwell",
              "n=\(dwellErr.count) show=\(Int(show)) ms, lateness p50=\(f1(pct(dwellErr, 0.5))) p95=\(f1(pct(dwellErr, 0.95))) max=\(f1(dwellErr.max()!)) ms, fired early: \(early)")
     }
     if !pushes.isEmpty {
+        metric("push_ms_max", pushes.max()!); metric("push_trials", Double(pushes.count))
         gate(pushes.allSatisfy { $0 < show }, "push-through", "n=\(pushes.count), arming→revealing after \(pushes.map(f1).joined(separator: ",")) ms (must be < \(Int(show)))")
     }
+    metric("leave_before_dwell", Double(leaves))
     if leaves > 0 { info("leave-before-dwell", "\(leaves) arming episodes ended in hidden") }
 
     // NFR-4: zone entry → reveal animation committed.
@@ -183,6 +196,7 @@ func cmdTiming(_ ev: [Event], _ o: [String: Double]) {
         nfr4.append(begin.ms - z.ms - show)
     }
     if !nfr4.isEmpty {
+        metric("nfr4_p95_ms", pct(nfr4, 0.95))
         gate(pct(nfr4, 0.95) <= tol, "NFR-4 zoneEnter→reveal.begin", "n=\(nfr4.count), over show delay p95=\(f1(pct(nfr4, 0.95))) ms (gate ≤ \(Int(tol)))")
     }
 
@@ -194,9 +208,11 @@ func cmdTiming(_ ev: [Event], _ o: [String: Double]) {
         else if end.kv["to"] == "shown" { cancelled += 1 }
     }
     if !hideErr.isEmpty {
+        metric("hide_late_p95_ms", pct(hideErr, 0.95))
         gate(pct(hideErr, 0.95) <= tol && hideErr.allSatisfy { $0 > -2 }, "hide delay",
              "n=\(hideErr.count) hide=\(Int(hide)) ms, lateness p95=\(f1(pct(hideErr, 0.95))) min=\(f1(hideErr.min()!)) ms")
     }
+    metric("hide_cancelled", Double(cancelled))
     if cancelled > 0 { info("hide cancelled by return", "\(cancelled)") }
 
     // Uninterrupted motion durations (state time in revealing / hiding).
@@ -274,6 +290,13 @@ func cmdFrames(_ ev: [Event], _ o: [String: Double]) {
 
     // Pass 2: gates per animation, and the DD-928 checks.
     var maxStep = 0.0, reversalJumps: [Double] = [], flicker: [String] = []
+    var motionMs: [String: [Double]] = [:]
+    defer {
+        for (k, v) in motionMs where !v.isEmpty { metric(k, v.reduce(0, +) / Double(v.count)) }
+        metric("max_step_pt", maxStep); metric("reversals", Double(reversalJumps.count))
+        if let w = reversalJumps.max() { metric("reversal_offset_max_pt", w) }
+        metric("curve_dev_max_pt", anims.map(\.dev).filter(\.isFinite).max() ?? 0)
+    }
     for (k, a) in anims.enumerated() {
         let label = "anim \(a.i) \(a.b.kv["kind"] ?? "?")/\(a.curve) \(f1(a.from))→\(f1(a.to)) dur=\(String(format: "%.3f", a.dur))s"
         let interrupted = k + 1 < anims.count && !ev.contains { $0.name == "reveal.end" && $0.ms > a.b.ms && $0.ms <= anims[k + 1].b.ms }
@@ -290,19 +313,27 @@ func cmdFrames(_ ev: [Event], _ o: [String: Double]) {
         // Duration (§8 rule 1: ± 1 frame). Spring: to its 99 % point (220 ms). Bezier and
         // ease-in end exactly at `dur`, and an ease-out is within 1 % long before that,
         // so they are timed to arrival at the target.
-        // Below ~5 pt of travel the frame log cannot resolve arrival to ± 1 frame: report only.
-        if !interrupted, a.curve != "fade", abs(a.to - a.from) < 5 {
-            info("\(label) duration", "travel \(f1(abs(a.to - a.from))) pt too short to time")
+        // Arrival is only well defined for full-travel motions (spring reveal, ease-in hide). A
+        // partial reversal's ease-out is so flat at the end that "at target" comes ~15 % early on
+        // a few points of travel; its duration is checked by the reversal-duration rule and the
+        // curve fit (which uses the logged duration) instead.
+        if !interrupted, a.curve != "fade", abs(a.to - a.from) < travel * 0.5 {
+            info("\(label) duration", "partial travel \(f1(abs(a.to - a.from))) pt: timed by the reversal rule and curve fit")
         } else if !interrupted, a.curve != "fade" {
-            // §8: t0 = the first frame that moved (not the commit, which lands up to a frame
-            // before the next vsync, nor reveal.end, which is a state-machine signal).
+            // Timed from the curve-fitted start, not the first moved frame: when the commit lands
+            // just before a vsync the first frame has barely moved (< 0.05 pt) and "first moved"
+            // slips a whole frame. Display-link frames are quantised, so the frame that shows the
+            // target lands in [expected, expected + 1 frame] after the true start.
             let expected = a.curve == "spring" ? 220.0 : a.dur * 1000
             let near = a.curve == "spring" ? abs(a.to - a.from) * 0.01 + 0.05 : 0.05
-            if let moved = a.seg.first(where: { abs($0.tx - a.from) > 0.05 }),
-               let f = a.seg.first(where: { abs($0.tx - a.to) <= near }) {
-                let reach = f.ms - moved.ms
-                gate(abs(reach - expected) <= frameMs + 1, "\(label) duration",
-                     "first moved frame → \(a.curve == "spring" ? "99 % of travel" : "at target") \(f1(reach)) ms (exp \(f1(expected)) ± 1 frame); commit → first frame \(f1(moved.ms - a.b.ms)) ms")
+            if let f = a.seg.first(where: { abs($0.tx - a.to) <= near }) {
+                let reach = f.ms - a.start
+                let moved = a.seg.first(where: { abs($0.tx - a.from) > 0.05 }).map { f.ms - $0.ms }
+                motionMs[a.curve == "spring" ? "reveal99_ms" : (a.curve == "easeIn" ? "hide_motion_ms" : "reversal_motion_ms"), default: []].append(reach)
+                // −3 ms: the fitted start is within ±2–3 ms; + 1 frame: vsync quantisation.
+                gate(reach >= expected - 3 && reach <= expected + frameMs + 1, "\(label) duration",
+                     "start → \(a.curve == "spring" ? "99 % of travel" : "at target") \(f1(reach)) ms (exp \(f1(expected))…\(f1(expected + frameMs)): one vsync of quantisation)"
+                     + (moved.map { "; first moved frame → target \(f1($0)) ms" } ?? ""))
             } else {
                 gate(false, "\(label) duration", "never reached the target")
             }
@@ -344,6 +375,7 @@ func cmdContamination(_ path: String, idle: Bool) {
     let lines = text.split(separator: "\n").filter { $0.hasPrefix("mach=") }
     let foreign = lines.filter { $0.contains(" syn=0") }
     let untagged = lines.filter { !$0.contains(" syn=") } // listener built before tagging: cannot tell
+    metric("foreign_events", Double(foreign.count + untagged.count))
     gate((idle || !lines.isEmpty) && foreign.isEmpty && untagged.isEmpty, "input contamination\(idle ? " (idle: expect none)" : "")",
          "\(lines.count) events seen, \(foreign.count) not from the driver, \(untagged.count) unverifiable (no syn= field)"
          + (foreign.first.map { " (first: \($0))" } ?? ""))

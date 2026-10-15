@@ -5,6 +5,7 @@
 #     --app <worktree>       worktree whose build/Dedock.app to run (default: $DEDOCK_APP_WORKTREE)
 #     --bin <executable>     run this executable instead of the bundle (harness self-test)
 #     --seed <layout.json>   seed layout (default: <worktree>/Tests/E2E/fixtures/layout-seed.json if present)
+#     --no-seed              start on an empty data dir (first-launch behaviour, REG-026)
 #     --set <path>=<json>    patch the seeded layout, e.g. --set 'docks[0].edge="right"'
 #                            --set 'docks[0].reveal.showDwellMs=120' (repeatable)
 #     --frame-log            also set DEDOCK_FRAME_LOG=1
@@ -22,13 +23,14 @@ set -euo pipefail
 
 HARNESS=${0:A:h:h:h}
 run=${1:?usage: launch.sh <run-id> [options]}; shift
-app=${DEDOCK_APP_WORKTREE:-} bin= seed= frame=0 timeout=5
+app=${DEDOCK_APP_WORKTREE:-} bin= seed= noseed=0 frame=0 timeout=5
 sets=()
 while (( $# )); do
   case $1 in
     --app) app=$2; shift 2 ;;
     --bin) bin=$2; shift 2 ;;
     --seed) seed=$2; shift 2 ;;
+    --no-seed) noseed=1; shift ;;
     --set) sets+=$2; shift 2 ;;
     --frame-log) frame=1; shift ;;
     --timeout) timeout=$2; shift 2 ;;
@@ -39,7 +41,7 @@ done
 if [[ -z $bin ]]; then
   [[ -n $app ]] || { echo "need --app <worktree> or DEDOCK_APP_WORKTREE" >&2; exit 2 }
   bin=$app/build/Dedock.app/Contents/MacOS/Dedock
-  [[ -z $seed && -f $app/Tests/E2E/fixtures/layout-seed.json ]] && seed=$app/Tests/E2E/fixtures/layout-seed.json
+  [[ -z $seed && $noseed == 0 && -f $app/Tests/E2E/fixtures/layout-seed.json ]] && seed=$app/Tests/E2E/fixtures/layout-seed.json
 fi
 [[ -x $bin ]] || { echo "not executable: $bin (run Scripts/make-app.sh debug in the app worktree)" >&2; exit 2 }
 
