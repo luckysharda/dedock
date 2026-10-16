@@ -15,6 +15,28 @@ public enum SettingsTokens {
     public static let scenarioCardRadius: CGFloat = 12
     public static let scenarioCardHeight: CGFloat = 92
 
+    /// The sidebar's fill for a window backdrop: opaque on Solid; on Frosted and Liquid Glass a
+    /// faint overlay over the window's material, so the sidebar reads as its own column.
+    public static func sidebarFill(_ backdrop: WindowLook.Backdrop) -> Color {
+        switch backdrop {
+        case .solid:
+            Color(nsColor: NSColor(name: nil) { a in
+                a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor(srgbRed: 0x1E / 255, green: 0x1D / 255, blue: 0x1B / 255, alpha: 1)
+                    : NSColor(srgbRed: 0xEC / 255, green: 0xEC / 255, blue: 0xEE / 255, alpha: 1)
+            })
+        case .frosted, .glass:
+            Color(nsColor: NSColor(name: nil) { a in
+                a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0, alpha: 0.18) : NSColor(white: 1, alpha: 0.30)
+            })
+        }
+    }
+
+    /// The content column's fill: opaque on Solid, clear over Frosted and Liquid Glass.
+    public static func contentFill(_ backdrop: WindowLook.Backdrop) -> Color {
+        backdrop == .solid ? contentBackground : .clear
+    }
+
     /// Content background: dark `#252421`, light the window background.
     public static var contentBackground: Color {
         Color(nsColor: NSColor(name: nil) { a in

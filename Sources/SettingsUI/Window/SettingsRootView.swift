@@ -63,14 +63,14 @@ struct SettingsRootView: View {
         HStack(spacing: 0) {
             sidebar
                 .frame(width: SettingsTokens.sidebarWidth)
-                .background(chrome.backdrop == .solid ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.clear))
+                .background(SettingsTokens.sidebarFill(chrome.backdrop))
             Divider()
             ScrollView {
                 content
                     .padding(SettingsTokens.contentPadding)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .background(chrome.backdrop == .solid ? SettingsTokens.contentBackground : .clear)
+            .background(SettingsTokens.contentFill(chrome.backdrop))
         }
         .frame(minWidth: 760, minHeight: 520)
     }
@@ -87,6 +87,7 @@ struct SettingsRootView: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)      // the material is the window's choice, not the List's
         .padding(.top, 28)
     }
 
