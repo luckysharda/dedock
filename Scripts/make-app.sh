@@ -3,7 +3,9 @@
 # Usage: Scripts/make-app.sh [debug|release]
 # Env:   CONFIGURATION         debug|release, used when no argument is given (CI)
 #        ARCH                  native (default) | universal (arm64 + x86_64) | arm64 | x86_64
-#        DEDOCK_SIGN_IDENTITY  codesign identity (default "-" = ad hoc)
+#        DEDOCK_SIGN_IDENTITY  codesign identity name, e.g. "Dedock Development" (made once by
+#                              Scripts/make-signing-identity.sh). Used only when it is in the
+#                              keychain; otherwise ad hoc ("-"). CI leaves it unset (ad hoc).
 #        DEDOCK_SCRATCH_PATH   SwiftPM scratch dir (default .build); use your own when several
 #                              sessions build the same worktree.
 set -euo pipefail
@@ -44,7 +46,24 @@ plutil -lint -s "$APP/Contents/Info.plist"
 # Resource bundles, once any target declares resources.
 for b in "$BIN_DIR"/*.bundle; do [ -e "$b" ] && cp -R "$b" "$APP/Contents/Resources/"; done
 
-IDENTITY="${DEDOCK_SIGN_IDENTITY:--}"
+# A stable identity keeps the designated requirement the same across rebuilds, so TCC grants
+# (Accessibility) survive a rebuild (R2). Ad hoc signatures change with every build.
+IDENTITY="-"
+if [ -n "${DEDOCK_SIGN_IDENTITY:-}" ] && [ "$DEDOCK_SIGN_IDENTITY" != "-" ]; then
+    # Without -v: a self-signed identity is "not trusted" but still signs.
+    # `|| true`: no match is a normal outcome, not a pipeline failure under `set -o pipefail`.
+    MATCHES="$( { security find-identity -p codesigning 2>/dev/null || true; } | { grep -F "\"$DEDOCK_SIGN_IDENTITY\"" || true; } \
+        | awk '{print $2}' | sort -u | wc -l | tr -d ' ')"
+    if [ "$MATCHES" -gt 1 ]; then
+        # codesign refuses an ambiguous name; sign by the certificate's SHA-1 instead, or delete
+        # the duplicate in Keychain Access.
+        echo "warning: \"$DEDOCK_SIGN_IDENTITY\" matches $MATCHES certificates across keychains; signing ad hoc" >&2
+    elif [ "$MATCHES" -eq 1 ]; then
+        IDENTITY="$DEDOCK_SIGN_IDENTITY"
+    else
+        echo "warning: identity \"$DEDOCK_SIGN_IDENTITY\" not in the keychain; signing ad hoc" >&2
+    fi
+fi
 SIGN_ARGS=(--force --sign "$IDENTITY" --identifier "$BUNDLE_ID" --timestamp=none)
 # Debug only: get-task-allow so `leaks`/`vmmap` can inspect the app. Release never gets it.
 [ "$CONFIG" = debug ] && SIGN_ARGS+=(--entitlements "$ROOT/Support/Debug.entitlements")
