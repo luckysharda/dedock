@@ -183,3 +183,92 @@ extension MappingRegressionTests {
         #expect(panel.title == "Edge Dock")
     }
 }
+
+/// T38 display fallback and D2 Hello reveal (macOS only).
+@Suite(.serialized) @MainActor struct DisplayFallbackTests {
+    static func display(_ uuid: String, x: CGFloat, id: UInt32, main: Bool = false, builtin: Bool = false) -> DisplaySnapshot {
+        DisplaySnapshot(identity: DisplayIdentity(uuid: uuid), displayID: id, frame: CGRect(x: x, y: 0, width: 1920, height: 1080),
+                        visibleFrame: CGRect(x: x, y: 0, width: 1920, height: 1056), menuBarHeight: 24,
+                        menuBarAutoHides: false, isBuiltin: builtin, isMain: main, backingScale: 1)
+    }
+
+    @Test func bindingFallsBackAndReturns() {
+        let main = Self.display("M", x: 0, id: 1, main: true)
+        let air = Self.display("AIR", x: 1920, id: 7)
+        let bound = DisplayBinding(role: .identity, identity: "AIR", fallbackToBuiltin: true)
+        #expect(EdgeDockManager.resolveDisplay(bound, in: DisplayLayout(displays: [main, air]))?.identity.uuid == "AIR")
+        // Disconnected, and this Mac has no built-in display: the main display.
+        #expect(EdgeDockManager.resolveDisplay(bound, in: DisplayLayout(displays: [main]))?.identity.uuid == "M")
+        // With a built-in display, that one.
+        let builtin = Self.display("BI", x: -1512, id: 3, builtin: true)
+        #expect(EdgeDockManager.resolveDisplay(bound, in: DisplayLayout(displays: [main, builtin]))?.identity.uuid == "BI")
+        // Reconnected: back on it.
+        #expect(EdgeDockManager.resolveDisplay(bound, in: DisplayLayout(displays: [main, air]))?.identity.uuid == "AIR")
+        // No fallback wanted: no dock.
+        var strict = bound
+        strict.fallbackToBuiltin = false
+        #expect(EdgeDockManager.resolveDisplay(strict, in: DisplayLayout(displays: [main])) == nil)
+        #expect(EdgeDockManager.resolveDisplay(DisplayBinding(role: .main), in: DisplayLayout(displays: [main, air]))?.identity.uuid == "M")
+    }
+
+    @Test func bindDisplayAcceptsOnlyMainOrANumber() {
+        #expect(DebugCommand.parse("bindDisplay=main") == .bindDisplay(.main))
+        #expect(DebugCommand.parse("bindDisplay=7") == .bindDisplay(.id(7)))
+        #expect(DebugCommand.parse("bindDisplay=") == nil)
+        #expect(DebugCommand.parse("bindDisplay=-1") == nil)
+        #expect(DebugCommand.parse("bindDisplay=7x") == nil)
+        #expect(DebugCommand.parse("bindDisplay=99999999999") == nil)    // beyond UInt32
+        #expect(DebugCommand.parse("bindDisplay=١") == nil)              // non-ASCII digit
+        #expect(DebugCommand.parse("bindDisplay") == nil)
+    }
+
+    func coordinator(clock: ManualClock) -> (EdgeDockCoordinator, DockSurroundings, DisplaySnapshot, DisplaySnapshot) {
+        let config = DedockDocument.makeDefault().docks[0]
+        let main = Self.display("M", x: 0, id: 1, main: true), air = Self.display("AIR", x: 1920, id: 7)
+        let s = DockSurroundings(layout: DisplayLayout(displays: [main, air]), nativeDock: NativeDockPreferences(), reduceMotion: false)
+        let profile = Profile(id: config.profileID, name: "p", items: [TileItem(id: "t1", kind: .app, bundleID: "com.apple.calculator")])
+        let c = EdgeDockCoordinator(config: config, profile: profile, display: main, surroundings: s,
+                                    running: RunningAppsMonitor(), icons: IconCache(), clock: clock)
+        return (c, s, main, air)
+    }
+
+    func finishAnimation(_ c: EdgeDockCoordinator) {
+        if let g = c.controller.machine.activeGeneration { c.controller.send(.animationFinished(generation: g)) }
+    }
+
+    func advance(_ clock: ManualClock, _ d: Duration) async {
+        for _ in 0..<100 where clock.pendingCount == 0 { await Task.yield() }
+        clock.advance(by: d)
+        for _ in 0..<100 { await Task.yield() }
+    }
+
+    /// D2: after a move to another display the dock reveals once, holds 1.0 s, then hides.
+    @Test(.enabled(if: NSScreen.main != nil)) func helloRevealOnTheNewDisplay() async {
+        let clock = ManualClock()
+        let (c, s, _, air) = coordinator(clock: clock)
+        let config = c.config
+        #expect(c.phase == .hidden)
+        c.update(config: config, profile: nil, display: air, surroundings: s)
+        #expect(c.phase == .revealing)
+        finishAnimation(c)
+        #expect(c.phase == .shown)
+        await advance(clock, .milliseconds(900))
+        #expect(c.phase == .shown)
+        await advance(clock, .milliseconds(150))
+        #expect(c.phase == .hiding)
+        c.teardown()
+    }
+
+    /// D2: if the pointer is on the dock when the hold ends, it stays.
+    @Test(.enabled(if: NSScreen.main != nil)) func helloKeepsTheDockWhenThePointerIsOnIt() async {
+        let clock = ManualClock()
+        let (c, s, _, air) = coordinator(clock: clock)
+        c.update(config: c.config, profile: nil, display: air, surroundings: s)
+        finishAnimation(c)
+        let cap = c.capsuleFrame
+        c.pointer(PointerSample(location: CGPoint(x: cap.midX, y: cap.midY), timestamp: .milliseconds(100)))
+        await advance(clock, .milliseconds(1100))
+        #expect(c.phase == .shown)
+        c.teardown()
+    }
+}

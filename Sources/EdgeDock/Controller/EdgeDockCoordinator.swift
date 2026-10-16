@@ -62,12 +62,18 @@ public struct DockSurroundings: Sendable, Equatable {
         var index: Int
     }
     private var reorder: ReorderSession?
+    private let clock: any Clock<Duration>
+    private var helloTask: Task<Void, Never>?
+    /// D2 "Hello reveal" hold on the new display (design.md §7.2a).
+    static let helloHold: Duration = .seconds(1)
+
     /// The tile specs the current layout was built from.
     private var specs: [TileSpec] = []
 
     init(config: DockConfig, profile: Profile?, display: DisplaySnapshot, surroundings: DockSurroundings,
          running: RunningAppsMonitor, icons: IconCache, clock: any Clock<Duration>) {
         id = config.id
+        self.clock = clock
         self.config = config
         self.display = display
         self.running = running
@@ -170,6 +176,26 @@ public struct DockSurroundings: Sendable, Equatable {
         rebuildZones(surroundings)
         controller.reconfigure(new.revealConfig(reduceMotion: surroundings.reduceMotion))
         onChange?()
+        if movedDisplay, new.mode == .reveal { helloReveal() }
+    }
+
+    /// D2 "Hello reveal" (T38, design.md §7.2a): after each move to another display (a fallback,
+    /// a return, a new binding), reveal once there, hold 1.0 s, then hide, unless the pointer is
+    /// on the dock by then. Shows the user where the dock went.
+    func helloReveal() {
+        helloTask?.cancel()
+        DedockLog.event(.display, "display.hello", ["edge": config.edge.rawValue, "hold": Self.ms(Self.helloHold)])
+        controller.send(.command(.reveal))
+        let clock = clock
+        helloTask = Task { @MainActor [weak self] in
+            do { try await clock.sleep(for: Self.helloHold, tolerance: .zero) } catch { return }
+            guard let self, !self.controller.machine.pointerInside else { return }
+            self.controller.send(.command(.hide(explicit: false)))
+        }
+    }
+
+    private static func ms(_ d: Duration) -> Int {
+        Int(d.components.seconds) * 1000 + Int(d.components.attoseconds / 1_000_000_000_000_000)
     }
 
     /// Running state changed: only the tile models change, never the geometry.
@@ -195,6 +221,7 @@ public struct DockSurroundings: Sendable, Equatable {
     }
 
     func teardown() {
+        helloTask?.cancel()
         controller.invalidate()
         panel.orderOut(nil)
         panel.close()
