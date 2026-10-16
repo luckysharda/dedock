@@ -44,6 +44,10 @@ def judge(mid, after, layout, passes):
     live = abs(mt - 62) > 1 and min(abs(mt - s) for s in STOPS.values()) > 0.5
     r1 = (int(live and ms == "shown" and passes > 0),
           f"mid-drag: tile {mt:.1f} pt (exp between stops, off 62), capsule {mc:.1f}, dock {ms}; layout passes during the drag: {passes}")
+    # Source: DockTokens.capsule(tile:) (Sources/DesignSystem/Tokens/DockTokens.swift) scales padding
+    # with the tile, 8 × tile/62 per side, so the capsule's cross-axis is tile + 2 × 8 × tile/62 =
+    # tile × (1 + 16/62): 60.4 / 78 / 95.6 / 115.7 pt at S/M/L/XL (design.md §7.2a Z1; confirmed by the
+    # implementer for the T25 card). LayoutEngine aligns to device pixels, within the ± 1 pt here.
     exp_c = at * (1 + 16 / 62)
     ok = size in STOPS and abs(at - STOPS[size]) <= 0.5 and abs(ac - exp_c) <= 1
     r2 = (int(ok), f"after release: tile {at:.1f} pt, saved size '{size}' ({STOPS.get(size, '?')} pt); capsule {ac:.1f} pt (exp {exp_c:.1f} ± 1)")

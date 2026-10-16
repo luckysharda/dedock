@@ -242,7 +242,7 @@ python3 Scripts/e2e/cua-eval.py $T/cua-notile Tests/E2E/selftest/cua-geom.json 9
 check "cua-eval: no tile probed → every C7 row FAILs as not probed (no crash)" "[[ \$(cat $T/cua-notile.rc) == 0 && \$(grep -cE \$'^cua C7 [^\t]*\t0\tnot probed' $T/cua-notile.txt) == 3 ]]"
 mkfix selftest-senv PASS 1.2; print '{"id":"cua C7 shown tile takes the hit T","ok":false,"skip":false,"void":false,"env":true,"detail":"all occluded"}' >> $SR/selftest-senv/checks.jsonl
 python3 Scripts/e2e/score.py $SR/selftest-senv $T/m1.json > $T/s-env.txt; echo $? > $T/s-env.rc
-check "score: an ENV check is shown as ENV, listed as unverifiable, and does not fail the card" "[[ \$(cat $T/s-env.rc) == 0 ]] && grep -q '1 ENV (unverifiable here: cua C7 shown tile takes the hit T)' $T/s-env.txt && grep -q '| cua C7 shown tile takes the hit T | ENV |' $T/s-env.txt"
+check "score: an ENV check is shown as ENV, listed as unverifiable; the card is PASS-ENV (exit 4), not FAIL" "[[ \$(cat $T/s-env.rc) == 4 ]] && grep -q 'M1 Edge Dock — PASS-ENV' $T/s-env.txt && grep -q '1 ENV (unverifiable here: cua C7 shown tile takes the hit T)' $T/s-env.txt && grep -q '| cua C7 shown tile takes the hit T | ENV |' $T/s-env.txt"
 mkfix selftest-socc PASS 1.2; print '{"id":"cua C7 shown tile takes the hit T","ok":false,"skip":false,"void":true,"detail":"occluded"}' >> $SR/selftest-socc/checks.jsonl
 python3 Scripts/e2e/score.py $SR/selftest-socc $T/m1.json > $T/s-occ.txt; echo $? > $T/s-occ.rc
 check "score: a VOID check makes the card VOID (exit 3), shown as VOID, not FAIL" "[[ \$(cat $T/s-occ.rc) == 3 ]] && grep -q '1 void (occluded, rerun)' $T/s-occ.txt && grep -q '| cua C7 shown tile takes the hit T | VOID |' $T/s-occ.txt"
@@ -308,6 +308,15 @@ print -r -- '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><r
 if qlmanage -t -s 400 -o $T $T/ocr.svg > /dev/null 2>&1 && [[ -s $T/ocr.svg.png ]]; then
   $B/ocr $T/ocr.svg.png > $T/ocr.jsonl 2> $T/ocr.err
   check "ocr reads a rendered two-line label (name, state)" "grep -q '\"text\":\"Calculator\"' $T/ocr.jsonl && grep -q '\"text\":\"Not running\"' $T/ocr.jsonl"
+  python3 -c "
+import struct, sys, zlib
+w = h = 64
+raw = b''.join(b'\\x00' + b'\\x00\\x00\\x00\\x00' * w for _ in range(h))
+chunk = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+open(sys.argv[1], 'wb').write(b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))" $T/blank.png
+  $B/ocr stats $T/ocr.svg.png > /dev/null 2>&1; r_label=$?
+  $B/ocr stats $T/blank.png > /dev/null 2>&1; r_blank=$?
+  check "ocr stats: a rendered label is not blank (exit 0); a fully transparent capture is (exit 1)" "[[ $r_label == 0 && $r_blank == 1 ]]"
 else
   skip "ocr reads a rendered two-line label" "qlmanage could not render the test image"
 fi

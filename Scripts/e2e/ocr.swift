@@ -7,17 +7,38 @@
 // Run:   build/e2e/ocr <image.png>
 //        one JSON object per recognised line: {"text","x","y","w","h","iw","ih"}: the box in image
 //        pixels, top-left origin; iw/ih: the image size (to map back to points).
+//        build/e2e/ocr stats <image.png>
+//        {"distinct","alpha_max","iw","ih"} over a pixel sample; exit 1 when the capture is blank
+//        (fully transparent, or under 8 distinct colours), e.g. no Screen Recording for the host.
 
 import AppKit
 import Vision
 
 func fail(_ m: String) -> Never { FileHandle.standardError.write("ocr: \(m)\n".data(using: .utf8)!); exit(2) }
 
-let args = CommandLine.arguments.dropFirst()
-guard let path = args.first else { fail("usage: ocr <image.png>") }
+let args = Array(CommandLine.arguments.dropFirst())
+let statsMode = args.first == "stats"
+guard let path = statsMode ? args.dropFirst().first : args.first else { fail("usage: ocr [stats] <image.png>") }
 guard let img = NSImage(contentsOfFile: path),
       let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { fail("cannot read \(path)") }
 let (iw, ih) = (Double(cg.width), Double(cg.height))
+
+if statsMode {
+    guard let rep = NSBitmapImageRep(cgImage: cg) as NSBitmapImageRep? else { fail("no bitmap") }
+    var seen = Set<UInt32>(), alphaMax: CGFloat = 0
+    let step = max(1, Int((Double(cg.width * cg.height) / 40_000).squareRoot()))
+    for y in stride(from: 0, to: cg.height, by: step) {
+        for x in stride(from: 0, to: cg.width, by: step) {
+            guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+            alphaMax = max(alphaMax, c.alphaComponent)
+            let q = { (v: CGFloat) in UInt32(max(0, min(255, (v * 255).rounded()))) }
+            seen.insert(q(c.redComponent) << 24 | q(c.greenComponent) << 16 | q(c.blueComponent) << 8 | q(c.alphaComponent))
+        }
+    }
+    let d: [String: Any] = ["distinct": seen.count, "alpha_max": Double(alphaMax), "iw": iw, "ih": ih]
+    print(String(data: try! JSONSerialization.data(withJSONObject: d, options: [.sortedKeys]), encoding: .utf8)!)
+    exit(alphaMax > 0 && seen.count >= 8 ? 0 : 1)
+}
 
 let req = VNRecognizeTextRequest()
 req.recognitionLevel = .accurate

@@ -151,7 +151,7 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
     for sd in $extra_seeds; do print -r -- "$t.x-06-$t-s$sd"; done
     (( shots )) && print -l "shot $t" "REG-006 S$t"
   done
-  (( t25 )) && print -l "T25 drag-out asks without taking focus R" "T25 Keep keeps the tile R" "T25 a click elsewhere keeps the tile R" \
+  (( t25 )) && print -l "T25 drag-out asks without taking focus R" "T25 Keep keeps the tile R" "T25 a click elsewhere in Dedock keeps the tile (local-monitor path) R" \
                         "T25 Remove removes the tile and persists it R" "T25 a second drag-out while asking is ignored R" \
                         "T25 no answer in 8 s keeps the tile R" "REG-006 D"
   (( z1 )) && print -l "Z1 size slider drives the live dock while dragged" "Z1 release snaps to a stop and persists" "REG-006 Z"
@@ -576,6 +576,9 @@ w = next((w for w in ws if w['layer'] == 24 and w['w'] > 50 and w['h'] > 50), No
 json.dump(w or {}, open(sys.argv[1], 'w'))" $R/h4-window.json
   wid=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('id', ''))" $R/h4-window.json)
   [[ -n $wid ]] && screencapture -x -o -l $wid $R/h4-a.png; tool "screencapture panel $side" $? 0
+  # A blank capture (no Screen Recording for the host, or no panel) is a harness fault, not an H4
+  # result: tool health fails, so it cannot read as an app FAIL.
+  $B/ocr stats $R/h4-a.png > $R/h4-a-stats.json 2>&1; tool "h4 capture not blank $side" $? 0
   $B/axprobe tree $pid 8 > $R/h4-tree.jsonl
   $B/pointer -q glide ${f[1]} ${f[2]} 150; sleep 0.15
   [[ -n $wid ]] && screencapture -x -o -l $wid $R/h4-f.png
@@ -640,8 +643,9 @@ z1_rows() {  # z1_rows <run dir> <pid>: Z1 size slider (row 27), z1=1, own launc
 
 t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1, own launch on the right edge
   # ⌘-drag a tile out past the capsule + hysteresis → the non-activating confirm (non-key, frontmost
-  # unchanged, popoverOpen hold); Keep (AX press) and a click elsewhere (on Dedock's own capsule
-  # padding) keep it; Remove removes it and persists the layout; a second drag-out while the question
+  # unchanged, popoverOpen hold); Keep (AX press) and a click elsewhere keep it. The click lands on
+  # Dedock's own capsule padding, so it exercises the confirm's LOCAL event monitor; the global
+  # monitor (a click in another app) stays untested by design: the harness never clicks other apps; Remove removes it and persists the layout; a second drag-out while the question
   # is open is ignored; no answer in 8 s keeps it. Only this launch's isolated data dir is touched;
   # every press is on Dedock's own windows. Real input during the probe makes every row VOID.
   local R=$1 pid=$2 L=$1/log.ndjson G=$1/data/e2e/geometry.json Y=$1/data/layout.json lp n f0 f1 fc w k
@@ -726,7 +730,7 @@ t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1
   kill $lp 2>/dev/null; wait $lp 2>/dev/null
   $B/analyze contamination $R/t25-listen.txt > $R/t25-contam.txt 2>&1; tool "analyze contamination t25" $? 0 1
   local foreign=$(grep -c '^FAIL input contamination' $R/t25-contam.txt) key cid v
-  for key cid in ask "T25 drag-out asks without taking focus R" keep "T25 Keep keeps the tile R" click "T25 a click elsewhere keeps the tile R" \
+  for key cid in ask "T25 drag-out asks without taking focus R" keep "T25 Keep keeps the tile R" click "T25 a click elsewhere in Dedock keeps the tile (local-monitor path) R" \
                  remove "T25 Remove removes the tile and persists it R" second "T25 a second drag-out while asking is ignored R" \
                  timeout "T25 no answer in 8 s keeps the tile R"; do
     v=${row[$key]:-"0	not reached"}
