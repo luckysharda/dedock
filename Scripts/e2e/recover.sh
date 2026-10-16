@@ -21,7 +21,11 @@ killdock)
   echo "old=${old:-none} new=${new:-none}"
   [[ -n ${new:-} && $new != $old ]] ;;
 sleepcheck)
-  st=$(sysadminctl -screenLock status 2>&1)
+  # No stdin and a 5 s limit: a prompt or a hang reads as unknown (exit 3), never as "off".
+  out=$(mktemp); sysadminctl -screenLock status < /dev/null > $out 2>&1 & sp=$!
+  for i in {1..50}; do kill -0 $sp 2>/dev/null || break; sleep 0.1; done
+  if kill -0 $sp 2>/dev/null; then kill $sp 2>/dev/null; rm -f $out; echo "unknown (sysadminctl did not answer within 5 s)"; exit 3; fi
+  st=$(<$out); rm -f $out
   if [[ $st == *"screenLock is off"* ]]; then echo "screen lock off"; exit 0; fi
   echo "${st##*] }"; exit 3 ;;
 *)

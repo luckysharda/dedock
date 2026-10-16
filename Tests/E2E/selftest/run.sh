@@ -341,6 +341,9 @@ check "Z1 judge: live between stops + snapped XL with capsule 115.7 PASS; no liv
 DEDOCK_POINTER_DRYRUN=1 $B/pointer click 1210 99999 > $T/press-off.out 2> $T/press-off.err; echo $? > $T/press-off.rc
 DEDOCK_POINTER_DRYRUN=1 $B/pointer drag 100 100 100 99999 300 > $T/drag-off.out 2> $T/drag-off.err; echo $? > $T/drag-off.rc
 check "REG-068 pointer refuses a click or drag off every display, before posting anything" "[[ \$(cat $T/press-off.rc) == 2 && \$(cat $T/drag-off.rc) == 2 && ! -s $T/press-off.out && ! -s $T/drag-off.out ]] && grep -q 'outside every display (REG-068); nothing posted' $T/press-off.err"
+print -l "mod cmd down" "mod shift down" "click 10 99999" > $T/bail.txt
+DEDOCK_POINTER_DRYRUN=1 $B/pointer script $T/bail.txt > $T/bail.out 2> $T/bail.err; echo $? > $T/bail.rc
+check "REG-068 a refused press after 'mod cmd down' lets go of every held modifier before exiting (dry run)" "[[ \$(cat $T/bail.rc) == 2 ]] && grep -q 'ev=modUp key=cmd' $T/bail.out && grep -q 'ev=modUp key=shift' $T/bail.out && ! grep -q 'ev=down' $T/bail.out"
 check "REG-068 audit: every pointer click/drag line in the harness is marked guarded by press_ok" "! grep -nE 'pointer( -q)? (click|drag) ' Scripts/e2e/regress.sh Scripts/e2e/scenario.sh | grep -v 'guarded: press_ok' | grep -q . && grep -q '^press_ok() {' Scripts/e2e/regress.sh"
 # T26 SP3 Islands: two islands 8 pt apart = one dock (one zone, capsule = union); spacer = half a cell
 python3 - $T <<'PY'
