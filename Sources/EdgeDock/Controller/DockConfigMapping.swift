@@ -52,13 +52,16 @@ extension DockConfig {
     }
 
     /// Tokens for the current system state: appearance (label colours) and Reduce Transparency.
-    @MainActor public var tokens: DockTokens {
+    @MainActor public var tokens: DockTokens { tokens(liquid: .dark) }
+
+    /// The same, with Liquid Glass's LG4 tint.
+    @MainActor public func tokens(liquid: LiquidTint) -> DockTokens {
         tokens(lightAppearance: NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua,
-               reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency)
+               reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency, liquid: liquid)
     }
 
     /// Tokens for this dock's size and `dd.dock.style`, in the given system state.
-    public func tokens(lightAppearance: Bool, reduceTransparency: Bool) -> DockTokens {
+    public func tokens(lightAppearance: Bool, reduceTransparency: Bool, liquid: LiquidTint = .dark) -> DockTokens {
         let size: DockTokens.Size = switch appearance.size {
         case .s: .s
         case .m: .m
@@ -68,12 +71,14 @@ extension DockConfig {
         let style: DockTokens.Style = switch appearance.style {
         case .darkGlass: .darkGlass
         case .black: .black
+        case .dark: .dark
         case .lightGlass: .lightGlass
+        case .liquidGlass: .liquidGlass
         }
         // While the size slider is dragged the dock follows it on every frame (Z1).
         var t = appearance.liveTilePt.map {
-            DockTokens.capsule(tile: CGFloat($0), style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance)
-        } ?? DockTokens.capsule(size, style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance)
+            DockTokens.capsule(tile: CGFloat($0), style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance, liquid: liquid)
+        } ?? DockTokens.capsule(size, style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance, liquid: liquid)
         t.edgeGap = CGFloat(min(48, max(0, placement.edgeGapPt)))
         return t
     }

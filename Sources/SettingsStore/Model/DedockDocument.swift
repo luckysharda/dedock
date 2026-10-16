@@ -418,7 +418,7 @@ public struct AppearanceSettings: JSONObjectModel, Sendable, Equatable {
     public enum Size: String, Sendable, Equatable, CaseIterable { case s, m, l, xl }
     /// `dd.dock.style` (design.md §7.1): the dock's material, chosen apart from the system
     /// appearance.
-    public enum Style: String, Sendable, Equatable, CaseIterable { case darkGlass, black, lightGlass }
+    public enum Style: String, Sendable, Equatable, CaseIterable { case darkGlass, black, dark, lightGlass, liquidGlass }
 
     public var size: Size
     /// The size slider's position while it is being dragged (tile points). Never saved: on
