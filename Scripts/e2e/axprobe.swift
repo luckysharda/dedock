@@ -17,6 +17,8 @@
 //                                when the system refuses, e.g. kAXErrorCannotComplete); front = the
 //                                frontmost app's pid; app_focus = whether <pid> reports a focused element
 //                                of its own (a key window). Pids and booleans only: never content.
+//   axprobe display-prefs         {"reduce_transparency","reduce_motion","increase_contrast"}: the display
+//                                accessibility settings as the app reads them (read-only; env record, T37)
 //   axprobe occluder <x> <y> <pid> [above=24]
 //                                whether ANOTHER app takes the click at the global top-left point from a
 //                                window above layer <above> (over the dock's level): the AX hit there
@@ -164,6 +166,10 @@ case "occluder":
         break
     }
     out(d)
+case "display-prefs":
+    let w = NSWorkspace.shared
+    out(["reduce_transparency": w.accessibilityDisplayShouldReduceTransparency, "reduce_motion": w.accessibilityDisplayShouldReduceMotion,
+         "increase_contrast": w.accessibilityDisplayShouldIncreaseContrast])
 case "front":
     let f = NSWorkspace.shared.frontmostApplication
     out(["pid": Int(f?.processIdentifier ?? -1), "app": f?.localizedName ?? "", "bundle": f?.bundleIdentifier ?? ""])

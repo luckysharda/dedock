@@ -132,7 +132,10 @@ else:
     res.append((f"cua C7 leaving far from the shown dock hides it {side}", "skip", "not recorded by this harness version"))
 # C9: dd.dock.style in GEOM (Settings builds): the harness seed uses the default, Dark Glass, whose
 # material is hudWindow ('solid' under Reduce Transparency). SKIP when the build writes no style.
-MATERIALS = {"darkGlass": {"hudWindow", "solid"}, "black": {"hudWindow", "solid"}, "lightGlass": {"popover", "solid"}}
+# T37a (e7): Dark is solid; Liquid Glass is `glass` on macOS 26+, its stand-in hudWindow (dark tint) /
+# popover (light tint) on 14–15, and `solid` under Reduce Transparency (as every style).
+MATERIALS = {"darkGlass": {"hudWindow", "solid"}, "black": {"hudWindow", "solid"}, "lightGlass": {"popover", "solid"},
+             "dark": {"solid"}, "liquidGlass": {"glass", "hudWindow", "popover", "solid"}}
 if "style" not in d:
     res.append((f"cua C9 dock style tokens {side}", "skip", "this build writes no dd.dock.style to GEOM"))
 else:

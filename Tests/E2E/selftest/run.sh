@@ -392,6 +392,45 @@ print "1 1 1" > $T/cua-leave-ok/leave-away.txt; print "0 0 1" > $T/cua-leave-stu
 python3 Scripts/e2e/cua-eval.py $T/cua-leave-ok Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-leave-ok.txt
 python3 Scripts/e2e/cua-eval.py $T/cua-leave-stuck Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-leave-stuck.txt
 check "cua-eval: C7 leaving far away hides PASS; no leave FAIL (move seen); SKIP when not recorded" "grep -q \$'^cua C7 leaving far from the shown dock hides it L\t1' $T/cua-leave-ok.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\t0\t.*seen by the listener: yes' $T/cua-leave-stuck.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\tskip' $T/cua.txt"
+# T37a style tokens: the default gate is unchanged; Dark → solid and Liquid Glass → glass are known
+check "cua-eval: T37a style/material map knows dark (solid) and liquidGlass (glass and its stand-ins)" "python3 -c \"import re,sys; src=open('Scripts/e2e/cua-eval.py').read(); m=re.search(r'MATERIALS = (\{.*?\})\n', src, re.S); d=eval(m.group(1)); sys.exit(not (d['dark']=={'solid'} and {'glass','hudWindow','popover','solid'}<=d['liquidGlass'] and d['darkGlass']=={'hudWindow','solid'}))\""
+# T37 rows: style GEOM (Dark solid / Liquid Glass glass + tint), tint never changes while shown, materials differ
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+g = lambda st, mat, tint=None: {"docks": [dict({"style": st, "material": mat}, **({"liquidTint": tint} if tint else {}))]}
+json.dump(g("dark", "solid"), open(f"{T}/t37-dark.json", "w"))
+json.dump(g("liquidGlass", "glass", "dark"), open(f"{T}/t37-lg.json", "w"))
+json.dump(g("liquidGlass", "hudWindow", "dark"), open(f"{T}/t37-lg-old.json", "w"))
+def log(name, ev):
+    with open(f"{T}/{name}", "w") as f:
+        f.write("Filtering\n")
+        for m in ev: f.write(json.dumps({"processID": 7, "eventMessage": m}) + "\n")
+base = ["dock.tint.reading luminance=0.31 pending=dark applied=dark", "reveal.transition edge=left from=revealing to=shown cause=animationEnd inh=-"]
+log("t37-tint-ok.ndjson", base + ["reveal.transition edge=left from=shown to=armingHide cause=leave inh=-", "dock.tint tint=light"])
+log("t37-tint-bad.ndjson", base + ["dock.tint tint=light", "reveal.transition edge=left from=shown to=armingHide cause=leave inh=-"])
+open(f"{T}/t37-means-ok.txt", "w").write("frosted 40 40 42 30 30 32\nliquidGlass 52 52 55 40 40 43\nsolid 30 29 27 20 20 20\nFAIL tool x exited 2 a b\n")
+open(f"{T}/t37-means-ab2df8e.txt", "w").write("frosted 55.6 52.1 59.0 48.0 47.9 50.6\nliquidGlass 39.5 41.7 44.3 44.3 45.0 46.0\nsolid 43.0 41.6 40.2 44.6 45.2 45.5\n")
+open(f"{T}/t37-means-same.txt", "w").write("frosted 40 40 42 30 30 32\nliquidGlass 41 41 43 31 31 33\nsolid 30 29 27 20 20 20\n")
+PY
+python3 Scripts/e2e/t37.py style $T/t37-dark.json dark 27 > $T/t37-r1.txt; python3 Scripts/e2e/t37.py style $T/t37-lg.json liquidGlass 27 > $T/t37-r2.txt
+python3 Scripts/e2e/t37.py style $T/t37-lg-old.json liquidGlass 27 > $T/t37-r3.txt
+python3 Scripts/e2e/t37.py tint $T/t37-tint-ok.ndjson 7 0 0 > $T/t37-r4.txt; python3 Scripts/e2e/t37.py tint $T/t37-tint-bad.ndjson 7 0 > $T/t37-r5.txt
+python3 Scripts/e2e/t37.py materials $T/t37-means-ab2df8e.txt > $T/t37-r11.txt; python3 Scripts/e2e/t37.py materials $T/t37-means-ok.txt > $T/t37-r6.txt; python3 Scripts/e2e/t37.py materials $T/t37-means-same.txt > $T/t37-r7.txt
+python3 -c "import json,sys; json.dump({'docks': [{'style': 'liquidGlass', 'material': 'solid'}]}, open(sys.argv[1], 'w'))" $T/t37-lg-rt.json
+python3 Scripts/e2e/t37.py style $T/t37-lg-rt.json liquidGlass 27 1 > $T/t37-r8.txt; python3 Scripts/e2e/t37.py style $T/t37-lg-rt.json liquidGlass 27 0 > $T/t37-r9.txt
+check "T37: under Reduce Transparency Liquid Glass as solid with no tint PASSes and says so; the same GEOM without RT FAILs" "grep -q \$'^1\t.*Reduce Transparency is ON' $T/t37-r8.txt && grep -q '^0' $T/t37-r9.txt"
+$B/axprobe display-prefs > $T/display-prefs.json 2>&1
+check "axprobe display-prefs reports booleans only" "python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not (set(d)=={'reduce_transparency','reduce_motion','increase_contrast'} and all(isinstance(v,bool) for v in d.values())))\" $T/display-prefs.json"
+python3 -c "
+import json, sys
+with open(sys.argv[1], 'w') as f:
+    f.write('Filtering\\n')
+    for m in ['reveal.transition edge=left from=revealing to=shown cause=animationEnd inh=-', 'reveal.transition edge=left from=shown to=armingHide cause=leave inh=-']:
+        f.write(json.dumps({'processID': 7, 'eventMessage': m}) + '\\n')" $T/t37-noread.ndjson
+python3 Scripts/e2e/t37.py tint $T/t37-noread.ndjson 7 0 0 > $T/t37-r10.txt
+check "T37 tint (smoke): no dock.tint.reading since Liquid Glass FAILs; the row says smoke" "grep -q \$'^0\t(smoke)' $T/t37-r10.txt && grep -q '(smoke)' $T/t37-r4.txt"
+check "T37: Dark solid / Liquid Glass glass+tint PASS, stand-in on 27 FAIL; tint change while shown FAIL; materials differ PASS, two alike FAIL" "grep -q '^1' $T/t37-r1.txt && grep -q '^1' $T/t37-r2.txt && grep -q '^0' $T/t37-r3.txt && grep -q '^1' $T/t37-r4.txt && grep -q '^0' $T/t37-r5.txt && grep -q '^1' $T/t37-r6.txt && grep -q '^0' $T/t37-r7.txt && grep -q '^0' $T/t37-r11.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id
@@ -492,6 +531,11 @@ check "REG-049 measure-idle: no samples is FAIL" "grep -q '^FAIL top gave 0 samp
 FAKE_NO_READY=1 Scripts/e2e/launch.sh selftest-noready --bin $B/fake-dock --timeout 2 > $T/noready.txt 2>&1
 nr_app=$(sed -n 's/^APP_PID=//p' $B/runs/selftest-noready/run.env); nr_log=$(sed -n 's/^LOG_PID=//p' $B/runs/selftest-noready/run.env)
 check "REG-050 failed launch leaves nothing running" "grep -q '^FAIL no launch.edgeReady' $T/noready.txt && ! kill -0 $nr_app 2>/dev/null && ! kill -0 $nr_log 2>/dev/null"
+# REG-069: another process's ready line (a second fake that becomes ready meanwhile) never readies ours
+( sleep 1; mkdir -p $T/foreign-home; DEDOCK_E2E=1 DEDOCK_E2E_HOME=$T/foreign-home $B/fake-dock > /dev/null 2>&1 & fp=$!; sleep 2.5; kill $fp 2>/dev/null ) &
+FAKE_NO_READY=1 Scripts/e2e/launch.sh selftest-noready2 --bin $B/fake-dock --timeout 3 > $T/noready2.txt 2>&1
+wait
+check "REG-069 a foreign process's launch.edgeReady does not ready a launch that never became ready" "grep -q '^FAIL no launch.edgeReady' $T/noready2.txt && ! grep -q '^PASS launched' $T/noready2.txt"
 # regress.sh killed mid-run: the trap tears down what it launched (fake debug bundle, private lock)
 FA=$T/fakeapp; mkdir -p $FA/build/Dedock.app/Contents/MacOS; cp $B/fake-dock $FA/build/Dedock.app/Contents/MacOS/FakeDock
 # Fake bundle id: launch.sh treats it as a non-real app, regress.sh runs it in self-test mode
