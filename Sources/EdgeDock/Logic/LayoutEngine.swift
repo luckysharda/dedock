@@ -73,7 +73,8 @@ public struct PlacementInput: Sendable, Hashable {
     public let display: DisplaySnapshot
     public let edge: ScreenEdge
     public let alignment: DockAlignment
-    /// Bottom edge with a visible native Dock: the dock sits above it (its thickness here).
+    /// A visible native Dock on the same edge (left, right or bottom): the dock sits on its
+    /// inner side and slides out from there (the Dock's thickness here; REG-070).
     public let nativeDockInset: CGFloat
 
     public init(display: DisplaySnapshot, edge: ScreenEdge, alignment: DockAlignment = .center, nativeDockInset: CGFloat = 0) {
@@ -180,12 +181,13 @@ public enum LayoutEngine {
         }
         let span = Interval(px(start), px(start) + px(capsuleLength))
 
-        // Cross-axis: distance from the screen edge (or the native Dock's inner edge at the bottom).
+        // Cross-axis: distance from the screen edge, or from a visible native Dock's inner edge.
         let f = d.frame
+        let inset = edge == .top ? 0 : placement.nativeDockInset
         let capsule: CGRect = switch edge {
-        case .left: CGRect(x: f.minX + m.edgeGap, y: span.lower, width: capsuleThickness, height: span.length)
-        case .right: CGRect(x: f.maxX - m.edgeGap - capsuleThickness, y: span.lower, width: capsuleThickness, height: span.length)
-        case .bottom: CGRect(x: span.lower, y: f.minY + placement.nativeDockInset + m.edgeGap, width: span.length, height: capsuleThickness)
+        case .left: CGRect(x: f.minX + inset + m.edgeGap, y: span.lower, width: capsuleThickness, height: span.length)
+        case .right: CGRect(x: f.maxX - inset - m.edgeGap - capsuleThickness, y: span.lower, width: capsuleThickness, height: span.length)
+        case .bottom: CGRect(x: span.lower, y: f.minY + inset + m.edgeGap, width: span.length, height: capsuleThickness)
         case .top: CGRect(x: span.lower, y: f.maxY - d.menuBarHeight - m.edgeGap - capsuleThickness, width: span.length, height: capsuleThickness)
         }
 
@@ -242,12 +244,15 @@ public enum LayoutEngine {
         let inward = m.labelLane + m.shadowMargin
         let alongPad = m.shadowMargin
         var panel: CGRect = switch edge {
-        case .left: CGRect(x: f.minX, y: capsule.minY - alongPad, width: capsule.maxX - f.minX + inward, height: capsule.height + 2 * alongPad)
+        case .left:
+            CGRect(x: f.minX + inset, y: capsule.minY - alongPad, width: capsule.maxX - (f.minX + inset) + inward,
+                   height: capsule.height + 2 * alongPad)
         case .right:
-            CGRect(x: capsule.minX - inward, y: capsule.minY - alongPad, width: f.maxX - capsule.minX + inward, height: capsule.height + 2 * alongPad)
+            CGRect(x: capsule.minX - inward, y: capsule.minY - alongPad, width: (f.maxX - inset) - capsule.minX + inward,
+                   height: capsule.height + 2 * alongPad)
         case .bottom:
-            CGRect(x: capsule.minX - alongPad, y: f.minY + placement.nativeDockInset, width: capsule.width + 2 * alongPad,
-                   height: capsule.maxY - (f.minY + placement.nativeDockInset) + inward)
+            CGRect(x: capsule.minX - alongPad, y: f.minY + inset, width: capsule.width + 2 * alongPad,
+                   height: capsule.maxY - (f.minY + inset) + inward)
         case .top:
             CGRect(x: capsule.minX - alongPad, y: capsule.minY - inward, width: capsule.width + 2 * alongPad,
                    height: (f.maxY - d.menuBarHeight) - capsule.minY + inward)

@@ -162,6 +162,19 @@ import Testing
         #expect(!TriggerEvaluator.convexContains(hull, CGPoint(x: 960, y: 3)))
         #expect(TriggerEvaluator.convexContains(hull, CGPoint(x: 600, y: 60)))
 
+        // Left beside a visible native Dock (REG-070, T31): the Dock covers y 300–780 at the edge
+        // (70 pt deep), the zone is the edge below it, the capsule sits on the Dock's inner side.
+        let sideStrip = HotZone(id: "z-0", rect: CGRect(x: 0, y: 24, width: 3, height: 276), kind: .wall)
+        let besideCapsule = CGRect(x: 78, y: 410, width: 78, height: 280)
+        e = TriggerEvaluator()
+        #expect(inside(step(1, 200, 0, besideCapsule, [sideStrip], .left)) == true)
+        #expect(inside(step(40, 300, 30, besideCapsule, [sideStrip], .left)) == nil)   // the gap midpoint: inside
+        let sideHull = TriggerEvaluator.corridorHull(entry: CGPoint(x: 1, y: 200), zone: sideStrip.rect, capsule: besideCapsule,
+                                                     hysteresis: TriggerParameters().hysteresis, edge: .left)
+        #expect(TriggerEvaluator.convexContains(sideHull, CGPoint(x: 40, y: 300)))
+        #expect(!TriggerEvaluator.convexContains(sideHull, CGPoint(x: 3, y: 540)))      // the Dock's own edge strip
+        #expect(!TriggerEvaluator.convexContains(sideHull, CGPoint(x: 35, y: 700)))
+
         // Left: capsule ± 16 already overlaps the zone; the path never goes outside (unchanged).
         let left = HotZone(id: "z-0", rect: CGRect(x: 0, y: 400, width: 3, height: 300), kind: .wall)
         let leftCapsule = CGRect(x: 8, y: 410, width: 78, height: 280)
@@ -188,5 +201,36 @@ import Testing
         let computed = edge.isVertical ? zone.rect.height : zone.rect.width
         #expect(computed == length)
         if edge == .left { #expect(computed == CGFloat(1080 - 48)) } else { #expect(computed == CGFloat(1920 - 48)) }
+    }
+
+    /// REG-070: with the native Dock visible on the left or right edge and the Edge Dock on that
+    /// edge, the capsule sat over the native Dock: the visible-Dock inset was applied only on
+    /// the bottom edge. The dock now sits on the Dock's inner side on every edge it can share,
+    /// and slides out from there (the panel starts at that side, so the hidden capsule is clipped).
+    @Test("REG-070: beside a visible native Dock on the same side edge, the dock sits on its inner side",
+          arguments: [ScreenEdge.left, .right, .bottom])
+    func reg070(edge: ScreenEdge) {
+        let f = CGRect(x: 0, y: 0, width: 1920, height: 1080), dock: CGFloat = 70
+        let d = DisplaySnapshot(identity: DisplayIdentity(uuid: "d"), frame: f, visibleFrame: f,
+                                menuBarHeight: 24, menuBarAutoHides: false, backingScale: 1)
+        let m = DockMetrics(thickness: 68, padding: 6, gap: 8, separatorLength: 10, edgeGap: 8, labelLane: 180, shadowMargin: 12)
+        let tiles = (1...4).map { TileSpec(id: TileID("t\($0)")) }
+        let l = LayoutEngine.layout(tiles, PlacementInput(display: d, edge: edge, nativeDockInset: dock), m)
+        let c = l.capsuleFrame, p = l.panelFrame
+        // The native Dock's strip on that edge, which the capsule must stay clear of.
+        let native: CGRect = switch edge {
+        case .left: CGRect(x: 0, y: 0, width: dock, height: 1080)
+        case .right: CGRect(x: 1920 - dock, y: 0, width: dock, height: 1080)
+        default: CGRect(x: 0, y: 0, width: 1920, height: dock)
+        }
+        #expect(!c.intersects(native), "capsule \(c) over the native Dock \(native)")
+        switch edge {
+        case .left: #expect(c.minX == CGFloat(70 + 8) && p.minX == CGFloat(70))
+        case .right: #expect(c.maxX == CGFloat(1920 - 70 - 8) && p.maxX == CGFloat(1920 - 70))
+        default: #expect(c.minY == CGFloat(70 + 8) && p.minY == CGFloat(70))
+        }
+        // Hidden, the capsule is entirely outside the panel (clipped at the Dock's inner side).
+        let hidden = c.offsetBy(dx: l.hiddenOffset.dx, dy: l.hiddenOffset.dy)
+        #expect(!hidden.intersects(p), "hidden capsule \(hidden) still inside the panel \(p)")
     }
 }
