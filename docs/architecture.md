@@ -384,8 +384,8 @@ Whichever option wins, a **hand-off hide** applies: if the pointer stops reporti
 | Native Dock | Footprint | dedock behaviour |
 |---|---|---|
 | On another edge | — | no conflict |
-| Visible, same edge | thickness = gap between `frame` and `visibleFrame` on that side; span estimated as `tilesize × item count + padding` from `persistent-apps` and `persistent-others` *(inferred estimate)* | zone excludes the span; the dock reveals beside the native Dock, sliding from its inner edge (`<pack>/dedock-plan/system-design.md` §5.5, `<pack>/dedock-inputs/side-dock-modes.md` §6 row 2) |
-| Auto-hidden, same edge | same span estimate ± 24 pt | split edge; under 200 pt left → modifier policy |
+| Visible, same edge | thickness = gap between `frame` and `visibleFrame` on that side; span estimated as `tilesize × item count + padding` from `persistent-apps` and `persistent-others` *(inferred estimate)* | zone excludes the span; the dock sits on the native Dock's inner side and reveals from its inner edge: the panel frame starts there, so the slide is clipped and never crosses the Dock's icons (`<pack>/dedock-plan/system-design.md` §5.5, `<pack>/dedock-inputs/side-dock-modes.md` §6 row 2) |
+| Auto-hidden, same edge | same span estimate ± 24 pt | split edge; under 200 pt left → modifier policy; the dock sits at the screen edge (a popped-up native Dock passes under it) |
 
 `DockObserver` (Pillar A) later provides exact AX tile frames through the same `NativeDockGeometryProviding` protocol (§9).
 
