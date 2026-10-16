@@ -77,11 +77,47 @@ import Testing
         #expect(p.content.alphaComponent > 0.99 && rgb(p.content) == [0x25, 0x24, 0x21])
     }
 
-    @Test func frostedAndGlassLetTheWindowMaterialThrough() throws {
-        for backdrop in [WindowLook.Backdrop.frosted, .glass] {
-            let p = try render(backdrop)
-            #expect(p.sidebar.alphaComponent > 0.1 && p.sidebar.alphaComponent < 0.3)   // the faint overlay
-            #expect(p.content.alphaComponent < 0.01)
+    @Test func frostedLetsTheMaterialThroughWithAFaintSidebar() throws {
+        let p = try render(.frosted)
+        #expect(p.sidebar.alphaComponent > 0.1 && p.sidebar.alphaComponent < 0.3)       // the faint overlay
+        #expect(p.content.alphaComponent < 0.01)                                         // the blur carries the tint
+    }
+
+    /// Liquid Glass: the sidebar is clear glass; the content has a light translucent tint for
+    /// legibility, weaker than Frosted's 0.62 and never opaque (design.md §7.2).
+    @Test func liquidGlassHasAClearSidebarAndALightContentTint() throws {
+        let p = try render(.glass)
+        #expect(p.sidebar.alphaComponent < 0.01)
+        #expect(p.content.alphaComponent > 0.3 && p.content.alphaComponent < 0.62)
+    }
+
+    /// e9's structural gate: on Frosted and Liquid Glass the window is non-opaque with a clear
+    /// background and the backdrop covers the whole content view; Solid is the only opaque one.
+    @Test func theBackdropCoversTheWindowAndOnlySolidIsOpaque() {
+        let w = NSWindow(contentRect: CGRect(x: -3000, y: -3000, width: 900, height: 640),
+                         styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: true)
+        let container = NSView(frame: CGRect(x: 0, y: 0, width: 900, height: 640))
+        let backdrop = WindowBackdropView(frame: .zero)
+        container.addSubview(backdrop)
+        w.contentView = container
+        for material in WindowLook.Material.allCases {
+            let look = WindowLook(appearance: .dark, material: material, reduceTransparency: false, systemGlass: true)
+            SettingsWindowController.apply(look, to: w, backdrop: backdrop)
+            #expect(backdrop.frame == container.bounds)
+            #expect(w.isOpaque == (look.backdrop == .solid))
+            #expect((w.backgroundColor == .clear) == (look.backdrop != .solid))
+        }
+    }
+
+    /// The window's Liquid Glass is the clear style: the regular one rendered a window-sized
+    /// surface as a near-uniform grey, the same as Solid at a glance.
+    @Test(.enabled(if: DockTokens.systemGlassAvailable)) func theWindowGlassIsTheClearStyle() {
+        let v = WindowBackdropView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+        v.apply(.glass)
+        if #available(macOS 26, *) {
+            let glass = v.subviews.compactMap { $0 as? NSGlassEffectView }.first
+            #expect(glass?.style == .clear && glass?.isHidden == false)
+            #expect(glass?.frame == v.bounds)
         }
     }
 }

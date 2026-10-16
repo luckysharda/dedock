@@ -92,6 +92,10 @@ public struct WindowLook: Equatable, Sendable {
         if backdrop == .glass, #available(macOS 26, *) {
             if glass == nil {
                 let g = NSGlassEffectView(frame: bounds)
+                // The clear style: the regular one renders a window-sized surface over a dark
+                // wallpaper as a near-uniform grey, indistinguishable from Solid. With clear glass
+                // the wallpaper's hue tints through (A2's rule for every non-Solid material).
+                g.style = .clear
                 g.autoresizingMask = [.width, .height]
                 addSubview(g, positioned: .below, relativeTo: blur)
                 glass = g

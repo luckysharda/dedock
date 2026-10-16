@@ -90,15 +90,25 @@ import SwiftUI
 
     /// Applies the look at once (a change in Settings plays on the open window).
     private func applyLook() {
-        guard let window else { return }
+        guard let window, let backdrop else { return }
         let look = look
         guard look != appliedLook else { return }
         appliedLook = look
+        Self.apply(look, to: window, backdrop: backdrop)
+        chrome.backdrop = look.backdrop
+    }
+
+    /// Puts a look on a window: its appearance; non-opaque with a clear background on Frosted
+    /// and Liquid Glass so the backdrop (under the whole content view) shows; opaque on Solid.
+    static func apply(_ look: WindowLook, to window: NSWindow, backdrop: WindowBackdropView) {
         window.appearance = look.nsAppearance
         window.isOpaque = look.backdrop == .solid
         window.backgroundColor = look.backdrop == .solid ? .windowBackgroundColor : .clear
-        backdrop?.apply(look.backdrop)
-        chrome.backdrop = look.backdrop
+        if let content = window.contentView {
+            backdrop.frame = content.bounds
+            backdrop.autoresizingMask = [.width, .height]
+        }
+        backdrop.apply(look.backdrop)
     }
 
     public func windowWillClose(_ notification: Notification) {
