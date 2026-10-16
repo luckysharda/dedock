@@ -183,3 +183,164 @@ extension MappingRegressionTests {
         #expect(panel.title == "Edge Dock")
     }
 }
+
+/// T38 display fallback and D2 Hello reveal (macOS only).
+@Suite(.serialized) @MainActor struct DisplayFallbackTests {
+    static func display(_ uuid: String, x: CGFloat, id: UInt32, main: Bool = false, builtin: Bool = false) -> DisplaySnapshot {
+        DisplaySnapshot(identity: DisplayIdentity(uuid: uuid), displayID: id, frame: CGRect(x: x, y: 0, width: 1920, height: 1080),
+                        visibleFrame: CGRect(x: x, y: 0, width: 1920, height: 1056), menuBarHeight: 24,
+                        menuBarAutoHides: false, isBuiltin: builtin, isMain: main, backingScale: 1)
+    }
+
+    @Test func bindingFallsBackAndReturns() {
+        let main = Self.display("M", x: 0, id: 1, main: true)
+        let air = Self.display("AIR", x: 1920, id: 7)
+        let bound = DisplayBinding(role: .identity, identity: "AIR", fallbackToBuiltin: true)
+        #expect(EdgeDockManager.resolveDisplay(bound, in: DisplayLayout(displays: [main, air]))?.identity.uuid == "AIR")
+        // Disconnected, and this Mac has no built-in display: the main display.
+        #expect(EdgeDockManager.resolveDisplay(bound, in: DisplayLayout(displays: [main]))?.identity.uuid == "M")
+        // With a built-in display, that one.
+        let builtin = Self.display("BI", x: -1512, id: 3, builtin: true)
+        #expect(EdgeDockManager.resolveDisplay(bound, in: DisplayLayout(displays: [main, builtin]))?.identity.uuid == "BI")
+        // Reconnected: back on it.
+        #expect(EdgeDockManager.resolveDisplay(bound, in: DisplayLayout(displays: [main, air]))?.identity.uuid == "AIR")
+        // No fallback wanted: no dock.
+        var strict = bound
+        strict.fallbackToBuiltin = false
+        #expect(EdgeDockManager.resolveDisplay(strict, in: DisplayLayout(displays: [main])) == nil)
+        #expect(EdgeDockManager.resolveDisplay(DisplayBinding(role: .main), in: DisplayLayout(displays: [main, air]))?.identity.uuid == "M")
+    }
+
+    @Test func bindDisplayAcceptsOnlyMainOrANumber() {
+        #expect(DebugCommand.parse("bindDisplay=main") == .bindDisplay(.main))
+        #expect(DebugCommand.parse("bindDisplay=7") == .bindDisplay(.id(7)))
+        #expect(DebugCommand.parse("bindDisplay=") == nil)
+        #expect(DebugCommand.parse("bindDisplay=-1") == nil)
+        #expect(DebugCommand.parse("bindDisplay=7x") == nil)
+        #expect(DebugCommand.parse("bindDisplay=99999999999") == nil)    // beyond UInt32
+        #expect(DebugCommand.parse("bindDisplay=١") == nil)              // non-ASCII digit
+        #expect(DebugCommand.parse("bindDisplay") == nil)
+    }
+
+    func coordinator(clock: ManualClock) -> (EdgeDockCoordinator, DockSurroundings, DisplaySnapshot, DisplaySnapshot) {
+        let config = DedockDocument.makeDefault().docks[0]
+        let main = Self.display("M", x: 0, id: 1, main: true), air = Self.display("AIR", x: 1920, id: 7)
+        let s = DockSurroundings(layout: DisplayLayout(displays: [main, air]), nativeDock: NativeDockPreferences(), reduceMotion: false)
+        let profile = Profile(id: config.profileID, name: "p", items: [TileItem(id: "t1", kind: .app, bundleID: "com.apple.calculator")])
+        let c = EdgeDockCoordinator(config: config, profile: profile, display: main, surroundings: s,
+                                    running: RunningAppsMonitor(), icons: IconCache(), clock: clock)
+        return (c, s, main, air)
+    }
+
+    func finishAnimation(_ c: EdgeDockCoordinator) {
+        if let g = c.controller.machine.activeGeneration { c.controller.send(.animationFinished(generation: g)) }
+    }
+
+    func advance(_ clock: ManualClock, _ d: Duration) async {
+        for _ in 0..<100 where clock.pendingCount == 0 { await Task.yield() }
+        clock.advance(by: d)
+        for _ in 0..<100 { await Task.yield() }
+    }
+
+    /// The hello's reveal ran. The slide is a real animation, so on a runner it can complete
+    /// before the check; either phase means the reveal was sent.
+    func revealed(_ c: EdgeDockCoordinator) -> Bool { c.phase == .revealing || c.phase == .shown }
+
+    func move(_ c: EdgeDockCoordinator, to d: DisplaySnapshot, _ s: DockSurroundings) {
+        c.update(config: c.config, profile: nil, display: d, surroundings: s)
+    }
+
+    /// D2: after a move, the display set settles 1 s, then one reveal, a 1.0 s hold, a hide.
+    @Test(.enabled(if: NSScreen.main != nil)) func helloRevealOnTheNewDisplay() async {
+        let clock = ManualClock()
+        let (c, s, _, air) = coordinator(clock: clock)
+        move(c, to: air, s)
+        #expect(c.phase == .hidden)                       // waiting for the display set to settle
+        await advance(clock, .milliseconds(1000))
+        #expect(revealed(c))   // the real slide may already have finished (CI)
+        finishAnimation(c)
+        await advance(clock, .milliseconds(900))
+        #expect(c.phase == .shown)
+        await advance(clock, .milliseconds(150))
+        #expect(c.phase == .hiding || c.phase == .hidden)
+        c.teardown()
+    }
+
+    /// D2: two moves 300 ms apart give one hello, 1 s after the second.
+    @Test(.enabled(if: NSScreen.main != nil)) func flappingDisplaysGiveOneHello() async {
+        let clock = ManualClock()
+        let (c, s, main, air) = coordinator(clock: clock)
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(300))
+        move(c, to: main, s)
+        await advance(clock, .milliseconds(700))
+        #expect(c.phase == .hidden)                       // the first one was superseded
+        await advance(clock, .milliseconds(300))
+        #expect(revealed(c))   // the real slide may already have finished (CI)
+        c.teardown()
+    }
+
+    /// D2: at most one hello per 10 s.
+    @Test(.enabled(if: NSScreen.main != nil)) func oneHelloPerTenSeconds() async {
+        let clock = ManualClock()
+        let (c, s, main, air) = coordinator(clock: clock)
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(1000))
+        finishAnimation(c)
+        await advance(clock, .milliseconds(1000))         // hold over: hiding
+        if let g = c.controller.machine.activeGeneration { c.controller.send(.animationFinished(generation: g)) }
+        #expect(c.phase == .hidden)
+        move(c, to: main, s)                              // 2 s after the first hello
+        await advance(clock, .milliseconds(1000))
+        #expect(c.helloSkipReason() == "rateLimit" && c.phase == .hidden)
+        await advance(clock, .milliseconds(8000))         // > 10 s since the first
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(1000))
+        #expect(revealed(c))   // the real slide may already have finished (CI)
+        c.teardown()
+    }
+
+    /// D2: skipped while away, on a full-screen Space, in Pinned mode, or when already shown.
+    @Test(.enabled(if: NSScreen.main != nil)) func helloSkips() async {
+        let clock = ManualClock()
+        var (c, s, main, air) = coordinator(clock: clock)
+        c.helloAllowed = { false }                        // locked or screens asleep
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(1100))
+        #expect(c.phase == .hidden && c.helloSkipReason() == "away")
+        c.teardown()
+
+        (c, s, main, air) = coordinator(clock: ManualClock())
+        s.fullscreen = [air.identity: true]
+        #expect(c.helloSkipReason() == nil)
+        c.update(config: c.config, profile: nil, display: air, surroundings: s)
+        #expect(c.helloSkipReason() == "fullscreen")
+        c.teardown()
+
+        (c, s, main, air) = coordinator(clock: ManualClock())
+        c.controller.send(.hold(.pinnedByUser, true))     // Keep Open
+        #expect(c.helloSkipReason() == "shown")
+        c.teardown()
+
+        (c, s, main, air) = coordinator(clock: ManualClock())
+        var pinned = c.config
+        pinned.mode = .pinned
+        c.update(config: pinned, profile: nil, display: main, surroundings: s)
+        #expect(c.helloSkipReason() == "pinned")
+        c.teardown()
+    }
+
+    /// D2: if the pointer is on the dock when the hold ends, it stays.
+    @Test(.enabled(if: NSScreen.main != nil)) func helloKeepsTheDockWhenThePointerIsOnIt() async {
+        let clock = ManualClock()
+        let (c, s, _, air) = coordinator(clock: clock)
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(1000))
+        finishAnimation(c)
+        let cap = c.capsuleFrame
+        c.pointer(PointerSample(location: CGPoint(x: cap.midX, y: cap.midY), timestamp: .milliseconds(100)))
+        await advance(clock, .milliseconds(1100))
+        #expect(c.phase == .shown)
+        c.teardown()
+    }
+}

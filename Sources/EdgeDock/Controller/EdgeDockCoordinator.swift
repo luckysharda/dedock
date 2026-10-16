@@ -65,12 +65,24 @@ public struct DockSurroundings: Sendable, Equatable {
         var index: Int
     }
     private var reorder: ReorderSession?
+    private let clock: any Clock<Duration>
+    private var helloTask: Task<Void, Never>?
+    private var cooldownTask: Task<Void, Never>?
+    private var helloCooling = false
+    /// Set by the manager: false while the session is locked or the screens sleep.
+    var helloAllowed: () -> Bool = { true }
+    /// D2 "Hello reveal" timings (design.md §7.2a).
+    static let helloHold: Duration = .seconds(1)
+    static let helloSettle: Duration = .seconds(1)
+    static let helloMinInterval: Duration = .seconds(10)
+
     /// The tile specs the current layout was built from.
     private var specs: [TileSpec] = []
 
     init(config: DockConfig, profile: Profile?, display: DisplaySnapshot, surroundings: DockSurroundings,
          running: RunningAppsMonitor, icons: IconCache, clock: any Clock<Duration>) {
         id = config.id
+        self.clock = clock
         self.config = config
         self.display = display
         self.running = running
@@ -175,6 +187,57 @@ public struct DockSurroundings: Sendable, Equatable {
         rebuildZones(surroundings)
         controller.reconfigure(new.revealConfig(reduceMotion: surroundings.reduceMotion))
         onChange?()
+        if movedDisplay, new.mode == .reveal { helloReveal() }
+    }
+
+    /// D2 "Hello reveal" (T38, design.md §7.2a): after a move to another display (a fallback,
+    /// a return, a new binding) the dock plays one real reveal there, holds 1.0 s and hides, so
+    /// the user sees where it went. It waits until the display set has been stable for 1 s
+    /// (a dock, KVM or AirPlay connect can flap), plays at most once per 10 s, and is skipped
+    /// while the session is locked or the screens sleep, on a full-screen Space, in Pinned mode,
+    /// or when the dock is already shown or held open. If the pointer enters the dock during
+    /// the hold, the ordinary hide rules take over.
+    func helloReveal() {
+        helloTask?.cancel()
+        let clock = clock
+        helloTask = Task { @MainActor [weak self] in
+            do { try await clock.sleep(for: Self.helloSettle, tolerance: .zero) } catch { return }   // debounce
+            guard let self else { return }
+            if let reason = self.helloSkipReason() {
+                DedockLog.event(.display, "display.hello", ["edge": self.config.edge.rawValue, "skipped": reason])
+                return
+            }
+            DedockLog.event(.display, "display.hello", ["edge": self.config.edge.rawValue, "hold": Self.ms(Self.helloHold)])
+            self.startHelloCooldown()
+            self.controller.send(.command(.reveal))
+            do { try await clock.sleep(for: Self.helloHold, tolerance: .zero) } catch { return }
+            guard !self.controller.machine.pointerInside else { return }
+            self.controller.send(.command(.hide(explicit: false)))
+        }
+    }
+
+    /// Why a due hello does not play, or nil.
+    func helloSkipReason() -> String? {
+        if !helloAllowed() { return "away" }                               // locked or screens asleep
+        if helloCooling { return "rateLimit" }
+        if config.mode != .reveal { return "pinned" }
+        if controller.machine.isFullscreen { return "fullscreen" }
+        if controller.machine.holds.contains(.pinnedByUser) || controller.phase != .hidden { return "shown" }
+        return nil
+    }
+
+    private func startHelloCooldown() {
+        helloCooling = true
+        cooldownTask?.cancel()
+        let clock = clock
+        cooldownTask = Task { @MainActor [weak self] in
+            do { try await clock.sleep(for: Self.helloMinInterval, tolerance: .milliseconds(50)) } catch { return }
+            self?.helloCooling = false
+        }
+    }
+
+    private static func ms(_ d: Duration) -> Int {
+        Int(d.components.seconds) * 1000 + Int(d.components.attoseconds / 1_000_000_000_000_000)
     }
 
     /// Running state changed: only the tile models change, never the geometry.
@@ -200,6 +263,8 @@ public struct DockSurroundings: Sendable, Equatable {
     }
 
     func teardown() {
+        helloTask?.cancel()
+        cooldownTask?.cancel()
         controller.invalidate()
         panel.orderOut(nil)
         panel.close()

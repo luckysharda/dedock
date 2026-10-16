@@ -12,8 +12,10 @@ import Foundation
 ///
 /// SECURITY RULE: any process in the user's session can post a distributed notification, so
 /// commands stay benign and closed: a command may change only what the status menu can change
-/// (`setEdge` saves the layout exactly as the status menu's edge choice does), must not write
-/// any other file or launch apps, and takes no argument beyond an enum value or a number.
+/// (`setEdge` saves the layout exactly as the status menu's edge choice does), plus the dock's
+/// display binding (`bindDisplay`, the E2E stand-in for the M8 display picker, limited to the
+/// displays currently connected). It must not write any other file or launch apps, and takes
+/// no argument beyond an enum value or a number.
 /// Unknown or malformed input is rejected, and the logged text is capped (`logged(_:)`).
 public enum DebugCommand: Equatable, Sendable {
     /// At most this many characters of a posted command reach the log.
@@ -30,6 +32,14 @@ public enum DebugCommand: Equatable, Sendable {
     case hide
     /// Opens the Settings window (as the status menu's Settings… does).
     case openSettings
+    /// Binds the first dock to a display: `main`, or a connected display's id (T38 E2E).
+    case bindDisplay(DisplayTarget)
+
+    public enum DisplayTarget: Equatable, Sendable {
+        case main
+        /// A `CGDirectDisplayID`; the manager accepts it only if that display is connected.
+        case id(UInt32)
+    }
 
     public static let notificationName = "app.dedock.debug.command"
 
@@ -66,6 +76,11 @@ public enum DebugCommand: Equatable, Sendable {
         case "reveal" where parts.count == 1: return .reveal
         case "hide" where parts.count == 1: return .hide
         case "openSettings" where parts.count == 1: return .openSettings
+        case "bindDisplay" where parts.count == 2:
+            if parts[1] == "main" { return .bindDisplay(.main) }
+            guard !parts[1].isEmpty, parts[1].allSatisfy(\.isASCII), parts[1].allSatisfy(\.isNumber),
+                  let id = UInt32(parts[1]) else { return nil }
+            return .bindDisplay(.id(id))
         default: return nil
         }
     }

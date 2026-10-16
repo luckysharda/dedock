@@ -23,6 +23,11 @@ import SettingsStore
     private var topologyToken: ObservationToken?
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
+    /// The session is locked or the screens sleep: no D2 hello (T38). Starts false and follows
+    /// the lock and sleep notifications only: launch at login runs after unlock, so a launch
+    /// behind the lock screen is practically impossible and would at worst play an unseen hello.
+    private var sessionAway = false
+    private var awayObservers: [(NotificationCenter, any NSObjectProtocol)] = []
     private var appearanceObservation: NSKeyValueObservation?
     /// The document as of the last settings notification (for `settings.changed`).
     private var lastDocument: DedockDocument
@@ -80,6 +85,14 @@ import SettingsStore
         // Light / Dark switches re-derive the tokens: label colours follow the system appearance.
         appearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
             Task { @MainActor in self?.sync(reason: "appearance") }
+        }
+        let ws = NSWorkspace.shared.notificationCenter, dn = DistributedNotificationCenter.default()
+        for (center, name, away) in [(ws, NSWorkspace.screensDidSleepNotification, true), (ws, NSWorkspace.screensDidWakeNotification, false),
+                                     (dn, Notification.Name("com.apple.screenIsLocked"), true),
+                                     (dn, Notification.Name("com.apple.screenIsUnlocked"), false)] as [(NotificationCenter, Notification.Name, Bool)] {
+            awayObservers.append((center, center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sessionAway = away }
+            }))
         }
         hub.addSink(self)
         debugCommands = DebugCommandListener { [weak self] in self?.perform($0) }
@@ -157,6 +170,7 @@ import SettingsStore
                 }
                 c.onReorder = { [weak self] order in self?.reorder(order, in: config.profileID) }
                 c.onPin = { [weak self] urls, index in self?.pin(urls, at: index, in: config.profileID) }
+                c.helloAllowed = { [weak self] in !(self?.sessionAway ?? false) }
                 coordinators[config.id] = c
             }
         }
@@ -175,8 +189,14 @@ import SettingsStore
         dockChanged()
     }
 
-    /// M1 binding: main display (or a specific one), falling back to the built-in display.
     private func resolveDisplay(_ binding: DisplayBinding, in layout: DisplayLayout) -> DisplaySnapshot? {
+        Self.resolveDisplay(binding, in: layout)
+    }
+
+    /// T38 (DD-941): the main display, or a specific one; when that one is disconnected, the
+    /// built-in display (or the main display on a Mac without one), returning automatically
+    /// when it reconnects (the binding keeps the identity).
+    static func resolveDisplay(_ binding: DisplayBinding, in layout: DisplayLayout) -> DisplaySnapshot? {
         switch binding.role {
         case .main:
             return layout.main
@@ -372,6 +392,25 @@ import SettingsStore
             hide(dock: nil, animated: true)
         case .openSettings:
             onOpenSettings?()
+        case .bindDisplay(let target):
+            let binding: DisplayBinding
+            switch target {
+            case .main:
+                binding = DisplayBinding(role: .main)
+            case .id(let id):
+                // Only a display in the current set; anything else changes nothing.
+                guard let d = topology.layout.displays.first(where: { $0.displayID == id }) else {
+                    DedockLog.event(.app, "display.bind", ["ok": false, "reason": "notConnected"])
+                    return
+                }
+                binding = DisplayBinding(role: .identity, identity: d.identity.uuid, fallbackToBuiltin: true)
+            }
+            DedockLog.event(.app, "display.bind", ["ok": true, "role": binding.role.rawValue])
+            settings.update { doc in
+                guard !doc.docks.isEmpty else { return }
+                doc.docks[0].display = binding
+                doc.docks[0].scenario = "custom"
+            }
         }
     }
 
