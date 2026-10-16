@@ -43,7 +43,7 @@ skipped=0
 skip() { echo "SKIP $1 ($2)"; skipped=$((skipped + 1)); }   # a skipped check is never a PASS
 
 echo "-- build"
-for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/e2e/backdrop.swift Scripts/e2e/notify.swift Scripts/e2e/axpress.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
+for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/e2e/backdrop.swift Scripts/e2e/notify.swift Scripts/e2e/axpress.swift Scripts/e2e/ocr.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
   out=$B/${${src:t}%.swift}
   check "compile ${src:t}" "swiftc -O $src -o $out 2>$T/${src:t}.err"
 done
@@ -284,6 +284,49 @@ json.dump({'docks': [{'reveal': {'hysteresisPt': 16, 'hideDelayMs': 400}}], 'pro
 python3 Scripts/e2e/t25.py plan $T/t25-geom.json $T/t25-layout.json 0 > $T/t25-plan.txt
 python3 Scripts/e2e/t25.py ids $T/t25-layout.json > $T/t25-ids.txt
 check "T25 plan: drop 136 pt inside the capsule's inner side, padding click in the capsule outside the tile, the confirm's title" "python3 -c \"import sys; p=open(sys.argv[1]).read().split(); sys.exit(not (p[0]=='right' and float(p[4])==1698.0 and 1834 < float(p[6]) < 1842 and p[10]=='t-calculator' and ' '.join(p[11:])=='Remove “Calculator” from the Edge Dock?'))\" $T/t25-plan.txt && [[ \$(cat $T/t25-ids.txt) == 't-calculator t-notes' ]]"
+# H4 hover label: OCR of our own panel capture; name + state on the screen-centre side, AX-hidden
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+t = lambda i, n, k: {"id": f"t-{i}", "name": n, "kind": k, "running": "none", "frame": {"topLeft": [840 + 62 * i, 46, 54, 62]}}
+json.dump({"docks": [{"edge": "top", "capsule": {"topLeft": [832, 38, 256, 78]}, "zones": [{"rect": {"topLeft": [792, 0, 336, 3]}}],
+                      "tiles": [t(0, "Calculator", "app"), t(1, "TextEdit", "app"), t(2, "Downloads", "folder")]}]}, open(f"{T}/h4-geom.json", "w"))
+json.dump({"id": 9, "layer": 24, "x": 792, "y": 30, "w": 336, "h": 330}, open(f"{T}/h4-win.json", "w"))
+line = lambda s, y: json.dumps({"text": s, "x": 100, "y": y, "w": 160, "h": 26, "iw": 672, "ih": 660})
+open(f"{T}/h4-a.jsonl", "w").write(line("Calculator", 240) + "\n" + line("Not running", 270) + "\n")
+open(f"{T}/h4-f.jsonl", "w").write(line("Downloads", 240) + "\n" + line("Folder", 270) + "\n")
+open(f"{T}/h4-up.jsonl", "w").write(line("Calculator", 10) + "\n" + line("Not running", 30) + "\n")
+open(f"{T}/h4-tree-ok.jsonl", "w").write(json.dumps({"role": "AXButton", "label": "Calculator"}) + "\n")
+open(f"{T}/h4-tree-leak.jsonl", "w").write(json.dumps({"role": "AXStaticText", "label": "Calculator"}) + "\n")
+PY
+python3 Scripts/e2e/h4.py plan $T/h4-geom.json > $T/h4-plan.txt
+python3 Scripts/e2e/h4.py judge $T/h4-geom.json $T/h4-win.json $T/h4-a.jsonl $T/h4-f.jsonl $T/h4-tree-ok.jsonl T > $T/h4-ok.txt
+python3 Scripts/e2e/h4.py judge $T/h4-geom.json $T/h4-win.json $T/h4-up.jsonl $T/h4-f.jsonl $T/h4-tree-ok.jsonl T > $T/h4-side.txt
+python3 Scripts/e2e/h4.py judge $T/h4-geom.json $T/h4-win.json $T/h4-a.jsonl $T/h4-f.jsonl $T/h4-tree-leak.jsonl T > $T/h4-leak.txt
+check "H4 judge: name + state below a top dock PASS; above it (wrong side) or an AX static text with the name FAIL; plan hovers the app then the folder" "grep -q \$'^H4 hover label T\t1\t' $T/h4-ok.txt && grep -q \$'^H4 hover label T\t0\t.*found, wrong side' $T/h4-side.txt && grep -q \$'^H4 hover label T\t0\t.*static text with a tile name while hovering: 1' $T/h4-leak.txt && [[ \$(cut -d' ' -f3-6 $T/h4-plan.txt) == '867.0 77.0 991.0 77.0' ]]"
+print -r -- '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><rect width="400" height="120" fill="#202022"/><text x="20" y="50" font-family="Helvetica" font-weight="bold" font-size="26" fill="white">Calculator</text><text x="20" y="90" font-family="Helvetica" font-size="22" fill="#A0A0A5">Not running</text></svg>' > $T/ocr.svg
+if qlmanage -t -s 400 -o $T $T/ocr.svg > /dev/null 2>&1 && [[ -s $T/ocr.svg.png ]]; then
+  $B/ocr $T/ocr.svg.png > $T/ocr.jsonl 2> $T/ocr.err
+  check "ocr reads a rendered two-line label (name, state)" "grep -q '\"text\":\"Calculator\"' $T/ocr.jsonl && grep -q '\"text\":\"Not running\"' $T/ocr.jsonl"
+else
+  skip "ocr reads a rendered two-line label" "qlmanage could not render the test image"
+fi
+# Z1 size slider: live mid-drag (between stops, shown, passes), snap to a stop with capsule = tile × (1 + 16/62)
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+g = lambda t, c, st: {"docks": [{"edge": "left", "state": st, "capsule": {"topLeft": [8, 400, c, 300]}, "tiles": [{"frame": {"topLeft": [16, 408, t, 54]}}]}]}
+json.dump(g(70.3, 88.4, "shown"), open(f"{T}/z1-mid.json", "w"))
+json.dump(g(92, 115.7, "shown"), open(f"{T}/z1-after.json", "w"))
+json.dump(g(92, 108, "shown"), open(f"{T}/z1-after-bad.json", "w"))
+json.dump(g(62, 78, "shown"), open(f"{T}/z1-still.json", "w"))
+json.dump({"docks": [{"appearance": {"size": "xl"}}]}, open(f"{T}/z1-layout.json", "w"))
+open(f"{T}/z1-tree.jsonl", "w").write(json.dumps({"role": "AXSlider", "name": "Dock size", "x": 300, "y": 200, "w": 220, "h": 20}) + "\n")
+PY
+python3 Scripts/e2e/z1.py judge $T/z1-mid.json $T/z1-after.json $T/z1-layout.json 12 > $T/z1-ok.txt
+python3 Scripts/e2e/z1.py judge $T/z1-still.json $T/z1-after-bad.json $T/z1-layout.json 0 > $T/z1-bad.txt
+python3 Scripts/e2e/z1.py points $T/z1-tree.jsonl > $T/z1-points.txt
+check "Z1 judge: live between stops + snapped XL with capsule 115.7 PASS; no live change, or capsule tile+16 (108) FAIL; knob points M→85" "[[ \$(grep -c \$'^1\t' $T/z1-ok.txt) == 2 && \$(grep -c \$'^0\t' $T/z1-bad.txt) == 2 && \$(cat $T/z1-points.txt) == '373.6 210.0 478.2' ]]"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id

@@ -1,7 +1,7 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [settings=1] [reg067=1] [t25=1] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [settings=1] [reg067=1] [t25=1] [h4=1] [z1=1] [dry=1]
 #       reg061=1: gate REG-061 (the tile's AX element is the whole cell): C3 AX frame = GEOM cell ±1 pt,
 #       C7 cell edge = AXButton with the tile's label. Off until a build carries the fix.
 #       settings=1: run C8 (open Settings over the debug channel, labels, the editing hold, close via its
@@ -12,6 +12,10 @@
 #       t25=1: T25 drag-out to remove, in its own launch on the right edge: the non-activating
 #       confirm, Keep (AX press), a click elsewhere (Dedock's own capsule padding), Remove (layout
 #       persisted), a second drag-out ignored, the 8 s timeout. Needs a build with T25.
+#       h4=1: H4 hover label per edge (name + state OCR'd from a capture of Dedock's OWN panel window,
+#       on the screen-centre side; AX-hidden) and row 20 (no layout.pass through a reveal and a sweep).
+#       z1=1: Z1 size slider, own launch: a real drag of Settings' "Dock size" slider drives the
+#       live dock; release snaps to a stop, saved, capsule = tile × (1 + 16/62) ± 1 pt.
 #       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
 #       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
 #       (never committed; no user window is ever in the frame).
@@ -66,8 +70,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary reg067=0 t25=0
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; reg067=*) reg067=${kv#reg067=} ;; t25=*) t25=${kv#t25=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary reg067=0 t25=0 h4=0 z1=0
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; reg067=*) reg067=${kv#reg067=} ;; t25=*) t25=${kv#t25=} ;; h4=*) h4=${kv#h4=} ;; z1=*) z1=${kv#z1=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -85,10 +89,10 @@ edge_list=(${(s:,:)edges})
 # Calibrated on the first full run (2026-10-15: 489 s for edges L,R + idle): launches, settle
 # waits and VOID re-runs make each edge ~200 s; each extra x-06 seed ~15 s.
 # Calibrated on the 82d2d69 candidate (edges L,R + 3 extra x-06 seeds + shots + idle: 293 s measured).
-est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0) + (reg067 ? 8 : 0)) + (idle ? 70 : 0) + (t25 ? 45 : 0) ))
+est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0) + (reg067 ? 8 : 0) + (h4 ? 8 : 0)) + (idle ? 70 : 0) + (t25 ? 45 : 0) + (z1 ? 15 : 0) ))
 echo "regress $id: app $(git -C $app rev-parse --short HEAD) edges=$edges idle=$idle — moves the cursor for about $est s"
 if (( dry )); then
-  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}$( (( reg067 )) && print -n '; x-19 gap hold (REG-067) per edge')$( (( t25 )) && print -n '; T25 drag-out (own launch, right edge)'); idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
+  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}$( (( reg067 )) && print -n '; x-19 gap hold (REG-067) per edge')$( (( h4 )) && print -n '; H4 hover label + row 20 per edge')$( (( t25 )) && print -n '; T25 drag-out (own launch, right edge)')$( (( z1 )) && print -n '; Z1 size slider (own launch)'); idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
   exit 0
 fi
 
@@ -142,6 +146,7 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
     [[ $t == L ]] && print -l "cua C8 Settings window opens $t" "cua C8 settings controls labelled $t" "cua C8 dock held shown while Settings is open $t" \
                               "cua C8 closing Settings releases the hold $t" "cua C9 style switch in Settings reaches GEOM $t"
     (( reg067 )) && print -l "x-19 REG-067 gap hold keeps the dock shown $t" "x-19 REG-067 corridor ends after the first capsule visit $t"
+    (( h4 )) && print -l "H4 hover label $t" "row 20 no relayout during a pointer sweep $t"
     for scn in x-01 x-02 x-03 x-04 x-05a x-05b x-06; do print -r -- "$t.$scn-$t"; done
     for sd in $extra_seeds; do print -r -- "$t.x-06-$t-s$sd"; done
     (( shots )) && print -l "shot $t" "REG-006 S$t"
@@ -149,6 +154,7 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
   (( t25 )) && print -l "T25 drag-out asks without taking focus R" "T25 Keep keeps the tile R" "T25 a click elsewhere keeps the tile R" \
                         "T25 Remove removes the tile and persists it R" "T25 a second drag-out while asking is ignored R" \
                         "T25 no answer in 8 s keeps the tile R" "REG-006 D"
+  (( z1 )) && print -l "Z1 size slider drives the live dock while dragged" "Z1 release snaps to a stop and persists" "REG-006 Z"
   (( idle )) && print -l "I.idle-L" "REG-006 I"
   print -l "REG-016 cursor restored" "REG-017 no modifier held" "REG-015 no Dedock left running" "REG-055 no pointer hand-off"
 } > $root/expected.txt
@@ -391,6 +397,7 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   [[ $side == L ]] && reg062 $R $pid
   [[ $side == B || $side == T ]] && edge_rows $R $pid $side
   (( reg067 )) && gap_hold $R $pid $side
+  (( h4 )) && h4_rows $R $pid $side
   cmp -s $C/geom-pair.json $G || print "relayout during step (GEOM changed after the snapshot; C1/C3 use the paired GEOM)" >> $C/pair.txt
   DEDOCK_REG061=$reg061 python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt 2> $C/cua-eval.err; tool "cua-eval $side" $? 0
   while IFS=$'\t' read -r cid ok detail; do check "$cid" $ok "$detail"; done < $C/results.txt
@@ -540,6 +547,95 @@ gap_hold() {  # gap_hold <run dir> <pid> <side>: x-19 "gap hold" (REG-067, reg06
   while IFS=$'\t' read -r cid ok detail; do
     if (( foreign )); then check "$cid" void "real input during the probe (rerun): $detail"; else check "$cid" $ok "$detail"; fi
   done < $R/gap-results.txt
+}
+
+h4_rows() {  # h4_rows <run dir> <pid> <side>: H4 hover label (row 10) and row 20 (h4=1)
+  # Reveal, rest on the first app tile and then the first folder tile, capturing Dedock's OWN panel
+  # window (screencapture -l: no other app's pixels) each time; OCR (ocr.swift) must find the
+  # tile's name and its state on the screen-centre side of the capsule, and no AX static text may
+  # carry a tile name (the label is AX-hidden). Then a sweep over every tile and away: row 20 wants
+  # no layout.pass from the reveal to the end. Captures stay in the run dir (build/, never posted).
+  local R=$1 pid=$2 side=$3 L=$1/log.ndjson G=$1/data/e2e/geometry.json n0 n1 lp wid k
+  local p=($(python3 $E/h4.py plan $G 2>/dev/null))
+  if (( ${#p} < 10 )); then
+    tool "h4 plan $side" 2 0; check "H4 hover label $side" 0 "no plan from GEOM"; check "row 20 no relayout during a pointer sweep $side" 0 "no plan from GEOM"; return
+  fi
+  local e=${p[1]} al=${p[2]} a=(${p[3]} ${p[4]}) f=(${p[5]} ${p[6]}) aw=(${p[7]} ${p[8]}) sw=(${p[9,-1]})
+  local dwell=$(python3 -c "import json,sys; print(int(json.load(open(sys.argv[1]))['docks'][0].get('showDwellMs', 300)))" $G)
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
+  $B/pointer -q move ${aw[1]} ${aw[2]}; sleep 0.8
+  $B/listen 12 > $R/h4-listen.txt & lp=$!; sleep 0.3
+  n0=$(wc -l < $L)
+  print -l "edge $e $al" "wait $(( dwell + 500 ))" "glide ${a[1]} ${a[2]} 120" "wait 150" > $R/h4-1.txt
+  $B/pointer -q script $R/h4-1.txt
+  $B/axprobe windows $pid | python3 -c "
+import json, sys
+ws = [json.loads(l) for l in sys.stdin if l.strip()]
+w = next((w for w in ws if w['layer'] == 24 and w['w'] > 50 and w['h'] > 50), None)
+json.dump(w or {}, open(sys.argv[1], 'w'))" $R/h4-window.json
+  wid=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('id', ''))" $R/h4-window.json)
+  [[ -n $wid ]] && screencapture -x -o -l $wid $R/h4-a.png; tool "screencapture panel $side" $? 0
+  $B/axprobe tree $pid 8 > $R/h4-tree.jsonl
+  $B/pointer -q glide ${f[1]} ${f[2]} 150; sleep 0.15
+  [[ -n $wid ]] && screencapture -x -o -l $wid $R/h4-f.png
+  : > $R/h4-sweep.txt
+  for (( k = 1; k < ${#sw}; k += 2 )); do print -r -- "glide ${sw[k]} ${sw[k+1]} 120" >> $R/h4-sweep.txt; done
+  for (( k = ${#sw} - 1; k >= 1; k -= 2 )); do print -r -- "glide ${sw[k]} ${sw[k+1]} 120" >> $R/h4-sweep.txt; done
+  print -l "move ${aw[1]} ${aw[2]}" "wait 800" >> $R/h4-sweep.txt
+  $B/pointer -q script $R/h4-sweep.txt; sleep 0.3
+  n1=$(wc -l < $L)
+  wait $lp 2>/dev/null
+  for k in a f; do
+    if [[ -s $R/h4-$k.png ]]; then $B/ocr $R/h4-$k.png > $R/h4-ocr-$k.jsonl 2>> $R/h4-ocr.err; tool "ocr $k $side" $? 0; else : > $R/h4-ocr-$k.jsonl; fi
+  done
+  $B/analyze contamination $R/h4-listen.txt > $R/h4-contam.txt 2>&1; tool "analyze contamination h4 $side" $? 0 1
+  python3 $E/h4.py judge $G $R/h4-window.json $R/h4-ocr-a.jsonl $R/h4-ocr-f.jsonl $R/h4-tree.jsonl $side > $R/h4-results.txt 2> $R/h4-judge.err; tool "h4 judge $side" $? 0
+  local passes=$(log_count $L $pid '^layout[.]pass' $n0) shown=$(log_count $L $pid '^reveal[.]transition .*to=shown' $n0)
+  local foreign=$(grep -c '^FAIL input contamination' $R/h4-contam.txt) cid ok detail
+  { cat $R/h4-results.txt
+    print -r -- "row 20 no relayout during a pointer sweep $side	$(( passes == 0 && shown > 0 ))	layout passes from the reveal through a sweep over all $(( ${#sw} / 2 )) tiles and away: $passes (exp 0); revealed: $( (( shown )) && echo yes || echo no)"
+  } | while IFS=$'\t' read -r cid ok detail; do
+    if (( foreign )); then check "$cid" void "real input during the probe (rerun): $detail"; else check "$cid" $ok "$detail"; fi
+  done
+}
+
+z1_rows() {  # z1_rows <run dir> <pid>: Z1 size slider (row 27), z1=1, own launch on the left edge
+  # Settings over the debug channel; a real drag of its "Dock size" slider (our own window) from
+  # M toward XL, held: mid-drag GEOM shows a live, non-stop tile thickness with the dock shown and
+  # layout passes during the drag; on release the tile thickness snaps to a stop (48/62/76/92), the
+  # saved size matches it, and the capsule thickness is tile × (1 + 16/62) ± 1 pt. Settings is closed
+  # with its own close button. Only this launch's isolated data dir is touched.
+  local R=$1 pid=$2 L=$1/log.ndjson G=$1/data/e2e/geometry.json Y=$1/data/layout.json n0 n1 dp lp
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
+  $B/notify $pid openSettings > /dev/null; tool "notify openSettings Z" $? 0
+  sleep 1.5
+  $B/axprobe tree $pid 14 > $R/z1-tree.jsonl
+  local sl=($(python3 $E/z1.py points $R/z1-tree.jsonl 2>/dev/null))
+  local r1="0	the Settings slider 'Dock size' was not found in the AX tree" r2="0	not reached"
+  if (( ${#sl} == 3 )); then
+    $B/listen 8 > $R/z1-listen.txt & lp=$!; sleep 0.3
+    n0=$(wc -l < $L)
+    $B/pointer -q drag ${sl[1]} ${sl[2]} ${sl[3]} ${sl[2]} 600 1200 & dp=$!   # travel 0.6 s, then hold 1.2 s
+    sleep 1.2
+    cp $G $R/z1-mid.json 2>/dev/null
+    local passes_mid=$(log_count $L $pid '^layout[.]pass' $n0)
+    wait $dp
+    sleep 1.2
+    n1=$(wc -l < $L)
+    wait $lp 2>/dev/null
+    cp $G $R/z1-after.json 2>/dev/null
+    $B/analyze contamination $R/z1-listen.txt > $R/z1-contam.txt 2>&1; tool "analyze contamination z1" $? 0 1
+    local out=("${(@f)$(python3 $E/z1.py judge $R/z1-mid.json $R/z1-after.json $Y $passes_mid 2> $R/z1-judge.err)}")
+    r1="${out[1]}" r2="${out[2]}"
+    local foreign=$(grep -c '^FAIL input contamination' $R/z1-contam.txt)
+    if (( foreign )); then r1="void	real input during the drag (rerun): ${r1#*	}"; r2="void	real input during the drag (rerun): ${r2#*	}"; fi
+  fi
+  $B/axpress close $pid "Dedock Settings" > /dev/null 2>&1; tool "axpress close Settings Z" $? 0
+  sleep 0.5
+  check "Z1 size slider drives the live dock while dragged" ${r1%%	*} "${r1#*	}"
+  check "Z1 release snaps to a stop and persists" ${r2%%	*} "${r2#*	}"
 }
 
 t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1, own launch on the right edge
@@ -830,6 +926,19 @@ if (( t25 )); then
     teardown_check $sub; check "REG-006 D" $(( $? == 0 )) "native Dock prefs unchanged"
   else
     check "launch D" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-D.txt)"
+  fi
+fi
+
+if (( z1 )); then
+  echo "z1"
+  sub=$id-Z
+  if launch $sub --app $app --timeout 8 > $root/launch-Z.txt 2>&1 && launched $root/launch-Z.txt; then
+    print -r -- "Z $sub" >> $root/index.txt
+    sleep 1
+    z1_rows $B/runs/$sub $(sed -n 's/^APP_PID=//p' $B/runs/$sub/run.env)
+    teardown_check $sub; check "REG-006 Z" $(( $? == 0 )) "native Dock prefs unchanged"
+  else
+    check "launch Z" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-Z.txt)"
   fi
 fi
 
