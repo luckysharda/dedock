@@ -163,7 +163,7 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
   (( t27 )) && for t in B L; do print -l "T27 Dock relaunch: logged and zones rebuilt within 1 s $t" "T27 Dock relaunch: the shown dock stays on screen and a dwell reveal works after $t" "REG-006 K$t"; done
   (( t27 )) && print -l "T27 display sleep and wake"
   (( t37 )) && print -l "T37 Settings switches the dock to Dark" "T37 Settings switches the dock to Liquid Glass" \
-                        "T37 Liquid Glass tint never changes while the dock is shown" "REG-006 Y" \
+                        "T37 Liquid Glass tint never changes while the dock is shown (smoke)" "REG-006 Y" \
                         "T37 window material changes the Settings sidebar and content" "REG-006 Wfrosted" "REG-006 WliquidGlass" "REG-006 Wsolid"
   (( t26 )) && print -l "T26 separator makes two islands 8 pt apart, one dock" "T26 spacer is half an app cell" \
                         "T26 separators and spacers are hidden from accessibility" "T26 crossing the island gap keeps the dock shown, gate open" "REG-006 P"
@@ -218,6 +218,7 @@ json.dump({
   "refs_running": "$(pgrep -lf 'CoolDock|DockDoor' | wc -l | tr -d ' ')",
   "reg061_gates": "$reg061", "settings_c8": "$settings",
   "pointer_sharing": "$psharing$( [[ $psharing == on ]] && print -n ' (psharing=allow)')",
+  "display_prefs": "$($B/axprobe display-prefs 2>/dev/null | tr -d '"{}' | tr ',' ' ')",
   "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
 }, open(sys.argv[1], "w"), indent=1)
 EOF
@@ -680,7 +681,7 @@ sys.exit(not any(w['layer'] == 24 and w['onscreen'] and w['w'] > 50 for w in ws)
 t37_styles() {  # t37_styles <run dir> <pid>: T37a, Settings' Style control → Dark, then Liquid Glass
   # (AX presses on our own window); GEOM style/material/liquidTint after each; then, on Liquid
   # Glass, a dwell reveal held 1.5 s: no tint change while shown (t37.py).
-  local R=$1 pid=$2 L=$1/log.ndjson G=$1/data/e2e/geometry.json major=$(sw_vers -productVersion | cut -d. -f1) r n0 lp
+  local R=$1 pid=$2 L=$1/log.ndjson G=$1/data/e2e/geometry.json major=$(sw_vers -productVersion | cut -d. -f1) r n0 lp rt=$(t37_rt)
   $E/desktop-lock.sh touch $me >/dev/null
   moved=1
   $B/notify $pid openSettings > /dev/null; tool "notify openSettings Y" $? 0
@@ -688,12 +689,17 @@ t37_styles() {  # t37_styles <run dir> <pid>: T37a, Settings' Style control → 
   $B/axpress press $pid "Dedock Settings" "Dark" > $R/t37-dark.txt 2>&1; tool "axpress Dark" $? 0
   sleep 1; cp $G $R/t37-geom-dark.json 2>/dev/null
   r=$(python3 $E/t37.py style $R/t37-geom-dark.json dark $major 2>&1); check "T37 Settings switches the dock to Dark" ${r%%	*} "${r#*	}"
+  local nlg=$(wc -l < $L)
   $B/axpress press $pid "Dedock Settings" "Liquid Glass" > $R/t37-lg.txt 2>&1; tool "axpress Liquid Glass" $? 0
   sleep 1.5; cp $G $R/t37-geom-lg.json 2>/dev/null
-  r=$(python3 $E/t37.py style $R/t37-geom-lg.json liquidGlass $major 2>&1); check "T37 Settings switches the dock to Liquid Glass" ${r%%	*} "${r#*	}"
+  r=$(python3 $E/t37.py style $R/t37-geom-lg.json liquidGlass $major $rt 2>&1); check "T37 Settings switches the dock to Liquid Glass" ${r%%	*} "${r#*	}"
   $B/axpress close $pid "Dedock Settings" > /dev/null 2>&1; tool "axpress close Settings Y" $? 0
   sleep 1
   local p=($(python3 $E/h4.py plan $G 2>/dev/null)) dwell=$(python3 -c "import json,sys; print(int(json.load(open(sys.argv[1]))['docks'][0].get('showDwellMs', 300)))" $G)
+  if (( rt )); then
+    check "T37 Liquid Glass tint never changes while the dock is shown (smoke)" skip "Reduce Transparency is ON: Liquid Glass is the solid Dark style, not adaptive (no tint to watch)"
+    return
+  fi
   $B/listen 8 > $R/t37-listen.txt & lp=$!; sleep 0.3
   n0=$(wc -l < $L)
   if (( ${#p} >= 8 )); then
@@ -702,9 +708,13 @@ t37_styles() {  # t37_styles <run dir> <pid>: T37a, Settings' Style control → 
   fi
   wait $lp 2>/dev/null
   $B/analyze contamination $R/t37-listen.txt > $R/t37-contam.txt 2>&1; tool "analyze contamination t37" $? 0 1
-  r=$(python3 $E/t37.py tint $L $pid $n0 2>&1)
-  if grep -q '^FAIL input contamination' $R/t37-contam.txt; then check "T37 Liquid Glass tint never changes while the dock is shown" void "real input during the probe (rerun): ${r#*	}"
-  else check "T37 Liquid Glass tint never changes while the dock is shown" ${r%%	*} "${r#*	}"; fi
+  r=$(python3 $E/t37.py tint $L $pid $n0 $nlg 2>&1)
+  if grep -q '^FAIL input contamination' $R/t37-contam.txt; then check "T37 Liquid Glass tint never changes while the dock is shown (smoke)" void "real input during the probe (rerun): ${r#*	}"
+  else check "T37 Liquid Glass tint never changes while the dock is shown (smoke)" ${r%%	*} "${r#*	}"; fi
+}
+
+t37_rt() {  # 1 when Reduce Transparency is on (as the app reads it), else 0
+  $B/axprobe display-prefs 2>/dev/null | python3 -c "import json,sys; print(int(json.load(sys.stdin).get('reduce_transparency', False)))" 2>/dev/null || echo 0
 }
 
 t37_material() {  # t37_material <run dir> <pid> <material>: prints "<material> <sidebar rgb> <content rgb>"
@@ -1208,6 +1218,7 @@ if (( t37 )); then
     fi
   done
   local_r=$(python3 $E/t37.py materials $root/t37-means.txt 2> $root/t37-materials.err)
+  (( $(t37_rt) )) && local_r="skip"$'\t'"Reduce Transparency is ON: every window material is solid by design ($(grep -c . $root/t37-means.txt) captures recorded)"
   check "T37 window material changes the Settings sidebar and content" ${local_r%%	*} "${local_r#*	}"
 fi
 

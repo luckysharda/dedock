@@ -188,7 +188,8 @@ def write_scorecard(root, baseline_path):
     L.append(f"App: `{env.get('app_commit', '?')}` ({env.get('config', '?')}) · Harness: `{env.get('harness_commit', '?')}` · "
              f"Date: {env.get('date', '?')} · Run: `{rel(root)}`")
     L.append(f"Machine: macOS {env.get('macos', '?')}, {env.get('display', '?')}, native Dock {env.get('native_dock', '?')}, "
-             f"reference apps running: {env.get('refs_running', '?')}, OS pointer sharing: {env.get('pointer_sharing', '?')}")
+             f"reference apps running: {env.get('refs_running', '?')}, OS pointer sharing: {env.get('pointer_sharing', '?')}"
+             + (f", display: {env['display_prefs']}" if env.get('display_prefs') else ""))
     if baseline:
         p = baseline.get("provenance", {})
         L.append(f"Baseline: `{rel(baseline_path) if os.path.isabs(baseline_path) else baseline_path}` "

@@ -411,8 +411,21 @@ open(f"{T}/t37-means-same.txt", "w").write("frosted 40 40 42 30 30 32\nliquidGla
 PY
 python3 Scripts/e2e/t37.py style $T/t37-dark.json dark 27 > $T/t37-r1.txt; python3 Scripts/e2e/t37.py style $T/t37-lg.json liquidGlass 27 > $T/t37-r2.txt
 python3 Scripts/e2e/t37.py style $T/t37-lg-old.json liquidGlass 27 > $T/t37-r3.txt
-python3 Scripts/e2e/t37.py tint $T/t37-tint-ok.ndjson 7 0 > $T/t37-r4.txt; python3 Scripts/e2e/t37.py tint $T/t37-tint-bad.ndjson 7 0 > $T/t37-r5.txt
+python3 Scripts/e2e/t37.py tint $T/t37-tint-ok.ndjson 7 0 0 > $T/t37-r4.txt; python3 Scripts/e2e/t37.py tint $T/t37-tint-bad.ndjson 7 0 > $T/t37-r5.txt
 python3 Scripts/e2e/t37.py materials $T/t37-means-ok.txt > $T/t37-r6.txt; python3 Scripts/e2e/t37.py materials $T/t37-means-same.txt > $T/t37-r7.txt
+python3 -c "import json,sys; json.dump({'docks': [{'style': 'liquidGlass', 'material': 'solid'}]}, open(sys.argv[1], 'w'))" $T/t37-lg-rt.json
+python3 Scripts/e2e/t37.py style $T/t37-lg-rt.json liquidGlass 27 1 > $T/t37-r8.txt; python3 Scripts/e2e/t37.py style $T/t37-lg-rt.json liquidGlass 27 0 > $T/t37-r9.txt
+check "T37: under Reduce Transparency Liquid Glass as solid with no tint PASSes and says so; the same GEOM without RT FAILs" "grep -q \$'^1\t.*Reduce Transparency is ON' $T/t37-r8.txt && grep -q '^0' $T/t37-r9.txt"
+$B/axprobe display-prefs > $T/display-prefs.json 2>&1
+check "axprobe display-prefs reports booleans only" "python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); sys.exit(not (set(d)=={'reduce_transparency','reduce_motion','increase_contrast'} and all(isinstance(v,bool) for v in d.values())))\" $T/display-prefs.json"
+python3 -c "
+import json, sys
+with open(sys.argv[1], 'w') as f:
+    f.write('Filtering\\n')
+    for m in ['reveal.transition edge=left from=revealing to=shown cause=animationEnd inh=-', 'reveal.transition edge=left from=shown to=armingHide cause=leave inh=-']:
+        f.write(json.dumps({'processID': 7, 'eventMessage': m}) + '\\n')" $T/t37-noread.ndjson
+python3 Scripts/e2e/t37.py tint $T/t37-noread.ndjson 7 0 0 > $T/t37-r10.txt
+check "T37 tint (smoke): no dock.tint.reading since Liquid Glass FAILs; the row says smoke" "grep -q \$'^0\t(smoke)' $T/t37-r10.txt && grep -q '(smoke)' $T/t37-r4.txt"
 check "T37: Dark solid / Liquid Glass glass+tint PASS, stand-in on 27 FAIL; tint change while shown FAIL; materials differ PASS, two alike FAIL" "grep -q '^1' $T/t37-r1.txt && grep -q '^1' $T/t37-r2.txt && grep -q '^0' $T/t37-r3.txt && grep -q '^1' $T/t37-r4.txt && grep -q '^0' $T/t37-r5.txt && grep -q '^1' $T/t37-r6.txt && grep -q '^0' $T/t37-r7.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
