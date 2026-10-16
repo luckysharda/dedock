@@ -18,6 +18,9 @@ public struct DockGeometrySnapshot: Sendable {
     public var material: String = "solid"
     /// The effective show dwell in ms (after the top edge's 300 ms minimum).
     public var showDwellMs: Int = 0
+    /// The rule that produced the zones (`ZoneRule`), and the native Dock footprint they avoid.
+    public var zoneRule: String = "primary"
+    public var nativeDock: NativeDockFootprint?
 }
 
 /// Writes `<data dir>/e2e/geometry.json` (E2E contract §4) atomically after every layout pass
@@ -43,9 +46,15 @@ public struct GeometryWriter: Sendable {
         let dockObjects: [[String: Any]] = docks.map { dock in
             var o: [String: Any] = [
                 "id": dock.id.rawValue, "screen": Int(dock.display.displayID), "edge": dock.edge.rawValue,
-                "mode": dock.mode.rawValue, "state": dock.phase.name, "style": dock.style, "material": dock.material, "showDwellMs": dock.showDwellMs,
+                "mode": dock.mode.rawValue, "state": dock.phase.name, "style": dock.style, "material": dock.material, "showDwellMs": dock.showDwellMs, "zoneRule": dock.zoneRule,
                 "zones": dock.zones.map { ["id": $0.id, "kind": $0.kind.rawValue, "rect": rect($0.rect)] as [String: Any] },
             ]
+            if let n = dock.nativeDock {
+                o["nativeDock"] = ["edge": n.edge.rawValue, "autohide": n.autohide,
+                                   "rect": rect(n.edge.strip(of: dock.display.frame, along: n.span, thickness: n.thickness))]
+            } else {
+                o["nativeDock"] = NSNull()
+            }
             if let l = dock.layout {
                 o["panel"] = rect(l.panelFrame)
                 o["capsule"] = rect(l.capsuleFrame)

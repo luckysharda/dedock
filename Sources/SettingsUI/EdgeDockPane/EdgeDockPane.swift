@@ -18,7 +18,7 @@ struct EdgeDockPane: View {
             Text("Edge Dock").font(.title2.weight(.semibold))
             if let dock {
                 ScenarioCards(dock: dock, recommended: Scenario.recommended(nativeDockEdge: environment.nativeDockEdge())) { card in
-                    updateDock { card.apply(to: $0, nativeDockEdge: environment.nativeDockEdge()) }
+                    updateDock { card.apply(to: $0) }
                 }
                 edgeSection(dock)
                 timingSection
@@ -76,12 +76,19 @@ struct EdgeDockPane: View {
         SettingsSection(title: "Trigger") {
             ValueSlider(label: "Trigger thickness", value: dockBinding(\.reveal.triggerThicknessPt, custom: true),
                         range: 1...20, unit: "pt", help: "The invisible strip at the edge that reveals the dock.")
-            SettingsRow(label: "Trigger span") {
+            // Beside the native Dock the trigger always spans the edge on either side of it
+            // (REG-065), so the span setting is overridden there.
+            let besideNativeDock = dock.edge == environment.nativeDockEdge()
+            SettingsRow(label: "Trigger span", help: besideNativeDock ? "Reveal from either side of the Dock" : nil) {
                 Picker("Trigger span", selection: dockBinding(\.reveal.spanMode, custom: true)) {
                     Text("Dock length").tag(RevealSettings.SpanMode.content)
                     Text("Whole edge").tag(RevealSettings.SpanMode.wholeEdge)
                 }
                 .labelsHidden().pickerStyle(.segmented).frame(width: 220)
+                .disabled(besideNativeDock)
+            }
+            if let hint = environment.triggerHint() {
+                Text(hint).font(.caption).foregroundStyle(.secondary)
             }
             ValueSlider(label: "Corner exclusion", value: dockBinding(\.reveal.cornerExclusionPt, custom: true),
                         range: 0...96, unit: "pt", help: "Keeps Hot Corners and the corners free.")

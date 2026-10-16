@@ -101,7 +101,8 @@ import SettingsStore
 
     private var surroundings: DockSurroundings {
         DockSurroundings(layout: topology.layout, nativeDock: dockPrefs.current, reduceMotion: reduceMotion,
-                         statusItems: fullscreen.statusItems, fullscreen: fullscreen.states)
+                         statusItems: fullscreen.statusItems, statusItemsRejected: fullscreen.statusItemsRejected,
+                         fullscreen: fullscreen.states)
     }
 
     /// Folder tiles saved with only a path (hand-written seeds, older files) get their bookmark
@@ -206,7 +207,8 @@ import SettingsStore
                                         mode: c.config.mode == .pinned ? .pinned : .reveal, phase: c.phase,
                                         layout: c.layout, zones: c.zones, tiles: c.tiles,
                                         style: tokens.style.rawValue, material: Self.materialName(tokens.blurMaterial),
-                                        showDwellMs: Self.ms(c.config.revealConfig(reduceMotion: reduceMotion).showDwell))
+                                        showDwellMs: Self.ms(c.config.revealConfig(reduceMotion: reduceMotion).showDwell),
+                                        zoneRule: c.derivation?.rule.rawValue ?? "primary", nativeDock: c.nativeDockFootprint)
         }
         geometryWriter.write(layout: topology.layout, docks: docks)
     }
@@ -230,6 +232,15 @@ import SettingsStore
 
     static func ms(_ d: Duration) -> Int {
         Int(d.components.seconds) * 1000 + Int(d.components.attoseconds / 1_000_000_000_000_000)
+    }
+
+    /// Settings' note when the first dock's top-edge trigger had to fall back (REG-066).
+    public var triggerHint: String? {
+        switch coordinators.values.sorted(by: { $0.id.rawValue < $1.id.rawValue }).first?.derivation?.rule {
+        case .nearestFree?: "Reveal from the free part of the menu bar near the centre"
+        case .optionOnly?: "Hold ⌥ at the top edge to reveal"
+        default: nil
+        }
     }
 
     /// GEOM's `material` value: the blur material's name, or `solid` under Reduce Transparency.

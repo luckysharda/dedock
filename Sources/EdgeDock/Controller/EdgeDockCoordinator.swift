@@ -13,6 +13,8 @@ public struct DockSurroundings: Sendable, Equatable {
     public var reduceMotion: Bool
     /// Menu-bar status-item rects per display (AppKit global), from `FullscreenProbe` (REG-044).
     public var statusItems: [DisplayIdentity: [CGRect]] = [:]
+    /// Status-level windows rejected as not item-sized, per display (for `zones.computed`).
+    public var statusItemsRejected: [DisplayIdentity: Int] = [:]
     /// Displays showing a full-screen window, from `FullscreenProbe` (REG-045).
     public var fullscreen: [DisplayIdentity: Bool] = [:]
 }
@@ -217,9 +219,27 @@ public struct DockSurroundings: Sendable, Equatable {
         guard env != environmentKey || parameters != zoneParameters else { return }
         environmentKey = env
         zoneParameters = parameters
-        zones = EdgeGeometry.zones(env, parameters)
+        let derived = EdgeGeometry.derive(env, parameters)
+        zones = derived.zones
+        derivation = derived
+        nativeDockFootprint = footprint
+        logZones(derived, rejected: s.statusItemsRejected[display.identity] ?? 0)
         // Tell the machine what the reset cleared; the next pointer sample re-derives it.
         controller.send(evaluator.reset())
+    }
+
+    /// How the current zones were derived, and the native Dock footprint they avoid (GEOM).
+    private(set) var derivation: ZoneDerivation?
+    private(set) var nativeDockFootprint: NativeDockFootprint?
+
+    /// `zones.computed`: spans along the edge and counts only, never another app's details.
+    private func logZones(_ d: ZoneDerivation, rejected: Int) {
+        func span(_ i: Interval?) -> String { i.map { "\(Int($0.lower.rounded()))..\(Int($0.upper.rounded()))" } ?? "-" }
+        DedockLog.event(.edge, "zones.computed", [
+            "edge": config.edge.rawValue, "dock": id.rawValue, "rule": d.rule.rawValue, "span": span(d.candidate),
+            "statusItems": d.statusItems, "statusRejected": rejected, "notch": d.notch, "nativeDock": span(d.nativeDock),
+            "segments": d.zones.count,
+        ])
     }
 
     // MARK: PointerSampleSink

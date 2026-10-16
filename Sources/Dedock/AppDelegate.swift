@@ -63,7 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hasSharedEdge: { [weak topology] edge in
                 guard let layout = topology?.layout, let main = layout.main else { return false }
                 return !EdgeGeometry.sharedSegments(of: main, edge: edge, in: layout).isEmpty
-            }))
+            },
+            triggerHint: { [weak manager] in manager?.triggerHint }))
         // While Settings is open the dock stays revealed, so every change shows live.
         settingsWindow.onVisibilityChange = { [weak manager] open in
             manager?.setHold(.editing, open, dock: nil)

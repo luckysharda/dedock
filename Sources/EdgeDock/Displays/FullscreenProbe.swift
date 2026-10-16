@@ -21,6 +21,8 @@ import Diagnostics
     public var onChange: (([DisplayIdentity: Bool]) -> Void)?
     /// Status-item rects per display, AppKit global coordinates.
     public private(set) var statusItems: [DisplayIdentity: [CGRect]] = [:]
+    /// Status-level windows on the menu-bar line that were not item-sized, per display (REG-066).
+    public private(set) var statusItemsRejected: [DisplayIdentity: Int] = [:]
     /// Called when any display's status items changed.
     public var onStatusItemsChange: (() -> Void)?
 
@@ -58,7 +60,7 @@ import Diagnostics
         }
         let records = self.windows(), now = layout()
         states = FullscreenDetection.states(records, layout: now, ownPID: getpid())
-        statusItems = Self.statusItems(records, layout: now)
+        (statusItems, statusItemsRejected) = Self.statusItems(records, layout: now)
     }
 
     /// Re-holds after the first hold before an unsettled reading is left to the next notification.
@@ -102,7 +104,8 @@ import Diagnostics
     }
 
     private func updateStatusItems(_ records: [WindowRecord], layout: DisplayLayout) {
-        let next = Self.statusItems(records, layout: layout)
+        let (next, rejected) = Self.statusItems(records, layout: layout)
+        statusItemsRejected = rejected
         guard next != statusItems else { return }
         statusItems = next
         onStatusItemsChange?()
@@ -118,15 +121,18 @@ import Diagnostics
         }
     }
 
-    static func statusItems(_ records: [WindowRecord], layout: DisplayLayout) -> [DisplayIdentity: [CGRect]] {
+    static func statusItems(_ records: [WindowRecord], layout: DisplayLayout)
+        -> (items: [DisplayIdentity: [CGRect]], rejected: [DisplayIdentity: Int]) {
         var result: [DisplayIdentity: [CGRect]] = [:]
+        var rejected: [DisplayIdentity: Int] = [:]
         for d in layout.displays {
+            let found = StatusItemGeometry.classify(records, display: d, primaryHeight: layout.primaryHeight)
             // Sorted: the window list is in z-order, which changes without the items changing.
-            let rects = StatusItemGeometry.rects(records, display: d, primaryHeight: layout.primaryHeight)
-                .sorted { ($0.minX, $0.minY) < ($1.minX, $1.minY) }
+            let rects = found.items.sorted { ($0.minX, $0.minY) < ($1.minX, $1.minY) }
             if !rects.isEmpty { result[d.identity] = rects }
+            if found.rejected > 0 { rejected[d.identity] = found.rejected }
         }
-        return result
+        return (result, rejected)
     }
 
     public func invalidate() {
