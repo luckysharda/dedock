@@ -33,6 +33,8 @@ public struct DockSurroundings: Sendable, Equatable {
     let panel: EdgeDockPanel
     let animator: SlideAnimator
     let gate: ClickThroughGate
+    /// Keeps the shown panel on every Space (DD-947, T27(2)).
+    let spaceRepair: SpaceMembershipRepair
     public let controller: EdgeRevealController
     private var evaluator: TriggerEvaluator
     private let running: RunningAppsMonitor
@@ -81,6 +83,7 @@ public struct DockSurroundings: Sendable, Equatable {
         specs = (profile?.items ?? []).map(\.tileSpec)
 
         panel = EdgeDockPanel(frame: layout.panelFrame, model: model)
+        spaceRepair = SpaceMembershipRepair(panel: panel, clock: clock, edge: config.edge.rawValue)
         animator = SlideAnimator(container: panel.root.container, edge: config.edge,
                                  hiddenOffset: layout.hiddenOffset, reduceMotion: surroundings.reduceMotion)
         gate = ClickThroughGate(panel: panel, edge: config.edge)
@@ -144,7 +147,10 @@ public struct DockSurroundings: Sendable, Equatable {
         config = new
         display = newDisplay
         tiles = Self.tileModels(profile, running: running)
-        let newLayout = Self.layout(new, tiles: profile?.items ?? [], display: newDisplay, surroundings: surroundings)
+        let candidate = Self.layout(new, tiles: profile?.items ?? [], display: newDisplay, surroundings: surroundings)
+        // A side dock ignores 1–3 pt visibleFrame jitter (design.md §4.3, T27(3)).
+        let newLayout = movedDisplay ? candidate
+            : LayoutEngine.keepingPosition(old: layout, new: candidate, visible: newDisplay.visibleFrame)
         let newSpecs = (profile?.items ?? []).map(\.tileSpec)
         model.tokens = new.tokens
         let geometryChanged = newLayout != layout || oldConfig.edge != new.edge
@@ -195,6 +201,7 @@ public struct DockSurroundings: Sendable, Equatable {
     }
 
     func teardown() {
+        spaceRepair.cancel()
         controller.invalidate()
         panel.orderOut(nil)
         panel.close()

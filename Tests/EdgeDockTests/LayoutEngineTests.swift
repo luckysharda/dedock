@@ -18,6 +18,30 @@ import Testing
         LayoutEngine.layout(tiles ?? self.tiles, PlacementInput(display: display ?? d, edge: edge, alignment: a, nativeDockInset: inset), m)
     }
 
+    /// design.md §4.3 (T27(3)): a side dock ignores visibleFrame changes under 4 pt.
+    @Test func sideDocksIgnoreSmallVisibleFrameChanges() {
+        func display(_ minY: CGFloat, _ height: CGFloat) -> DisplaySnapshot {
+            DisplaySnapshot(identity: DisplayIdentity(uuid: "d"), frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                            visibleFrame: CGRect(x: 0, y: minY, width: 1920, height: height),
+                            menuBarHeight: 24, menuBarAutoHides: false, isMain: true, backingScale: 1)
+        }
+        let old = layout(.left, display: display(75, 981))
+        let nudged = layout(.left, display: display(77, 979))              // the native Dock grew 2 pt
+        #expect(nudged.capsuleFrame != old.capsuleFrame)
+        #expect(LayoutEngine.keepingPosition(old: old, new: nudged, visible: display(77, 979).visibleFrame) == old)
+
+        let moved = layout(.left, display: display(85, 971))               // 10 pt: re-centre
+        #expect(LayoutEngine.keepingPosition(old: old, new: moved, visible: display(85, 971).visibleFrame) == moved)
+
+        // Bottom and top docks always take the new layout.
+        let b0 = layout(.bottom, display: display(75, 981)), b1 = layout(.bottom, display: display(77, 979))
+        #expect(LayoutEngine.keepingPosition(old: b0, new: b1, visible: display(77, 979).visibleFrame) == b1)
+
+        // A kept position that would overlap the newly reserved area is not kept.
+        let tight = display(old.capsuleFrame.minY + 1, 900)
+        #expect(LayoutEngine.keepingPosition(old: old, new: nudged, visible: tight.visibleFrame) == nudged)
+    }
+
     @Test func tileGrammar() {
         let l = layout(.left)
         #expect(m.tileThickness == 56)

@@ -23,6 +23,7 @@ import SettingsStore
     private var topologyToken: ObservationToken?
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
+    private var spaceObservers: [any NSObjectProtocol] = []
     private var appearanceObservation: NSKeyValueObservation?
     /// The document as of the last settings notification (for `settings.changed`).
     private var lastDocument: DedockDocument
@@ -52,6 +53,7 @@ import SettingsStore
         self.clock = clock
         geometryWriter = GeometryWriter(dataDirectory: dataDirectory)
         dockPrefs = DockPreferencesReader { [weak self] _ in self?.sync(reason: "dockPrefs") }
+        dockPrefs.onRelaunch = { [weak self] in self?.dockRelaunched() }
         fullscreen = FullscreenProbe(clock: clock, layout: { [weak topology] in topology?.layout ?? DisplayLayout(displays: []) })
         topologyToken = topology.observe { [weak self] _ in
             self?.sync(reason: "displays")
@@ -68,6 +70,14 @@ import SettingsStore
             for c in self.coordinators.values {
                 if let on = changed[c.display.identity] { c.controller.send(.fullscreenChanged(on)) }
             }
+            // Leaving full screen can strand a panel on one desktop (DD-947).
+            if changed.values.contains(false) { self.repairSpaces(reason: "fullscreenExit") }
+        }
+        let ws = NSWorkspace.shared.notificationCenter
+        for (name, reason) in [(NSWorkspace.activeSpaceDidChangeNotification, "space"), (NSWorkspace.didWakeNotification, "wake")] {
+            spaceObservers.append(ws.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.repairSpaces(reason: reason) }
+            })
         }
         running.onChange = { [weak self] in
             guard let self else { return }
@@ -125,6 +135,20 @@ import SettingsStore
 
     /// Reconcile coordinators with the settings document and display layout.
     /// - Parameter updating: which existing docks to update; new and removed docks are always handled.
+    /// The Dock process relaunched (`killall Dock`): re-sync, rebuild every dock's zones and
+    /// repair Spaces membership, even when its preferences are unchanged (T27(1)).
+    func dockRelaunched() {
+        sync(reason: "dockRelaunch")
+        let s = surroundings
+        for c in coordinators.values { c.forceRebuildZones(s) }
+        repairSpaces(reason: "dockRelaunch")
+    }
+
+    /// Checks that each shown panel is on the active Space (DD-947).
+    func repairSpaces(reason: String) {
+        for c in coordinators.values { c.spaceRepair.check(reason: reason) }
+    }
+
     func sync(reason outer: String, updating: (EdgeDockCoordinator) -> Bool = { _ in true }) {
         if let filled = Self.fillingBookmarks(settings.document) {
             // Re-enters sync through the observer, then saves. The nested pass logs the outer

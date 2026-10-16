@@ -209,6 +209,23 @@ public enum LayoutEngine {
             edge: edge)
     }
 
+    /// design.md §4.3: a side dock re-centres only when its display's change moves it along the
+    /// edge by `threshold` (4 pt) or more, or when its current position would overlap the newly
+    /// reserved area (outside `visible`). Smaller moves keep the old layout, so a 1 pt
+    /// `visibleFrame` change (an icon added to the native Dock) does not nudge the dock.
+    public static func keepingPosition(old: DockLayout, new: DockLayout, visible: CGRect, threshold: CGFloat = 4) -> DockLayout {
+        guard new.edge.isVertical, old.edge == new.edge, old.scale == new.scale, old.order == new.order,
+              old.capsuleFrame.size == new.capsuleFrame.size, old.capsuleFrame.minX == new.capsuleFrame.minX else { return new }
+        let shift = new.capsuleFrame.midY - old.capsuleFrame.midY
+        guard shift != 0, abs(shift) < threshold else { return new }
+        // Every tile must have moved by the same amount (a pure translation).
+        for (id, r) in new.tileFrames {
+            guard let o = old.tileFrames[id], o.size == r.size, abs((r.midY - o.midY) - shift) < 0.01 else { return new }
+        }
+        let fits = old.capsuleFrame.minY >= visible.minY && old.capsuleFrame.maxY <= visible.maxY
+        return fits ? old : new
+    }
+
     /// Insertion index for a reorder drag, from a layout frozen at drag start (DD-975).
     public static func insertionIndex(for point: CGPoint, in frozen: DockLayout, order: [TileID], moving: TileID) -> Int {
         let others = order.filter { $0 != moving }
