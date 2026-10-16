@@ -12,8 +12,14 @@ Scripts/make-signing-identity.sh             # creates "Dedock Development" in y
 ```
 
 It creates a self-signed certificate (code signing only, not a CA, valid 10 years) and its
-private key, and imports both into the login keychain, letting `codesign` use the key without
-a prompt. Running it again does nothing if the identity already exists.
+private key, and imports both into the login keychain with `codesign` on the key's access
+list. The first build that signs with it may still ask once that "codesign wants to access
+key"; click **Always Allow** and later builds sign silently. (The script deliberately does not
+change the key's partition list, which would need your login password inside a script.)
+Running it again does nothing if the identity already exists.
+
+It uses the system `/usr/bin/openssl` (LibreSSL), whose PKCS#12 output is the format
+`security import` reads.
 
 ## Building with it
 

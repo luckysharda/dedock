@@ -55,7 +55,9 @@ run /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days "$DAYS" \
     -addext "extendedKeyUsage=critical,codeSigning"
 run /usr/bin/openssl pkcs12 -export -inkey "$WORK/key.pem" -in "$WORK/cert.pem" \
     -name "$NAME" -out "$WORK/identity.p12" -passout "pass:$PASS"
-# -T: codesign may use the key without a prompt on every build.
+# -T: codesign is on the key's access list. The first signing may still ask once ("codesign
+# wants to access key"); Always Allow ends it. The partition list is left alone on purpose:
+# changing it needs the user's login password inside a script.
 run /usr/bin/security import "$WORK/identity.p12" -k "$KEYCHAIN" -P "$PASS" -T /usr/bin/codesign
 
 if [ "$DRY" = 1 ]; then
