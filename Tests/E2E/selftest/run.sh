@@ -342,6 +342,26 @@ DEDOCK_POINTER_DRYRUN=1 $B/pointer click 1210 99999 > $T/press-off.out 2> $T/pre
 DEDOCK_POINTER_DRYRUN=1 $B/pointer drag 100 100 100 99999 300 > $T/drag-off.out 2> $T/drag-off.err; echo $? > $T/drag-off.rc
 check "REG-068 pointer refuses a click or drag off every display, before posting anything" "[[ \$(cat $T/press-off.rc) == 2 && \$(cat $T/drag-off.rc) == 2 && ! -s $T/press-off.out && ! -s $T/drag-off.out ]] && grep -q 'outside every display (REG-068); nothing posted' $T/press-off.err"
 check "REG-068 audit: every pointer click/drag line in the harness is marked guarded by press_ok" "! grep -nE 'pointer( -q)? (click|drag) ' Scripts/e2e/regress.sh Scripts/e2e/scenario.sh | grep -v 'guarded: press_ok' | grep -q . && grep -q '^press_ok() {' Scripts/e2e/regress.sh"
+# T26 SP3 Islands: two islands 8 pt apart = one dock (one zone, capsule = union); spacer = half a cell
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+t = lambda i, k, y, h=54: {"id": i, "kind": k, "name": i, "frame": {"topLeft": [16, y, 62, h]}}
+def g(gap, spacer_h, zones):
+    a = [8, 300, 78, 70 + 8 + 27 + 8 + 54 + 16 - 54]   # island 1: Calculator, spacer, TextEdit (padding 8)
+    a[3] = 8 + 54 + 8 + spacer_h + 8 + 54 + 8
+    b = [8, a[1] + a[3] + gap, 78, 8 + 54 + 8]
+    tiles = [t("t-calc", "app", a[1] + 8), t("s-spacer", "spacer", a[1] + 8 + 54 + 8, spacer_h), t("t-text", "app", a[1] + 8 + 54 + 8 + spacer_h + 8),
+             t("s-separator", "separator", a[1] + a[3] - 8, gap + 16 - 16), t("t-notes", "app", b[1] + 8)]
+    return {"docks": [{"edge": "left", "capsule": {"topLeft": [8, a[1], 78, b[1] + b[3] - a[1]]}, "islands": [{"topLeft": a}, {"topLeft": b}],
+                       "zones": [{"rect": {"topLeft": [0, 280, 3, 400]}}] * zones, "tiles": tiles}]}
+json.dump(g(8, 27, 1), open(f"{T}/t26-ok.json", "w"))
+json.dump(g(12, 54, 2), open(f"{T}/t26-bad.json", "w"))
+PY
+python3 Scripts/e2e/t26.py geom $T/t26-ok.json > $T/t26-ok.txt
+python3 Scripts/e2e/t26.py geom $T/t26-bad.json > $T/t26-bad.txt
+python3 Scripts/e2e/t26.py gap $T/t26-ok.json > $T/t26-gap.txt
+check "T26 islands: 8 pt gap, union, one zone, half-cell spacer PASS; 12 pt gap / two zones / full-cell spacer FAIL; gap point between the islands" "[[ \$(grep -c \$'\t1\t' $T/t26-ok.txt) == 2 && \$(grep -c \$'\t0\t' $T/t26-bad.txt) == 2 ]] && python3 -c \"import sys; p=open(sys.argv[1]).read().split(); sys.exit(not (p[0]=='left' and float(p[3]) > float(p[5]) and float(p[3]) < float(p[7])))\" $T/t26-gap.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id

@@ -1,7 +1,7 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [settings=1] [reg067=1] [t25=1] [h4=1] [z1=1] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [settings=1] [reg067=1] [t25=1] [h4=1] [z1=1] [t26=1] [dry=1]
 #       reg061=1: gate REG-061 (the tile's AX element is the whole cell): C3 AX frame = GEOM cell ±1 pt,
 #       C7 cell edge = AXButton with the tile's label. Off until a build carries the fix.
 #       settings=1: run C8 (open Settings over the debug channel, labels, the editing hold, close via its
@@ -16,6 +16,9 @@
 #       on the screen-centre side; AX-hidden) and row 20 (no layout.pass through a reveal and a sweep).
 #       z1=1: Z1 size slider, own launch: a real drag of Settings' "Dock size" slider drives the
 #       live dock; release snaps to a stop, saved, capsule = tile × (1 + 16/62) ± 1 pt.
+#       t26=1: T26 SP3 Islands, own launch with a spacer and a separator seeded in its data dir:
+#       two islands 8 pt apart as one dock, the spacer half a cell, fillers AX-hidden, and the gap
+#       between the islands inside the dock (no leave or hide, gate open).
 #       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
 #       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
 #       (never committed; no user window is ever in the frame).
@@ -70,8 +73,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary reg067=0 t25=0 h4=0 z1=0
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; reg067=*) reg067=${kv#reg067=} ;; t25=*) t25=${kv#t25=} ;; h4=*) h4=${kv#h4=} ;; z1=*) z1=${kv#z1=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary reg067=0 t25=0 h4=0 z1=0 t26=0
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; t26=*) t26=${kv#t26=} ;; reg067=*) reg067=${kv#reg067=} ;; t25=*) t25=${kv#t25=} ;; h4=*) h4=${kv#h4=} ;; z1=*) z1=${kv#z1=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -89,10 +92,10 @@ edge_list=(${(s:,:)edges})
 # Calibrated on the first full run (2026-10-15: 489 s for edges L,R + idle): launches, settle
 # waits and VOID re-runs make each edge ~200 s; each extra x-06 seed ~15 s.
 # Calibrated on the 82d2d69 candidate (edges L,R + 3 extra x-06 seeds + shots + idle: 293 s measured).
-est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0) + (reg067 ? 8 : 0) + (h4 ? 8 : 0)) + (idle ? 70 : 0) + (t25 ? 45 : 0) + (z1 ? 15 : 0) ))
+est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0) + (reg067 ? 8 : 0) + (h4 ? 8 : 0)) + (idle ? 70 : 0) + (t25 ? 45 : 0) + (z1 ? 15 : 0) + (t26 ? 15 : 0) ))
 echo "regress $id: app $(git -C $app rev-parse --short HEAD) edges=$edges idle=$idle — moves the cursor for about $est s"
 if (( dry )); then
-  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}$( (( reg067 )) && print -n '; x-19 gap hold (REG-067) per edge')$( (( h4 )) && print -n '; H4 hover label + row 20 per edge')$( (( t25 )) && print -n '; T25 drag-out (own launch, right edge)')$( (( z1 )) && print -n '; Z1 size slider (own launch)'); idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
+  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}$( (( reg067 )) && print -n '; x-19 gap hold (REG-067) per edge')$( (( h4 )) && print -n '; H4 hover label + row 20 per edge')$( (( t25 )) && print -n '; T25 drag-out (own launch, right edge)')$( (( t26 )) && print -n '; T26 islands (own launch)')$( (( z1 )) && print -n '; Z1 size slider (own launch)'); idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
   exit 0
 fi
 
@@ -154,6 +157,8 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
   (( t25 )) && print -l "T25 drag-out asks without taking focus R" "T25 Keep keeps the tile R" "T25 a click elsewhere in Dedock keeps the tile (local-monitor path) R" \
                         "T25 Remove removes the tile and persists it R" "T25 a new drag answers Keep, and its drop asks again R" \
                         "T25 no answer in 8 s keeps the tile R" "REG-006 D"
+  (( t26 )) && print -l "T26 separator makes two islands 8 pt apart, one dock" "T26 spacer is half an app cell" \
+                        "T26 separators and spacers are hidden from accessibility" "T26 crossing the island gap keeps the dock shown, gate open" "REG-006 P"
   (( z1 )) && print -l "Z1 size slider drives the live dock while dragged" "Z1 release snaps to a stop and persists" "REG-006 Z"
   (( idle )) && print -l "I.idle-L" "REG-006 I"
   print -l "REG-016 cursor restored" "REG-017 no modifier held" "REG-015 no Dedock left running" "REG-055 no pointer hand-off"
@@ -619,6 +624,68 @@ json.dump(w or {}, open(sys.argv[1], 'w'))" $R/h4-window.json
   done
 }
 
+t26_rows() {  # t26_rows <run dir> <pid>: T26 SP3 Islands (t26=1), own launch on the left edge
+  # GEOM: two islands 8 pt apart, the capsule their union, one zone; the spacer half an app cell.
+  # AX: only the three apps are buttons (fillers hidden). Probe: reveal, rest on the tile before the
+  # separator, glide into the gap between the islands and hold 0.7 s (> the hide delay), on to the
+  # tile after it: the gap is INSIDE the dock (no leave, no hide, the mouse gate stays open, the hit
+  # in the gap is Dedock). Real input during the probe: VOID.
+  local R=$1 pid=$2 L=$1/log.ndjson G=$1/data/e2e/geometry.json n0 n1 lp cid ok detail
+  python3 $E/t26.py geom $G > $R/t26-geom.txt 2> $R/t26.err; tool "t26 geom" $? 0
+  while IFS=$'\t' read -r cid ok detail; do check "$cid" $ok "$detail"; done < $R/t26-geom.txt
+  $B/axprobe tree $pid 6 > $R/t26-tree.jsonl
+  local ax=$(python3 -c "
+import json, sys
+els = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+names = {t['name'] for t in json.load(open(sys.argv[2]))['docks'][0]['tiles'] if t.get('kind') in ('app', 'folder')}
+buttons = sorted(e.get('label', '') for e in els if e.get('role') == 'AXButton' and e.get('depth', 0) >= 1)
+fill = [e for e in els if e.get('depth', 0) >= 1 and (e.get('label') or '').lower() in ('spacer', 'separator')]
+print(int(set(buttons) == names and len(buttons) == len(names) and not fill), '|'.join(buttons) or '-', len(fill))" $R/t26-tree.jsonl $G 2>/dev/null)
+  local axv=(${(s: :)ax})
+  check "T26 separators and spacers are hidden from accessibility" ${axv[1]:-0} "tile buttons in the AX tree: ${axv[2]:-?} (exp the 3 apps only); filler elements: ${axv[3]:-?} (exp 0)"
+  local p=($(python3 $E/t26.py gap $G 2>/dev/null))
+  cid="T26 crossing the island gap keeps the dock shown, gate open"
+  if (( ${#p} != 10 )); then check "$cid" 0 "no gap probe points from GEOM: ${p[*]}"; return; fi
+  local e=${p[1]} al=${p[2]} g=(${p[3]} ${p[4]}) a=(${p[5]} ${p[6]}) b=(${p[7]} ${p[8]}) aw=(${p[9]} ${p[10]}) hit=0
+  local dwell=$(python3 -c "import json,sys; print(int(json.load(open(sys.argv[1]))['docks'][0].get('showDwellMs', 300)))" $G)
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
+  $B/pointer -q move ${aw[1]} ${aw[2]}; sleep 0.8
+  $B/listen 8 > $R/t26-listen.txt & lp=$!; sleep 0.3
+  print -l "edge $e $al" "wait $(( dwell + 500 ))" "glide ${a[1]} ${a[2]} 120" "wait 200" > $R/t26-1.txt
+  $B/pointer -q script $R/t26-1.txt
+  n0=$(wc -l < $L)
+  $B/pointer -q glide ${g[1]} ${g[2]} 150; sleep 0.15
+  press_ok ${g[1]} ${g[2]} $pid && hit=1
+  sleep 0.55
+  $B/pointer -q glide ${b[1]} ${b[2]} 150; sleep 0.2
+  n1=$(wc -l < $L)
+  $B/pointer -q move ${aw[1]} ${aw[2]}; sleep 0.8
+  wait $lp 2>/dev/null
+  $B/analyze contamination $R/t26-listen.txt > $R/t26-contam.txt 2>&1; tool "analyze contamination t26" $? 0 1
+  # only the probe's own lines (n0..n1): from the first tile, through the gap, to the next tile
+  local leaves closed
+  leaves=$(python3 -c "
+import json, re, sys
+n = 0
+for i, l in enumerate(open(sys.argv[1])):
+    if i < int(sys.argv[2]) or i >= int(sys.argv[3]) or not l.startswith('{'): continue
+    r = json.loads(l.rstrip().rstrip(','))
+    if r.get('processID') == int(sys.argv[4]) and re.search(sys.argv[5], r.get('eventMessage', '')): n += 1
+print(n)" $L $n0 $n1 $pid '^reveal[.]transition .*to=(armingHide|hiding)')
+  closed=$(python3 -c "
+import json, re, sys
+n = 0
+for i, l in enumerate(open(sys.argv[1])):
+    if i < int(sys.argv[2]) or i >= int(sys.argv[3]) or not l.startswith('{'): continue
+    r = json.loads(l.rstrip().rstrip(','))
+    if r.get('processID') == int(sys.argv[4]) and re.search(sys.argv[5], r.get('eventMessage', '')): n += 1
+print(n)" $L $n0 $n1 $pid '^gate[.]mouse .*ignores=true')
+  detail="tile → island gap (held 0.7 s) → next tile: leave/hide transitions $leaves (exp 0); mouse gate closed $closed time(s) (exp 0); AX hit in the gap is Dedock: $( (( hit )) && echo yes || echo no)"
+  if grep -q '^FAIL input contamination' $R/t26-contam.txt; then check "$cid" void "real input during the probe (rerun): $detail"
+  else check "$cid" $(( leaves == 0 && closed == 0 && hit )) "$detail"; fi
+}
+
 z1_rows() {  # z1_rows <run dir> <pid>: Z1 size slider (row 27), z1=1, own launch on the left edge
   # Settings over the debug channel; a real drag of its "Dock size" slider (our own window) from
   # M toward XL, held: mid-drag GEOM shows a live, non-stop tile thickness with the dock shown and
@@ -685,7 +752,12 @@ t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1
     t25_drag
   }
   t25_drag() {  # ⌘-drag tile pl out, only once the hit at its centre is Dedock's own tile button (REG-068)
-    if press_ok ${pl[3]} ${pl[4]} $pid AXButton "$(python3 -c "import json,sys; print(next(t['name'] for t in json.load(open(sys.argv[1]))['docks'][0]['tiles'] if t['id'] == sys.argv[2]))" $G ${pl[11]})"; then
+    # Move onto the tile first: away from the capsule the dock's mouse gate is closed and the hit
+    # there is the window underneath. Then poll the AX hit for up to 1 s before pressing.
+    local name=$(python3 -c "import json,sys; print(next(t['name'] for t in json.load(open(sys.argv[1]))['docks'][0]['tiles'] if t['id'] == sys.argv[2]))" $G ${pl[11]}) ok=0 k
+    $B/pointer -q move ${pl[3]} ${pl[4]}
+    for k in {1..10}; do sleep 0.1; press_ok ${pl[3]} ${pl[4]} $pid AXButton "$name" && { ok=1; break }; done
+    if (( ok )); then
       $B/pointer -q drag ${pl[3]} ${pl[4]} ${pl[5]} ${pl[6]} 300 100 cmd; tool "pointer drag t25" $? 0   # guarded: press_ok
     else
       tool "t25 drag start is not Dedock's tile: not pressed" 2 0
@@ -979,6 +1051,25 @@ if (( t25 )); then
     teardown_check $sub; check "REG-006 D" $(( $? == 0 )) "native Dock prefs unchanged"
   else
     check "launch D" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-D.txt)"
+  fi
+fi
+
+if (( t26 )); then
+  echo "t26"
+  sub=$id-P
+  # Seeded in this launch's own data dir: Calculator, a spacer, TextEdit, a separator, Notes.
+  if launch $sub --app $app --timeout 8 \
+       --set 'profiles[0].items[1]={"id":"s-spacer","kind":"spacer"}' \
+       --set 'profiles[0].items[2]={"bundleID":"com.apple.TextEdit","id":"t-textedit","kind":"app","path":"/System/Applications/TextEdit.app"}' \
+       --set 'profiles[0].items[3]={"id":"s-separator","kind":"separator"}' \
+       --set 'profiles[0].items[4]={"bundleID":"com.apple.Notes","id":"t-notes","kind":"app","path":"/System/Applications/Notes.app"}' \
+       > $root/launch-P.txt 2>&1 && launched $root/launch-P.txt; then
+    print -r -- "P $sub" >> $root/index.txt
+    sleep 1
+    t26_rows $B/runs/$sub $(sed -n 's/^APP_PID=//p' $B/runs/$sub/run.env)
+    teardown_check $sub; check "REG-006 P" $(( $? == 0 )) "native Dock prefs unchanged"
+  else
+    check "launch P" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-P.txt)"
   fi
 fi
 
