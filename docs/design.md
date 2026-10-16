@@ -359,7 +359,6 @@ Light / Dark / System appearance applies to panels (DD-704); the dock style is c
 | Window appearance | System, Light, Dark | System | Settings, onboarding, notices, permission screens |
 | Window material | Frosted (A2), Liquid Glass (macOS 26 and later; shown with "Needs macOS 26" before that), Solid | Frosted | the same windows; Reduce Transparency forces Solid |
 
-
 ### 7.2a App UI picks (owner, 2026-10-16; senses in `docs/design/app-ui/`)
 
 | Surface | Pick | What it fixes |
