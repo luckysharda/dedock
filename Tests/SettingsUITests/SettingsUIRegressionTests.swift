@@ -31,4 +31,27 @@ import Testing
         #expect(SizeSlider.snapped(live: nil, size: .m) == .m)          // a click without a drag
         #expect(SizeSlider.range == 48...92)
     }
+
+    /// e9's #42 must-fix: VoiceOver increment/decrement and arrow keys move one stop and save it
+    /// at once, never leaving a live preview behind.
+    @Test func keyboardAndVoiceOverStepOneStop() {
+        #expect(SizeSlider.stepped(.m, up: true) == .l)
+        #expect(SizeSlider.stepped(.m, up: false) == .s)
+        #expect(SizeSlider.stepped(.xl, up: true) == .xl)
+        #expect(SizeSlider.stepped(.s, up: false) == .s)
+        // An arrow nudges the value a little; it still moves a whole stop in that direction.
+        #expect(SizeSlider.discrete(.m, to: 62 + 4.4) == .l)
+        #expect(SizeSlider.discrete(.m, to: 62 - 4.4) == .s)
+        #expect(SizeSlider.discrete(.m, to: 62) == .m)
+    }
+
+    /// The release snap eases to the stop and ends exactly on it.
+    @Test func snapCurveEndsOnTheStop() {
+        let path = SizeSlider.snapCurve(from: 69, to: 76)
+        #expect(path.count == 15)
+        #expect(path.last == 76)
+        #expect(zip(path, path.dropFirst()).allSatisfy { $0 <= $1 })      // monotone, no overshoot
+        #expect(path[0] - 69 > (76 - 69) / 15)                             // ease-out: fast start
+        #expect(SizeSlider.snapCurve(from: 76, to: 76) == [76])
+    }
 }

@@ -103,6 +103,7 @@ public struct TileLabelContent: Equatable, Sendable {
         name = tile.name
         func windows(_ n: Int?) -> String {
             guard let n else { return "" }
+            if n == 0 { return " \u{00B7} No windows" }
             return " \u{00B7} \(n) \(n == 1 ? "window" : "windows")"
         }
         if tile.isMissing {

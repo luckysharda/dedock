@@ -596,6 +596,19 @@ final class TestClock: Clock, @unchecked Sendable {
         #expect(try Data(contentsOf: await file.backupURL(1)) == original)
     }
 
+    /// Saving identical bytes writes nothing and keeps the backups (e9's #42 review).
+    @Test func identicalSaveKeepsTheBackups() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = LayoutFile(directory: dir)
+        try await file.save(.makeDefault())
+        try await file.save(.makeDefault(nativeDockEdge: .left))          // a real change: backup 1
+        let backup = try Data(contentsOf: await file.backupURL(1))
+        for _ in 0..<6 { try await file.save(.makeDefault(nativeDockEdge: .left)) }
+        #expect(try Data(contentsOf: await file.backupURL(1)) == backup)
+        #expect(!FileManager.default.fileExists(atPath: await file.backupURL(2).path))
+    }
+
     /// Row 46: the save is an atomic replace (a new file is renamed into place), never an
     /// in-place write.
     @Test func saveIsAnAtomicReplace() async throws {

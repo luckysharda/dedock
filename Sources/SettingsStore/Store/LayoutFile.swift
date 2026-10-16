@@ -82,11 +82,14 @@ public actor LayoutFile {
                           corruptFileMovedTo: movedTo)
     }
 
-    /// Writes the document atomically, rotating the previous file into the backups.
+    /// Writes the document atomically, rotating the previous file into the backups. Identical
+    /// bytes are neither written nor rotated: a slow size-slider drag (transient, never-saved
+    /// state) would otherwise push the user's real backups out of `layout.json.1…5`.
     public func save(_ document: DedockDocument) throws {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try Self.encode(document)
         if fileManager.fileExists(atPath: fileURL.path) {
+            if (try? Data(contentsOf: fileURL)) == data { return }
             try rotateBackups()
         }
         try data.write(to: fileURL, options: .atomic)
