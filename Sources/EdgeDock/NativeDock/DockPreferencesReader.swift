@@ -89,7 +89,9 @@ public struct NativeDockPreferences: Sendable, Hashable {
         guard edge != .top else { return nil }
         let pad = estimatePadding
         let thickness = prefs.autohide || gap <= 0 ? prefs.tileSize + 2 * pad : gap
-        let length = prefs.tileSize * CGFloat(prefs.persistentAppCount + prefs.persistentOtherCount + 1) + 2 * pad
+        // Pinned items + Finder, plus one tile of margin at each end: running apps that are not
+        // pinned and the Recents section make the real Dock longer (T27(4); T31 measures it).
+        let length = prefs.tileSize * CGFloat(prefs.persistentAppCount + prefs.persistentOtherCount + 1 + 2) + 2 * pad
         let line = edge.line(of: f)
         let centre = line.midpoint
         let span = Interval(max(line.lower, centre - length / 2), min(line.upper, centre + length / 2))
@@ -109,6 +111,9 @@ public struct NativeDockPreferences: Sendable, Hashable {
 @MainActor public final class DockPreferencesReader {
     public private(set) var current: NativeDockPreferences
     private let onChange: @MainActor (NativeDockPreferences) -> Void
+    /// Called whenever the Dock process relaunches (`killall Dock`), even with unchanged
+    /// preferences: the manager rebuilds zones and repairs Spaces membership (T27(1)).
+    public var onRelaunch: (@MainActor () -> Void)?
     private var tokens: [(NotificationCenter, any NSObjectProtocol)] = []
 
     public init(onChange: @escaping @MainActor (NativeDockPreferences) -> Void) {
@@ -124,12 +129,19 @@ public struct NativeDockPreferences: Sendable, Hashable {
             (workspace, workspace.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] note in
                 let bundle = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier
                 guard bundle == "com.apple.dock" else { return }
-                MainActor.assumeIsolated { self?.reload() }
+                MainActor.assumeIsolated { self?.dockRelaunched() }
             }),
             (local, local.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.reload() }
             }),
         ]
+    }
+
+    /// The Dock relaunched: re-read its preferences and always report the relaunch.
+    func dockRelaunched() {
+        DedockLog.event(.display, "dock.relaunch")
+        reload()
+        onRelaunch?()
     }
 
     /// Re-reads the preferences; calls back only when they changed.
