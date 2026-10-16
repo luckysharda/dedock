@@ -69,6 +69,9 @@ public struct DockSurroundings: Sendable, Equatable {
     private var specs: [TileSpec] = []
     /// LG4 Adaptive (Liquid Glass): the tint and what it was read from (design.md §7.2a).
     private(set) var liquid = LiquidTintPolicy()
+    /// Builds the tokens for a tint in the current system state (appearance, Reduce
+    /// Transparency). Tests pin the system state here.
+    var tokensFor: (DockConfig, LiquidTint) -> DockTokens = { config, tint in config.tokens(liquid: tint) }
     private var backgroundKey: WallpaperLuminance.Key?
     private var backgroundTask: Task<Void, Never>?
 
@@ -159,7 +162,7 @@ public struct DockSurroundings: Sendable, Equatable {
         tiles = Self.tileModels(profile, running: running)
         let newLayout = Self.layout(new, tiles: profile?.items ?? [], display: newDisplay, surroundings: surroundings)
         let newSpecs = (profile?.items ?? []).map(\.tileSpec)
-        model.tokens = new.tokens(liquid: liquid.applied)
+        model.tokens = tokensFor(new, liquid.applied)
         let geometryChanged = newLayout != layout || oldConfig.edge != new.edge
         // The drag's frozen layout and order no longer match the dock (REG-048).
         if geometryChanged || newSpecs != specs { cancelReorder(reason: "relayout") }
@@ -228,9 +231,9 @@ public struct DockSurroundings: Sendable, Equatable {
         guard let tint = liquid.reveal() else { return }
         DedockLog.event(.edge, "dock.tint", ["tint": tint.rawValue])
         if reduceMotion {
-            model.tokens = config.tokens(liquid: tint)
+            model.tokens = tokensFor(config, tint)
         } else {
-            withAnimation(.easeInOut(duration: 0.3)) { model.tokens = config.tokens(liquid: tint) }   // text and dots
+            withAnimation(.easeInOut(duration: 0.3)) { model.tokens = tokensFor(config, tint) }   // text and dots
         }
         panel.root.applyCapsule(crossFade: !reduceMotion)
     }

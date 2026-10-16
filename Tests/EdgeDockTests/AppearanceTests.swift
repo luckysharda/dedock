@@ -98,14 +98,18 @@ struct AppearanceTests {
                                                                   edge: .left, depth: 100, screenSize: CGSize(width: 2000, height: 1000))) == nil)
     }
 
+    /// The coordinator's tokens are pinned to Reduce Transparency off and the dark appearance:
+    /// a runner with Reduce Transparency on would otherwise (rightly) draw Liquid Glass as Dark.
     func makeCoordinator(mode: DockConfig.Mode = .reveal) -> EdgeDockCoordinator {
         var config = DockConfig(id: "D1", edge: .left, mode: mode)
         config.appearance.style = .liquidGlass
         let display = AppRegressionTests.regDisplay
         let s = DockSurroundings(layout: DisplayLayout(displays: [display]), nativeDock: NativeDockPreferences(), reduceMotion: true)
         let profile = Profile(id: config.profileID, name: "p", items: [TileItem(id: "t1", kind: .app, bundleID: "com.apple.calculator")])
-        return EdgeDockCoordinator(config: config, profile: profile, display: display, surroundings: s,
-                                   running: RunningAppsMonitor(), icons: IconCache(), clock: ManualClock())
+        let c = EdgeDockCoordinator(config: config, profile: profile, display: display, surroundings: s,
+                                    running: RunningAppsMonitor(), icons: IconCache(), clock: ManualClock())
+        c.tokensFor = { config, tint in config.tokens(lightAppearance: false, reduceTransparency: false, liquid: tint) }
+        return c
     }
 
     /// LG4: a reading never changes a shown dock; the next reveal applies it.
