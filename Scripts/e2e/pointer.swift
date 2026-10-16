@@ -81,8 +81,23 @@ func onSomeDisplay(_ p: CGPoint) -> Bool {
 func requirePressable(_ pts: CGPoint...) {
     for p in pts where !onSomeDisplay(p) {
         FileHandle.standardError.write("pointer: refusing: press point \(p.x),\(p.y) is outside every display (REG-068); nothing posted\n".data(using: .utf8)!)
-        exit(2)
+        bail(2)
     }
+}
+
+/// Exit without leaving anything held on the user's Mac: every modifier this process pressed and
+/// the left button, if down, are let go first (a script can be refused after `mod cmd down`).
+var bailing = false
+func bail(_ code: Int32) -> Never {
+    if !bailing {
+        bailing = true
+        for k in ["cmd", "opt", "ctrl", "shift"] where modifierFlags.contains(modifierFlag(k)) { postModifier(k, down: false) }
+        if buttonDown { postButton(false, at: currentLocation()) }
+    }
+    exit(code)
+}
+func modifierFlag(_ key: String) -> CGEventFlags {
+    switch key { case "cmd": .maskCommand; case "opt", "alt": .maskAlternate; case "ctrl": .maskControl; default: .maskShift }
 }
 
 func screenBounds() -> CGRect {
@@ -101,7 +116,7 @@ func post(to p: CGPoint, dx: Double? = nil, dy: Double? = nil) {
     let type: CGEventType = buttonDown ? .leftMouseDragged : .mouseMoved
     guard let e = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left) else {
         FileHandle.standardError.write("pointer: could not create event\n".data(using: .utf8)!)
-        exit(3)
+        bail(3)
     }
     e.setIntegerValueField(.mouseEventDeltaX, value: Int64(ddx.rounded()))
     e.setIntegerValueField(.mouseEventDeltaY, value: Int64(ddy.rounded()))
@@ -116,7 +131,7 @@ func post(to p: CGPoint, dx: Double? = nil, dy: Double? = nil) {
 func postButton(_ down: Bool, at p: CGPoint, clickState: Int64 = 1) {
     if down { requirePressable(p) }   // backstop: every press path ends here
     let type: CGEventType = down ? .leftMouseDown : .leftMouseUp
-    guard let e = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left) else { exit(3) }
+    guard let e = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left) else { bail(3) }
     e.setIntegerValueField(.mouseEventClickState, value: clickState)
     e.flags = modifierFlags
     e.setIntegerValueField(.eventSourceUserData, value: synTag)
@@ -135,7 +150,7 @@ func postModifier(_ key: String, down: Bool) {
     default: fatal("unknown modifier \(key) (cmd|opt|ctrl|shift)")
     }
     if down { modifierFlags.insert(flag) } else { modifierFlags.remove(flag) }
-    guard let e = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: down) else { exit(3) }
+    guard let e = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: down) else { bail(3) }
     e.type = .flagsChanged
     e.flags = modifierFlags
     e.setIntegerValueField(.eventSourceUserData, value: synTag)
@@ -145,7 +160,7 @@ func postModifier(_ key: String, down: Bool) {
 
 func fatal(_ msg: String) -> Never {
     FileHandle.standardError.write("pointer: \(msg)\n".data(using: .utf8)!)
-    exit(2)
+    bail(2)
 }
 
 // MARK: - Edges
