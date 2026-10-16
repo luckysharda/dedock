@@ -242,6 +242,10 @@ extension MappingRegressionTests {
         for _ in 0..<100 { await Task.yield() }
     }
 
+    /// The hello's reveal ran. The slide is a real animation, so on a runner it can complete
+    /// before the check; either phase means the reveal was sent.
+    func revealed(_ c: EdgeDockCoordinator) -> Bool { c.phase == .revealing || c.phase == .shown }
+
     func move(_ c: EdgeDockCoordinator, to d: DisplaySnapshot, _ s: DockSurroundings) {
         c.update(config: c.config, profile: nil, display: d, surroundings: s)
     }
@@ -253,12 +257,12 @@ extension MappingRegressionTests {
         move(c, to: air, s)
         #expect(c.phase == .hidden)                       // waiting for the display set to settle
         await advance(clock, .milliseconds(1000))
-        #expect(c.phase == .revealing)
+        #expect(revealed(c))   // the real slide may already have finished (CI)
         finishAnimation(c)
         await advance(clock, .milliseconds(900))
         #expect(c.phase == .shown)
         await advance(clock, .milliseconds(150))
-        #expect(c.phase == .hiding)
+        #expect(c.phase == .hiding || c.phase == .hidden)
         c.teardown()
     }
 
@@ -272,7 +276,7 @@ extension MappingRegressionTests {
         await advance(clock, .milliseconds(700))
         #expect(c.phase == .hidden)                       // the first one was superseded
         await advance(clock, .milliseconds(300))
-        #expect(c.phase == .revealing)
+        #expect(revealed(c))   // the real slide may already have finished (CI)
         c.teardown()
     }
 
@@ -292,7 +296,7 @@ extension MappingRegressionTests {
         await advance(clock, .milliseconds(8000))         // > 10 s since the first
         move(c, to: air, s)
         await advance(clock, .milliseconds(1000))
-        #expect(c.phase == .revealing)
+        #expect(revealed(c))   // the real slide may already have finished (CI)
         c.teardown()
     }
 
