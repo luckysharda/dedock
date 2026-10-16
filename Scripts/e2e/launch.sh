@@ -140,8 +140,10 @@ while (( SECONDS < deadline )); do
     kill $log_pid 2>/dev/null
     echo "FAIL app exited during launch (see $R/app-stdout.txt); log stream stopped"; exit 1
   fi
-  if grep -q '"eventMessage":"launch.edgeReady' $R/log.ndjson; then
-    line=$(grep '"eventMessage":"launch.edgeReady' $R/log.ndjson | head -1)
+  # Only OUR process's line counts (REG-069): another Dedock process logging to the same subsystem
+  # (another session's run or unit tests) once made a launch that never became ready read as ready.
+  line=$(grep '"eventMessage":"launch.edgeReady' $R/log.ndjson | grep -E "\"processID\" ?: ?${app_pid}[,}]" | head -1 || true)
+  if [[ -n $line ]]; then
     ready=$(print -r -- $line | grep -o '"eventMessage":"launch.edgeReady[^"]*' | sed 's/.*launch.edgeReady //')
     # External cross-check: mach clock just before exec -> machTimestamp of the event (24 MHz ticks).
     ready_mach=$(print -r -- $line | grep -o '"machTimestamp":[0-9]*' | cut -d: -f2)

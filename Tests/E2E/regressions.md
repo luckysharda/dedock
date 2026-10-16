@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-069.**
+Ask the E2E lane for the next free id. **Next free: REG-070.**
 
 ## How the suite runs
 
@@ -87,6 +87,7 @@ Ask the E2E lane for the next free id. **Next free: REG-069.**
 | REG-066 | The top dock's zone was empty: a wide status-level overlay of another app was taken for a status item and excluded the whole span (`95411f2`: only real status items are excluded, with nearest-free and ⌥ fallbacks; `zones.computed` logged) | geom-check top zone rule (`toprule=`); x-18 T scenarios; row "T status item area never triggers" | regress.sh (`edges=…,T`) + geom-check | app |
 | REG-067 | Where the shown capsule does not touch its zone (top: the menu-bar band; bottom beside the native Dock: the diagonal from a side strip over the Dock), a pause of more than the hide delay on the way from the zone to the dock hid it. Fix: the reveal corridor counts the path from the zone entry to the capsule as inside until the first capsule visit | x-19 rows "gap hold keeps the dock shown" (1 s in the band: no hide) and "corridor ends after the first capsule visit" (leaving through the band later: hide at hideDelay ± 16 ms after the leave), `Scripts/e2e/gap-hold.py`; SKIP on edges with no band | regress.sh (`reg067=1`) + unit | app |
 | REG-068 | The harness pressed at a point it had not verified: Z1 dragged Settings' "Dock size" slider at y 1283 on a 1080-pt screen (the slider was below the visible pane), so the cursor clamped to the bottom edge, where the native Dock sits (cand-7a34887b; Dock prefs unchanged, nothing left open). Rule: no pointer press off every display, and none before an AX hit confirms Dedock's own target | `pointer` refuses a click/drag whose points are off every display (exit 2, nothing posted); `press_ok` (AX hit = Dedock's element, role/label) before every press; Z1 scrolls the slider into view through AX first; self-test: dry-run refusal and an audit that every press line is guarded | harness self-test | harness |
+| REG-069 | launch.sh took any `launch.edgeReady` line in the subsystem's log stream as its launch's: another Dedock process logging at the same time (another session's run or unit tests) made a launch that never became ready read as ready (self-test REG-050 flaked with the real app's `ms=… docks=…` line) | launch.sh matches only lines whose `processID` is the launched app's pid; self-test: a foreign process's ready line does not ready a never-ready launch | harness self-test | harness |
 
 ## Adding an entry
 

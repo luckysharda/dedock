@@ -527,6 +527,11 @@ check "REG-049 measure-idle: no samples is FAIL" "grep -q '^FAIL top gave 0 samp
 FAKE_NO_READY=1 Scripts/e2e/launch.sh selftest-noready --bin $B/fake-dock --timeout 2 > $T/noready.txt 2>&1
 nr_app=$(sed -n 's/^APP_PID=//p' $B/runs/selftest-noready/run.env); nr_log=$(sed -n 's/^LOG_PID=//p' $B/runs/selftest-noready/run.env)
 check "REG-050 failed launch leaves nothing running" "grep -q '^FAIL no launch.edgeReady' $T/noready.txt && ! kill -0 $nr_app 2>/dev/null && ! kill -0 $nr_log 2>/dev/null"
+# REG-069: another process's ready line (a second fake that becomes ready meanwhile) never readies ours
+( sleep 1; mkdir -p $T/foreign-home; DEDOCK_E2E=1 DEDOCK_E2E_HOME=$T/foreign-home $B/fake-dock > /dev/null 2>&1 & fp=$!; sleep 2.5; kill $fp 2>/dev/null ) &
+FAKE_NO_READY=1 Scripts/e2e/launch.sh selftest-noready2 --bin $B/fake-dock --timeout 3 > $T/noready2.txt 2>&1
+wait
+check "REG-069 a foreign process's launch.edgeReady does not ready a launch that never became ready" "grep -q '^FAIL no launch.edgeReady' $T/noready2.txt && ! grep -q '^PASS launched' $T/noready2.txt"
 # regress.sh killed mid-run: the trap tears down what it launched (fake debug bundle, private lock)
 FA=$T/fakeapp; mkdir -p $FA/build/Dedock.app/Contents/MacOS; cp $B/fake-dock $FA/build/Dedock.app/Contents/MacOS/FakeDock
 # Fake bundle id: launch.sh treats it as a non-real app, regress.sh runs it in self-test mode
