@@ -105,10 +105,10 @@ import Testing
     }
 
     func settle(_ clock: ManualClock, _ repair: SpaceMembershipRepair) async {
-        for _ in 0..<10 {
+        for _ in 0..<40 {
             for _ in 0..<50 where clock.pendingCount == 0 && repair.isRepairing { await Task.yield() }
             guard repair.isRepairing else { return }
-            clock.advance(by: SpaceMembershipRepair.recheck)
+            clock.advance(by: SpaceMembershipRepair.turn)
             for _ in 0..<20 { await Task.yield() }
         }
     }

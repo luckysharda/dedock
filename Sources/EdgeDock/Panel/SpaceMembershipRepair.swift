@@ -19,6 +19,9 @@ import Diagnostics
 
     static let attempts = 3
     static let recheck: Duration = .milliseconds(120)
+    /// One run-loop turn between the flip and the restore. `Task.yield()` is not one: both
+    /// assignments could land in the same main-queue drain and AppKit would see no change.
+    static let turn: Duration = .milliseconds(16)
 
     private let window: Window
     private let clock: any Clock<Duration>
@@ -59,7 +62,10 @@ import Diagnostics
             defer { self?.task = nil }
             for attempt in 1...Self.attempts {
                 window.setBehavior(other)
-                await Task.yield()                        // one run-loop turn
+                do { try await clock.sleep(for: Self.turn, tolerance: .zero) } catch {
+                    window.setBehavior(original)
+                    return
+                }
                 window.setBehavior(original)
                 do { try await clock.sleep(for: Self.recheck, tolerance: .zero) } catch { return }
                 if window.isOnActiveSpace() {

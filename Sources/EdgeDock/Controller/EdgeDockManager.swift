@@ -74,7 +74,8 @@ import SettingsStore
             if changed.values.contains(false) { self.repairSpaces(reason: "fullscreenExit") }
         }
         let ws = NSWorkspace.shared.notificationCenter
-        for (name, reason) in [(NSWorkspace.activeSpaceDidChangeNotification, "space"), (NSWorkspace.didWakeNotification, "wake")] {
+        for (name, reason) in [(NSWorkspace.activeSpaceDidChangeNotification, "space"), (NSWorkspace.didWakeNotification, "wake"),
+                               (NSWorkspace.screensDidWakeNotification, "screensWake")] {
             spaceObservers.append(ws.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.repairSpaces(reason: reason) }
             })
@@ -138,6 +139,8 @@ import SettingsStore
     /// The Dock process relaunched (`killall Dock`): re-sync, rebuild every dock's zones and
     /// repair Spaces membership, even when its preferences are unchanged (T27(1)).
     func dockRelaunched() {
+        // Intentionally a second sync if the relaunch also changed the preferences (the reader
+        // already called back): this one always runs, so zones are rebuilt either way.
         sync(reason: "dockRelaunch")
         let s = surroundings
         for c in coordinators.values { c.forceRebuildZones(s) }
