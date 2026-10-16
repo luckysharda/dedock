@@ -157,5 +157,9 @@ import Testing
         let bottom = RemoveConfirmPanel.origin(size: size, capsule: CGRect(x: 800, y: 86, width: 300, height: 78),
                                                drop: CGPoint(x: 950, y: 300), edge: .bottom, visible: visible)
         #expect(bottom.y == CGFloat(164 + 10))
+        let top = RemoveConfirmPanel.origin(size: size, capsule: CGRect(x: 800, y: 940, width: 300, height: 78),
+                                            drop: CGPoint(x: 950, y: 800), edge: .top, visible: visible)
+        #expect(top.y == CGFloat(940 - 10 - 92))                                // below the capsule
+        #expect(top.x == CGFloat(950 - 150))
     }
 }

@@ -106,11 +106,18 @@ import Diagnostics
     }
 
     /// Shows the panel without making it key, and starts the timeout. A click anywhere outside
-    /// it (or Esc while it has focus) keeps the tile.
+    /// it keeps the tile. Esc and Return reach the panel only when it has focus through
+    /// VoiceOver or Full Keyboard Access: it never takes key focus itself (typing stays with the
+    /// user's app), so for everyone else the click elsewhere and the timeout are the Keep paths.
+    /// A global Esc needs the Accessibility grant (T28).
     func show(capsule: CGRect, drop: CGPoint, edge: ScreenEdge, visible: CGRect) {
         panel.layoutIfNeeded()
         panel.setFrameOrigin(Self.origin(size: panel.frame.size, capsule: capsule, drop: drop, edge: edge, visible: visible))
         panel.orderFrontRegardless()
+        // VoiceOver users hear the question without moving focus.
+        NSAccessibility.post(element: panel, notification: .announcementRequested, userInfo: [
+            .announcement: panel.title, .priority: NSAccessibilityPriorityLevel.high.rawValue,
+        ])
         let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         if let m = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
             MainActor.assumeIsolated { self?.keep() }
@@ -121,7 +128,7 @@ import Diagnostics
             let window = event.windowNumber
             let consumed = MainActor.assumeIsolated { () -> Bool in
                 guard let self else { return false }
-                if esc { self.keep(); return true }                                   // Esc keeps
+                if esc { self.keep(); return true }      // Esc keeps (only when focused, see above)
                 if click, window != self.panel.windowNumber { self.keep() }           // a click elsewhere keeps
                 return false
             }

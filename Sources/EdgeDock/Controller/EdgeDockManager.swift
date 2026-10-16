@@ -310,10 +310,13 @@ import SettingsStore
     var presentRemoval: (_ name: String, _ confirmation: RemovalConfirmation, _ c: EdgeDockCoordinator, _ drop: CGPoint) -> Void = { _, _, _, _ in }
     private var presentRemovalDefault = true
 
+    /// One question at a time: a second drag-out while one is open is ignored (that tile has
+    /// already sprung back, so nothing is lost; drag it out again after answering).
     func askToRemove(_ tile: TileID, from profile: ProfileID, coordinator c: EdgeDockCoordinator, at drop: CGPoint) {
         guard pendingRemoval == nil,
               let item = settings.document.profile(profile)?.items.first(where: { $0.id == tile }) else { return }
-        let name = item.displayName ?? (item.kind == .separator ? "Separator" : (item.path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "this tile"))
+        let name = item.displayName
+            ?? (item.kind == .separator ? "Separator" : item.path.map { FileManager.default.displayName(atPath: $0) } ?? "this tile")
         // The dock stays shown while the question is open.
         c.controller.send(.hold(.popoverOpen, true))
         let confirmation = RemovalConfirmation(tile: tile, clock: clock) { [weak self, weak c] result in
