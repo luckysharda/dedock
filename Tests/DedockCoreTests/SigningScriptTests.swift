@@ -26,6 +26,7 @@ import Testing
         #expect(r.output.contains("extendedKeyUsage=critical,codeSigning"))
         #expect(r.output.contains("/usr/bin/security import"))
         #expect(r.output.contains("dry run: nothing changed"))
+        #expect(r.output.contains("-passout env:DEDOCK_P12_PASS"))          // not on the command line
         #expect(!r.output.contains("pass:") || r.output.contains("pass:***"))
     }
 
@@ -33,6 +34,8 @@ import Testing
         #expect(try run(["--bogus"]).status == 2)
         #expect(try run(["--days", "abc"]).status == 2)
         #expect(try run(["--name", "a\"b"]).status == 2)
+        #expect(try run(["--name", "a+b"]).status == 2)
+        #expect(try run(["--name", "a=b"]).status == 2)
         #expect(try run(["--name"]).status != 0)
     }
 }

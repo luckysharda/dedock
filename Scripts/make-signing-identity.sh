@@ -30,7 +30,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 case "$DAYS" in ''|*[!0-9]*) echo "--days must be a positive number" >&2; exit 2 ;; esac
-case "$NAME" in *[\"\\/]*) echo "--name must not contain quotes, slashes or backslashes" >&2; exit 2 ;; esac
+case "$NAME" in *[\"\\/+=]*) echo "--name must not contain quotes, slashes, backslashes, + or =" >&2; exit 2 ;; esac
 
 # In a dry run the commands are printed with the throwaway p12 password masked.
 run() { if [ "$DRY" = 1 ]; then echo "would run: ${*//$PASS/***}"; else "$@"; fi; }
@@ -43,9 +43,14 @@ if [ "$DRY" = 0 ]; then
     fi
 fi
 
+umask 077                      # the key and the p12 are readable by this user only
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 PASS="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24 || true)"
+# openssl reads the throwaway p12 password from the environment, not the command line (which
+# other local processes can see in `ps`). `security import` has no such option: its -P is
+# visible for the moment the import runs; the p12 and its password are deleted right after.
+export DEDOCK_P12_PASS="$PASS"
 
 # A code-signing certificate: digitalSignature + codeSigning, not a CA.
 run /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days "$DAYS" \
@@ -54,7 +59,7 @@ run /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days "$DAYS" \
     -addext "keyUsage=critical,digitalSignature" \
     -addext "extendedKeyUsage=critical,codeSigning"
 run /usr/bin/openssl pkcs12 -export -inkey "$WORK/key.pem" -in "$WORK/cert.pem" \
-    -name "$NAME" -out "$WORK/identity.p12" -passout "pass:$PASS"
+    -name "$NAME" -out "$WORK/identity.p12" -passout env:DEDOCK_P12_PASS
 # -T: codesign is on the key's access list. The first signing may still ask once ("codesign
 # wants to access key"); Always Allow ends it. The partition list is left alone on purpose:
 # changing it needs the user's login password inside a script.
