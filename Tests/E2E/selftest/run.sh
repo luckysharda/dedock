@@ -336,6 +336,12 @@ python3 Scripts/e2e/z1.py judge $T/z1-mid.json $T/z1-after.json $T/z1-layout.jso
 python3 Scripts/e2e/z1.py judge $T/z1-still.json $T/z1-after-bad.json $T/z1-layout.json 0 > $T/z1-bad.txt
 python3 Scripts/e2e/z1.py points $T/z1-tree.jsonl > $T/z1-points.txt
 check "Z1 judge: live between stops + snapped XL with capsule 115.7 PASS; no live change, or capsule tile+16 (108) FAIL; knob points M→85" "[[ \$(grep -c \$'^1\t' $T/z1-ok.txt) == 2 && \$(grep -c \$'^0\t' $T/z1-bad.txt) == 2 && \$(cat $T/z1-points.txt) == '373.6 210.0 478.2' ]]"
+# REG-068: no press off every display (dry run: the pointer posts nothing either way), and every
+# pointer press in regress.sh / scenario.sh is guarded by an AX hit check (press_ok) on Dedock's target
+DEDOCK_POINTER_DRYRUN=1 $B/pointer click 1210 99999 > $T/press-off.out 2> $T/press-off.err; echo $? > $T/press-off.rc
+DEDOCK_POINTER_DRYRUN=1 $B/pointer drag 100 100 100 99999 300 > $T/drag-off.out 2> $T/drag-off.err; echo $? > $T/drag-off.rc
+check "REG-068 pointer refuses a click or drag off every display, before posting anything" "[[ \$(cat $T/press-off.rc) == 2 && \$(cat $T/drag-off.rc) == 2 && ! -s $T/press-off.out && ! -s $T/drag-off.out ]] && grep -q 'outside every display (REG-068); nothing posted' $T/press-off.err"
+check "REG-068 audit: every pointer click/drag line in the harness is marked guarded by press_ok" "! grep -nE 'pointer( -q)? (click|drag) ' Scripts/e2e/regress.sh Scripts/e2e/scenario.sh | grep -v 'guarded: press_ok' | grep -q . && grep -q '^press_ok() {' Scripts/e2e/regress.sh"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id

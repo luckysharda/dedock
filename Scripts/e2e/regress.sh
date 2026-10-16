@@ -152,7 +152,7 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
     (( shots )) && print -l "shot $t" "REG-006 S$t"
   done
   (( t25 )) && print -l "T25 drag-out asks without taking focus R" "T25 Keep keeps the tile R" "T25 a click elsewhere in Dedock keeps the tile (local-monitor path) R" \
-                        "T25 Remove removes the tile and persists it R" "T25 a second drag-out while asking is ignored R" \
+                        "T25 Remove removes the tile and persists it R" "T25 a new drag answers Keep, and its drop asks again R" \
                         "T25 no answer in 8 s keeps the tile R" "REG-006 D"
   (( z1 )) && print -l "Z1 size slider drives the live dock while dragged" "Z1 release snaps to a stop and persists" "REG-006 Z"
   (( idle )) && print -l "I.idle-L" "REG-006 I"
@@ -514,6 +514,17 @@ print(max(m) if m else -1)" $R/menu-windows.jsonl 2>/dev/null || echo -1)
   fi
 }
 
+press_ok() {  # press_ok <x> <y> <pid> [role] [label]: REG-068, the hit at a point is Dedock's own element
+  # (and that role/label) right now; every pointer press in this harness is sent only after this.
+  $B/axprobe at $1 $2 only=$3 | python3 -c "
+import json, sys
+d = json.load(sys.stdin); pid, role, label = int(sys.argv[1]), sys.argv[2], sys.argv[3]
+# the hit element or one of its parents (a slider's knob is its AXValueIndicator child)
+els = [d] + d.get('chain', [])
+fits = lambda e: (not role or e.get('role') == role) and (not label or e.get('label') == label)
+sys.exit(not (d.get('pid') == pid and any(fits(e) for e in els)))" $3 "${4:-}" "${5:-}"
+}
+
 gap_hold() {  # gap_hold <run dir> <pid> <side>: x-19 "gap hold" (REG-067, reg067=1)
   # Zone dwell → reveal; 1 s in the band between the zone and the capsule ± hysteresis (the top
   # edge's menu-bar band; the diagonal over the native Dock beside it) → still shown (the reveal
@@ -590,7 +601,12 @@ json.dump(w or {}, open(sys.argv[1], 'w'))" $R/h4-window.json
   n1=$(wc -l < $L)
   wait $lp 2>/dev/null
   for k in a f; do
-    if [[ -s $R/h4-$k.png ]]; then $B/ocr $R/h4-$k.png > $R/h4-ocr-$k.jsonl 2>> $R/h4-ocr.err; tool "ocr $k $side" $? 0; else : > $R/h4-ocr-$k.jsonl; fi
+    # Vision can fail transiently (an e5rt compute error in cand-7a34887b): up to 3 tries on exit 2
+    if [[ -s $R/h4-$k.png ]]; then
+      local orc=2 try
+      for try in 1 2 3; do $B/ocr $R/h4-$k.png > $R/h4-ocr-$k.jsonl 2>> $R/h4-ocr.err; orc=$?; (( orc != 2 )) && break; sleep 0.5; done
+      tool "ocr $k $side" $orc 0
+    else : > $R/h4-ocr-$k.jsonl; fi
   done
   $B/analyze contamination $R/h4-listen.txt > $R/h4-contam.txt 2>&1; tool "analyze contamination h4 $side" $? 0 1
   python3 $E/h4.py judge $G $R/h4-window.json $R/h4-ocr-a.jsonl $R/h4-ocr-f.jsonl $R/h4-tree.jsonl $side > $R/h4-results.txt 2> $R/h4-judge.err; tool "h4 judge $side" $? 0
@@ -614,13 +630,20 @@ z1_rows() {  # z1_rows <run dir> <pid>: Z1 size slider (row 27), z1=1, own launc
   moved=1
   $B/notify $pid openSettings > /dev/null; tool "notify openSettings Z" $? 0
   sleep 1.5
+  # REG-068: the slider may sit below the screen in a tall pane: scroll it into view through AX on
+  # our own control, then press only where the hit is Dedock's AXSlider "Dock size" (start and end).
+  $B/axpress scroll $pid "Dedock Settings" "Dock size" > $R/z1-scroll.txt 2>&1; tool "axpress scroll Dock size" $? 0
+  sleep 0.6
   $B/axprobe tree $pid 14 > $R/z1-tree.jsonl
   local sl=($(python3 $E/z1.py points $R/z1-tree.jsonl 2>/dev/null))
   local r1="0	the Settings slider 'Dock size' was not found in the AX tree" r2="0	not reached"
-  if (( ${#sl} == 3 )); then
+  if (( ${#sl} == 3 )) && ! { press_ok ${sl[1]} ${sl[2]} $pid AXSlider "Dock size" && press_ok ${sl[3]} ${sl[2]} $pid AXSlider "Dock size" }; then
+    r1="0	not reachable: the hit at the slider's knob (${sl[1]}, ${sl[2]}) or drag end is not Dedock's AXSlider 'Dock size' (off screen or covered); nothing pressed"
+    r2="0	not reached (nothing pressed)"
+  elif (( ${#sl} == 3 )); then
     $B/listen 8 > $R/z1-listen.txt & lp=$!; sleep 0.3
     n0=$(wc -l < $L)
-    $B/pointer -q drag ${sl[1]} ${sl[2]} ${sl[3]} ${sl[2]} 600 1200 & dp=$!   # travel 0.6 s, then hold 1.2 s
+    $B/pointer -q drag ${sl[1]} ${sl[2]} ${sl[3]} ${sl[2]} 600 1200 & dp=$!   # travel 0.6 s, then hold 1.2 s  (guarded: press_ok)
     sleep 1.2
     cp $G $R/z1-mid.json 2>/dev/null
     local passes_mid=$(log_count $L $pid '^layout[.]pass' $n0)
@@ -645,8 +668,11 @@ t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1
   # ⌘-drag a tile out past the capsule + hysteresis → the non-activating confirm (non-key, frontmost
   # unchanged, popoverOpen hold); Keep (AX press) and a click elsewhere keep it. The click lands on
   # Dedock's own capsule padding, so it exercises the confirm's LOCAL event monitor; the global
-  # monitor (a click in another app) stays untested by design: the harness never clicks other apps; Remove removes it and persists the layout; a second drag-out while the question
-  # is open is ignored; no answer in 8 s keeps it. Only this launch's isolated data dir is touched;
+  # monitor (a click in another app) stays untested by design: the harness never clicks other apps.
+  # Remove removes it and persists the layout. A new drag while asking: its mouse-down is a click
+  # elsewhere, so question 1 answers Keep first and the new drop asks again (never two questions,
+  # no hide in between; e9's ruling). No answer in 8 s keeps it. Every drag starts only after an AX
+  # hit on the tile's own button (REG-068). Only this launch's isolated data dir is touched;
   # every press is on Dedock's own windows. Real input during the probe makes every row VOID.
   local R=$1 pid=$2 L=$1/log.ndjson G=$1/data/e2e/geometry.json Y=$1/data/layout.json lp n f0 f1 fc w k
   local -A row
@@ -656,9 +682,17 @@ t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1
   t25_reveal_drag() {  # reveal at the zone, onto tile pl, ⌘-drag it out; leaves the question open
     print -l "edge ${pl[1]} ${pl[2]}" "wait $(( ${pl[10]} + 500 ))" "glide ${pl[3]} ${pl[4]} 80" "wait 200" > $R/t25-reveal.txt
     $B/pointer -q script $R/t25-reveal.txt
-    $B/pointer -q drag ${pl[3]} ${pl[4]} ${pl[5]} ${pl[6]} 300 100 cmd
+    t25_drag
+  }
+  t25_drag() {  # ⌘-drag tile pl out, only once the hit at its centre is Dedock's own tile button (REG-068)
+    if press_ok ${pl[3]} ${pl[4]} $pid AXButton "$(python3 -c "import json,sys; print(next(t['name'] for t in json.load(open(sys.argv[1]))['docks'][0]['tiles'] if t['id'] == sys.argv[2]))" $G ${pl[11]})"; then
+      $B/pointer -q drag ${pl[3]} ${pl[4]} ${pl[5]} ${pl[6]} 300 100 cmd; tool "pointer drag t25" $? 0   # guarded: press_ok
+    else
+      tool "t25 drag start is not Dedock's tile: not pressed" 2 0
+    fi
     sleep 0.6
   }
+  t25_questions() { $B/axprobe tree $pid 1 | python3 -c "import json,sys; print(sum(1 for l in sys.stdin if l.strip() and json.loads(l).get('role') == 'AXWindow' and (json.loads(l).get('label') or '').startswith('Remove ')))" }
   t25_asked() { $B/axprobe tree $pid 1 | python3 -c "import json,sys; t=sys.argv[1]; sys.exit(not any(json.loads(l).get('role') == 'AXWindow' and json.loads(l).get('label') == t for l in sys.stdin if l.strip()))" "$(t25_title)" }
   t25_result() { log_count $L $pid "^tile[.]removeConfirm .*id=$1 .*result=$2|^tile[.]removeConfirm .*result=$2 .*id=$1" $3 }
   $E/desktop-lock.sh touch $me >/dev/null
@@ -689,9 +723,9 @@ t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1
     $B/pointer -q move ${pl[7]} ${pl[8]}
     local mine=0
     for k in {1..10}; do sleep 0.1
-      $B/axprobe at ${pl[7]} ${pl[8]} only=$pid | python3 -c "import json,sys; sys.exit(json.load(sys.stdin).get('pid') != int(sys.argv[1]))" $pid && { mine=1; break }
+      press_ok ${pl[7]} ${pl[8]} $pid && { mine=1; break }
     done
-    (( mine )) && $B/pointer -q click ${pl[7]} ${pl[8]}; sleep 0.6
+    (( mine )) && $B/pointer -q click ${pl[7]} ${pl[8]}; sleep 0.6   # guarded: press_ok
     ids1=$(python3 $E/t25.py ids $Y); r=$(t25_result ${pl[11]} keep $n); t25_asked; gone=$(( $? != 0 ))
     (( mine )) || r=0
     row[click]="$(( r == 1 && gone ))	click on the capsule's own padding$( (( mine )) || print -n ' NOT SENT (the hit there was not Dedock within 1 s)'): result=keep logged $r time(s); question closed: $( (( gone )) && echo yes || echo no); layout items unchanged: $([[ $ids1 == $ids0 ]] && echo yes || echo no)"
@@ -706,23 +740,38 @@ t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1
     local inl=0 ing=0; [[ " $ids1 " == *" ${pl[11]} "* ]] && inl=1; [[ " $gids " == *" ${pl[11]} "* ]] && ing=1
     row[remove]="$(( r == 1 && !inl && !ing ))	Remove pressed: result=remove logged $r time(s); '${pl[11]}' in the saved layout: $( (( inl )) && echo yes || echo no); in GEOM: $( (( ing )) && echo yes || echo no) (items $(print -r -- $ids0 | wc -w | tr -d ' ') → $(print -r -- $ids1 | wc -w | tr -d ' '))"
     $B/pointer -q move ${pl[5]} $(( ${pl[6]%.*} + 300 )); sleep 0.8
-    # 5. while one question is open, a second drag-out is ignored; 6. no answer in 8 s keeps it
+    # 5. a new drag while asking: question 1 answers Keep (its mouse-down is a click elsewhere)
+    #    before question 2 appears; never two question windows; no hide in between.
+    # 6. no answer in 8 s keeps the tile (question 2, left unanswered).
     ids0=$ids1
     if t25_plan 0; then
-      local first_id=${pl[11]} first_title="$(t25_title)"
+      local first_id=${pl[11]}
       n=$(wc -l < $L); t25_reveal_drag
-      local wins0=$($B/axprobe tree $pid 1 | grep -c '"label":"Remove ')
+      local wins0=$(t25_questions)
+      local wins1=-1 second_id=-
       if t25_plan 1; then
-        $B/pointer -q drag ${pl[3]} ${pl[4]} ${pl[5]} ${pl[6]} 300 100 cmd; sleep 0.6   # the dock is held shown
+        second_id=${pl[11]}
+        t25_drag   # the dock is held shown by question 1
+        wins1=$(t25_questions)
       fi
-      local wins1=$($B/axprobe tree $pid 1 | grep -c '"label":"Remove ')
-      local second_id=${pl[11]}
+      local order=($(python3 -c "
+import json, re, sys
+log, pid, start, q1, q2 = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5]
+ev = []
+for i, l in enumerate(open(log)):
+    if i < start or not l.startswith('{'): continue
+    r = json.loads(l.rstrip().rstrip(','))
+    if r.get('processID') == pid: ev.append(r.get('eventMessage', ''))
+on = [i for i, m in enumerate(ev) if re.search(r'^inhibitor .*token=popoverOpen on=true', m)]
+k1 = next((i for i, m in enumerate(ev) if re.search(r'^tile[.]removeConfirm .*id=' + re.escape(q1) + r' .*result=keep|^tile[.]removeConfirm .*result=keep .*id=' + re.escape(q1), m)), None)
+q2on = next((i for i in on if k1 is not None and i > k1), None)
+hid = any(re.search(r'^reveal[.]transition .*to=hiding', m) for m in ev[(on[0] if on else 0):(q2on or 0)])
+print(int(k1 is not None and q2on is not None and not hid), 'yes' if k1 is not None else 'no', 'yes' if q2on is not None else 'no', 'yes' if hid else 'no')" $L $pid $n $first_id $second_id))
+      row[second]="$(( ${order[1]} && wins0 == 1 && wins1 == 1 ))	question 1 ('$first_id') answered Keep at the new drag: ${order[2]}, before question 2 ('$second_id') opened: ${order[3]}; question windows before / after the new drop: $wins0 / $wins1 (exp 1 / 1); a hide between the questions: ${order[4]}"
       sleep 8.6
       ids1=$(python3 $E/t25.py ids $Y)
-      local rt=$(t25_result $first_id timeout $n) r2=$(log_count $L $pid "^tile[.]removeConfirm .*id=$second_id" $n)
-      $B/axprobe tree $pid 1 | grep -q "\"label\":\"$first_title\""; gone=$(( $? != 0 ))
-      row[second]="$(( wins0 == 1 && wins1 == 1 && r2 == 0 ))	question windows before / after a second drag-out ('$second_id'): $wins0 / $wins1; questions about it: $r2"
-      row[timeout]="$(( rt == 1 && gone ))	no answer: result=timeout logged $rt time(s) after 8.6 s; question closed: $( (( gone )) && echo yes || echo no); layout items unchanged: $([[ $ids1 == $ids0 ]] && echo yes || echo no)"
+      local rt=$(t25_result $second_id timeout $n); gone=$(( $(t25_questions) == 0 ))
+      row[timeout]="$(( rt == 1 && gone ))	question 2 ('$second_id') unanswered: result=timeout logged $rt time(s) within 8.6 s; question closed: $( (( gone )) && echo yes || echo no); layout items unchanged: $([[ $ids1 == $ids0 ]] && echo yes || echo no)"
       [[ $ids1 == $ids0 ]] || row[timeout]="0	${row[timeout]#*	}"
     fi
     $B/pointer -q move ${pl[5]} $(( ${pl[6]%.*} + 300 )); sleep 0.6
@@ -731,7 +780,7 @@ t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1
   $B/analyze contamination $R/t25-listen.txt > $R/t25-contam.txt 2>&1; tool "analyze contamination t25" $? 0 1
   local foreign=$(grep -c '^FAIL input contamination' $R/t25-contam.txt) key cid v
   for key cid in ask "T25 drag-out asks without taking focus R" keep "T25 Keep keeps the tile R" click "T25 a click elsewhere in Dedock keeps the tile (local-monitor path) R" \
-                 remove "T25 Remove removes the tile and persists it R" second "T25 a second drag-out while asking is ignored R" \
+                 remove "T25 Remove removes the tile and persists it R" second "T25 a new drag answers Keep, and its drop asks again R" \
                  timeout "T25 no answer in 8 s keeps the tile R"; do
     v=${row[$key]:-"0	not reached"}
     if (( foreign )); then check "$cid" void "real input during the probe (rerun): ${v#*	}"; else check "$cid" ${v%%	*} "${v#*	}"; fi

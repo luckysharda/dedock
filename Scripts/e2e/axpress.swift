@@ -7,6 +7,9 @@
 // Build: swiftc -O Scripts/e2e/axpress.swift -o build/e2e/axpress
 // Run:   build/e2e/axpress close <pid> <window title>
 //        build/e2e/axpress press <pid> <window title> <control title or description>   (exit 3: not found)
+//        build/e2e/axpress scroll <pid> <window title> <control>   AXScrollToVisible on our own control
+//                                                                   (any role: e.g. Settings' "Dock size" slider), so
+//                                                                   a later pointer press lands on screen (REG-068)
 //        build/e2e/axpress menu <pid>          open the app's OWN status-item menu (x-18: menu above the top dock)
 //        build/e2e/axpress menu-cancel <pid>   close it again (AXCancel on the menu)
 
@@ -16,9 +19,9 @@ import ApplicationServices
 func fail(_ m: String) -> Never { FileHandle.standardError.write("axpress: \(m)\n".data(using: .utf8)!); exit(2) }
 
 let a = Array(CommandLine.arguments.dropFirst())
-guard (a.count == 3 && a[0] == "close") || (a.count == 4 && a[0] == "press") || (a.count == 2 && (a[0] == "menu" || a[0] == "menu-cancel")),
+guard (a.count == 3 && a[0] == "close") || (a.count == 4 && (a[0] == "press" || a[0] == "scroll")) || (a.count == 2 && (a[0] == "menu" || a[0] == "menu-cancel")),
       let pid = Int32(a[1]) else {
-    fail("usage: axpress close <pid> <window title> | press <pid> <window title> <control> | menu <pid> | menu-cancel <pid>")
+    fail("usage: axpress close <pid> <window title> | press|scroll <pid> <window title> <control> | menu <pid> | menu-cancel <pid>")
 }
 // REG-051: acting on a live app needs the REAL lock, checked here and not only by the caller.
 // The tool lives at <worktree>/build/e2e/axpress; the lock script at <worktree>/Scripts/e2e/.
@@ -69,7 +72,7 @@ guard let w = windows.first(where: { (attr($0, kAXTitleAttribute) as String?) ==
 let pressable: Set<String> = ["AXButton", "AXRadioButton", "AXCheckBox"]
 func find(_ e: AXUIElement, _ name: String, _ depth: Int) -> AXUIElement? {
     let role: String = attr(e, kAXRoleAttribute) ?? ""
-    if pressable.contains(role), (attr(e, kAXTitleAttribute) as String?) == name || (attr(e, kAXDescriptionAttribute) as String?) == name { return e }
+    if a[0] == "scroll" || pressable.contains(role), (attr(e, kAXTitleAttribute) as String?) == name || (attr(e, kAXDescriptionAttribute) as String?) == name { return e }
     guard depth < 24, let kids: [AXUIElement] = attr(e, kAXChildrenAttribute) else { return nil }
     for k in kids { if let hit = find(k, name, depth + 1) { return hit } }
     return nil
@@ -81,6 +84,11 @@ if a[0] == "close" {
 } else {
     guard let hit = find(w, a[3], 0) else { FileHandle.standardError.write("axpress: no control '\(a[3])' in '\(a[2])'\n".data(using: .utf8)!); exit(3) }
     target = hit
+}
+if a[0] == "scroll" {
+    let r = AXUIElementPerformAction(target, "AXScrollToVisible" as CFString)
+    guard r == .success else { fail("AXScrollToVisible failed: \(r.rawValue)") }
+    print("scrolled '\(a[3])' into view in '\(a[2])'"); exit(0)
 }
 let r = AXUIElementPerformAction(target, kAXPressAction as CFString)
 guard r == .success else { fail("AXPress failed: \(r.rawValue)") }
