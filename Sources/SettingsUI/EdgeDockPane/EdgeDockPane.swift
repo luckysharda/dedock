@@ -325,6 +325,9 @@ struct TileListSection: View {
                 Button("Add App…") { add(apps: true) }
                 Button("Add Folder…") { add(apps: false) }
                 Button("Add Separator") { append(TileItem(id: newID(), kind: .separator)) }
+                    .help("Splits the dock into separate capsules")
+                Button("Add Spacer") { append(TileItem(id: newID(), kind: .spacer)) }
+                    .help("Half a tile of empty space")
             }
             .padding(.top, 4)
         }
@@ -332,6 +335,7 @@ struct TileListSection: View {
 
     private func name(_ item: TileItem) -> String {
         if item.kind == .separator { return "Separator" }
+        if item.kind == .spacer { return "Spacer" }
         if let n = item.displayName { return n }
         if let p = item.path { return URL(fileURLWithPath: p).deletingPathExtension().lastPathComponent }
         return item.bundleID ?? "Tile"
@@ -340,6 +344,8 @@ struct TileListSection: View {
     @ViewBuilder private func icon(_ item: TileItem) -> some View {
         if item.kind == .separator {
             Image(systemName: "minus")
+        } else if item.kind == .spacer {
+            Image(systemName: "square.dashed")
         } else if let p = item.path {
             Image(nsImage: NSWorkspace.shared.icon(forFile: p)).resizable()
         } else {

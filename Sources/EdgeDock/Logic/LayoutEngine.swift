@@ -13,8 +13,10 @@ public enum TileShape: Sendable, Hashable {
     case square(TileLength)
     /// Apps and folders: a bare icon in a cell of `DockMetrics.appCellLength` along the axis.
     case app
-    /// The divider between sections.
+    /// Splits the dock into separate capsules ("islands", SP3) with `islandGap` between them.
     case separator
+    /// Half a cell of empty glass inside a capsule (SP3).
+    case spacer
 }
 
 public struct TileSpec: Sendable, Hashable, Identifiable {
@@ -50,6 +52,8 @@ public struct DockMetrics: Sendable, Hashable {
     /// visible edge − 48 pt, i.e. 24 pt per end).
     public var endMargin: CGFloat = 8
     public var minimumScale: CGFloat = 0.6
+    /// Clear space between two islands (SP3 Islands, design.md §7.2a).
+    public var islandGap: CGFloat = 8
 
     public var tileThickness: CGFloat { thickness - 2 * padding }
 
@@ -83,7 +87,12 @@ public struct PlacementInput: Sendable, Hashable {
 public struct DockLayout: Sendable, Hashable {
     /// The fixed, fully shown panel frame (AppKit global). It never moves while revealing.
     public let panelFrame: CGRect
+    /// The whole dock along the edge, every island included. It is still ONE dock for the trigger
+    /// zone, hysteresis and click-through region (SP3).
     public let capsuleFrame: CGRect
+    /// The capsules actually drawn: one per run of tiles between separators (SP3 Islands). Equal
+    /// to `[capsuleFrame]` without separators.
+    public let islands: [CGRect]
     /// At the shown position, AppKit global, in tile order.
     public let tileFrames: [TileID: CGRect]
     public let order: [TileID]
@@ -110,17 +119,36 @@ public enum LayoutEngine {
         case .bottom, .top: Interval(d.visibleFrame.minX + m.endMargin, d.visibleFrame.maxX - m.endMargin)
         }
 
+        // Only a separator with content on both sides (since the previous break) splits the
+        // dock; leading, trailing and doubled separators collapse to zero length and stay in
+        // the data, so the union never includes invisible glass. A spacer counts as content,
+        // so a spacer-only island is allowed.
+        var effective: Set<TileID> = []
+        var sawContent = false
+        for (i, tile) in tiles.enumerated() {
+            if tile.shape == .separator {
+                let contentAfter = tiles[(i + 1)...].contains { $0.shape != .separator }
+                if sawContent, contentAfter { effective.insert(tile.id); sawContent = false }
+            } else {
+                sawContent = true
+            }
+        }
+        let laid = tiles.filter { $0.shape != .separator || effective.contains($0.id) }
+
         func length(_ shape: TileShape, _ scale: CGFloat) -> CGFloat {
             switch shape {
             case .square(let units): CGFloat(units.rawValue) * t * scale
             case .app: (m.appCellLength ?? t) * scale
-            case .separator: max(1, m.separatorLength * scale)
+            // An island break: the end padding of one island, the gap, the start padding of the
+            // next, minus the tile gaps already on either side of the cell.
+            case .separator: max(1, 2 * m.padding + m.islandGap - 2 * m.gap * scale)
+            case .spacer: (m.appCellLength ?? t) * scale / 2
             }
         }
         func contentLength(_ scale: CGFloat) -> CGFloat {
-            guard !tiles.isEmpty else { return t * scale + 2 * m.padding }
-            let sum = tiles.reduce(0) { $0 + length($1.shape, scale) }
-            return sum + CGFloat(tiles.count - 1) * m.gap * scale + 2 * m.padding
+            guard !laid.isEmpty else { return t * scale + 2 * m.padding }
+            let sum = laid.reduce(0) { $0 + length($1.shape, scale) }
+            return sum + CGFloat(laid.count - 1) * m.gap * scale + 2 * m.padding
         }
 
         // Overflow: shrink uniformly down to minimumScale, then clip at the far end.
@@ -166,6 +194,13 @@ public enum LayoutEngine {
         var cursor: CGFloat = edge.isVertical ? capsule.maxY - m.padding : capsule.minX + m.padding
         let tileT = t * scale
         for tile in tiles {
+            guard tile.shape != .separator || effective.contains(tile.id) else {
+                // Collapsed: a zero-length frame where it sits, no gap.
+                frames[tile.id] = edge.isVertical
+                    ? CGRect(x: capsule.midX, y: cursor, width: 0, height: 0)
+                    : CGRect(x: cursor, y: capsule.midY, width: 0, height: 0)
+                continue
+            }
             let l = length(tile.shape, scale)
             let cross = tile.shape == .separator ? tileT : tileT
             let r: CGRect
@@ -178,6 +213,29 @@ public enum LayoutEngine {
             }
             frames[tile.id] = aligned(r)
         }
+
+        // Islands: each run of tiles between separators gets its own capsule (padding at both ends).
+        var islands: [CGRect] = []
+        var run: [CGRect] = []
+        func closeRun() {
+            guard let first = run.first, let last = run.last else { return }
+            let r: CGRect = edge.isVertical
+                ? CGRect(x: capsule.minX, y: last.minY - m.padding, width: capsule.width,
+                         height: first.maxY - last.minY + 2 * m.padding)
+                : CGRect(x: first.minX - m.padding, y: capsule.minY, width: last.maxX - first.minX + 2 * m.padding,
+                         height: capsule.height)
+            islands.append(aligned(r.intersection(capsule)))
+            run.removeAll()
+        }
+        for tile in tiles {
+            if tile.shape == .separator {
+                if effective.contains(tile.id) { closeRun() }
+            } else if let r = frames[tile.id] {
+                run.append(r)
+            }
+        }
+        closeRun()
+        if islands.isEmpty || effective.isEmpty { islands = [capsule] }
 
         // Panel: from the true screen edge (or the native Dock's inner edge) through the capsule,
         // plus the label lane and shadow margin toward the centre; never into the menu bar.
@@ -203,7 +261,7 @@ public enum LayoutEngine {
         let travel = m.thickness + m.edgeGap + max(8, m.shadowMargin)
         let o = edge.outward
         return DockLayout(
-            panelFrame: panel, capsuleFrame: capsule, tileFrames: frames, order: tiles.map(\.id),
+            panelFrame: panel, capsuleFrame: capsule, islands: islands, tileFrames: frames, order: tiles.map(\.id),
             indicatorSide: edge.opposite, hiddenOffset: CGVector(dx: o.dx * travel, dy: o.dy * travel),
             scale: scale, contentSpan: edge.isVertical ? Interval(capsule.minY, capsule.maxY) : Interval(capsule.minX, capsule.maxX),
             edge: edge)

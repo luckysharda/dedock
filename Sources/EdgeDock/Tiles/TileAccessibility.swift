@@ -12,20 +12,20 @@ struct TileAccessibilitySpec: Equatable {
     var hint: String
 
     init(_ tile: TileModel) {
-        hidden = tile.kind == .separator
+        hidden = tile.isFiller
         isButton = !hidden
         label = tile.name
         hint = switch tile.kind {
         case .folder: "Opens the folder"
         case .app: "Opens the app"
-        case .separator: ""
+        case .separator, .spacer: ""
         }
         value = if tile.isMissing {
             "missing"
         } else {
             switch tile.kind {
             case .folder: "folder"
-            case .separator: ""
+            case .separator, .spacer: ""
             case .app:
                 switch tile.running {
                 case .none: "not running"

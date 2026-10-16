@@ -95,6 +95,8 @@ extension TileItem {
         switch kind {
         case .separator:
             return TileModel(id: id, kind: .separator, name: "")
+        case .spacer:
+            return TileModel(id: id, kind: .spacer, name: "")
         case .folder:
             // Bookmark first (it follows a moved or renamed folder), then the path (REG-031).
             let url = resolvedBookmark ?? path.map { URL(fileURLWithPath: $0, isDirectory: true) }
@@ -115,6 +117,12 @@ extension TileItem {
     }
 
     public var tileSpec: TileSpec {
-        TileSpec(id: id, shape: kind == .separator ? .separator : (kind == .widget ? .square(.unit) : .app))
+        let shape: TileShape = switch kind {
+        case .separator: .separator
+        case .spacer: .spacer
+        case .widget: .square(.unit)
+        default: .app
+        }
+        return TileSpec(id: id, shape: shape)
     }
 }

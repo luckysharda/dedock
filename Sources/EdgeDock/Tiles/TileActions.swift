@@ -8,7 +8,7 @@ import SettingsStore
     @discardableResult
     public static func activate(_ tile: TileModel) -> String {
         switch tile.kind {
-        case .separator:
+        case .separator, .spacer:
             return "missing"
         case .folder:
             guard let url = tile.url, FileManager.default.fileExists(atPath: url.path) else { return log(tile, "missing") }

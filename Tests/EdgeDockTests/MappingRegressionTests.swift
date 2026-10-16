@@ -338,3 +338,33 @@ extension MappingRegressionTests {
         c.teardown()
     }
 }
+
+/// T26 separators and spacers, SP3 Islands: separate capsules that behave as one dock (macOS).
+@Suite(.serialized) @MainActor struct IslandTests {
+    @Test func fillersAreHiddenFromAccessibility() {
+        #expect(TileAccessibilitySpec(TileModel(id: "s", kind: .separator, name: "")).hidden)
+        #expect(TileAccessibilitySpec(TileModel(id: "p", kind: .spacer, name: "")).hidden)
+        #expect(TileModel(id: "p", kind: .spacer, name: "").isFiller)
+        #expect(TileItem(id: "p", kind: .spacer).tileSpec.shape == .spacer)
+        #expect(TileItem(id: "p", kind: .spacer).tileModel.kind == .spacer)
+    }
+
+    @Test(.enabled(if: NSScreen.main != nil)) func islandsDrawSeparatelyButActAsOneDock() throws {
+        let config = DedockDocument.makeDefault().docks[0]
+        let items = [TileItem(id: "a", kind: .app, bundleID: "com.apple.calculator"),
+                     TileItem(id: "s", kind: .separator),
+                     TileItem(id: "b", kind: .app, bundleID: "com.apple.TextEdit")]
+        let (c, _, _) = AppRegressionTests().makeCoordinator(config, items: items)
+        #expect(c.layout.islands.count == 2)
+        #expect(c.panel.root.capsules.count == 2)                          // two capsules drawn
+        // The gap between the islands: inside the one dock, but no tile there.
+        let sep = try #require(c.layout.tileFrames["s"])
+        let gap = CGPoint(x: sep.midX, y: sep.midY)
+        #expect(c.capsuleFrame.contains(gap))
+        #expect(c.model.tile(atScreen: gap) == nil)
+        c.controller.send(.command(.reveal))
+        if let g = c.controller.machine.activeGeneration { c.controller.send(.animationFinished(generation: g)) }
+        #expect(c.gate.accepts(gap))                                       // one click-through region
+        c.teardown()
+    }
+}
