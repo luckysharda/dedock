@@ -406,13 +406,14 @@ def log(name, ev):
 base = ["dock.tint.reading luminance=0.31 pending=dark applied=dark", "reveal.transition edge=left from=revealing to=shown cause=animationEnd inh=-"]
 log("t37-tint-ok.ndjson", base + ["reveal.transition edge=left from=shown to=armingHide cause=leave inh=-", "dock.tint tint=light"])
 log("t37-tint-bad.ndjson", base + ["dock.tint tint=light", "reveal.transition edge=left from=shown to=armingHide cause=leave inh=-"])
-open(f"{T}/t37-means-ok.txt", "w").write("frosted 40 40 42 30 30 32\nliquidGlass 52 52 55 31 31 33\nsolid 30 29 27 20 20 20\nFAIL tool x exited 2 a b\n")
+open(f"{T}/t37-means-ok.txt", "w").write("frosted 40 40 42 30 30 32\nliquidGlass 52 52 55 40 40 43\nsolid 30 29 27 20 20 20\nFAIL tool x exited 2 a b\n")
+open(f"{T}/t37-means-ab2df8e.txt", "w").write("frosted 55.6 52.1 59.0 48.0 47.9 50.6\nliquidGlass 39.5 41.7 44.3 44.3 45.0 46.0\nsolid 43.0 41.6 40.2 44.6 45.2 45.5\n")
 open(f"{T}/t37-means-same.txt", "w").write("frosted 40 40 42 30 30 32\nliquidGlass 41 41 43 31 31 33\nsolid 30 29 27 20 20 20\n")
 PY
 python3 Scripts/e2e/t37.py style $T/t37-dark.json dark 27 > $T/t37-r1.txt; python3 Scripts/e2e/t37.py style $T/t37-lg.json liquidGlass 27 > $T/t37-r2.txt
 python3 Scripts/e2e/t37.py style $T/t37-lg-old.json liquidGlass 27 > $T/t37-r3.txt
 python3 Scripts/e2e/t37.py tint $T/t37-tint-ok.ndjson 7 0 0 > $T/t37-r4.txt; python3 Scripts/e2e/t37.py tint $T/t37-tint-bad.ndjson 7 0 > $T/t37-r5.txt
-python3 Scripts/e2e/t37.py materials $T/t37-means-ok.txt > $T/t37-r6.txt; python3 Scripts/e2e/t37.py materials $T/t37-means-same.txt > $T/t37-r7.txt
+python3 Scripts/e2e/t37.py materials $T/t37-means-ab2df8e.txt > $T/t37-r11.txt; python3 Scripts/e2e/t37.py materials $T/t37-means-ok.txt > $T/t37-r6.txt; python3 Scripts/e2e/t37.py materials $T/t37-means-same.txt > $T/t37-r7.txt
 python3 -c "import json,sys; json.dump({'docks': [{'style': 'liquidGlass', 'material': 'solid'}]}, open(sys.argv[1], 'w'))" $T/t37-lg-rt.json
 python3 Scripts/e2e/t37.py style $T/t37-lg-rt.json liquidGlass 27 1 > $T/t37-r8.txt; python3 Scripts/e2e/t37.py style $T/t37-lg-rt.json liquidGlass 27 0 > $T/t37-r9.txt
 check "T37: under Reduce Transparency Liquid Glass as solid with no tint PASSes and says so; the same GEOM without RT FAILs" "grep -q \$'^1\t.*Reduce Transparency is ON' $T/t37-r8.txt && grep -q '^0' $T/t37-r9.txt"
@@ -426,7 +427,7 @@ with open(sys.argv[1], 'w') as f:
         f.write(json.dumps({'processID': 7, 'eventMessage': m}) + '\\n')" $T/t37-noread.ndjson
 python3 Scripts/e2e/t37.py tint $T/t37-noread.ndjson 7 0 0 > $T/t37-r10.txt
 check "T37 tint (smoke): no dock.tint.reading since Liquid Glass FAILs; the row says smoke" "grep -q \$'^0\t(smoke)' $T/t37-r10.txt && grep -q '(smoke)' $T/t37-r4.txt"
-check "T37: Dark solid / Liquid Glass glass+tint PASS, stand-in on 27 FAIL; tint change while shown FAIL; materials differ PASS, two alike FAIL" "grep -q '^1' $T/t37-r1.txt && grep -q '^1' $T/t37-r2.txt && grep -q '^0' $T/t37-r3.txt && grep -q '^1' $T/t37-r4.txt && grep -q '^0' $T/t37-r5.txt && grep -q '^1' $T/t37-r6.txt && grep -q '^0' $T/t37-r7.txt"
+check "T37: Dark solid / Liquid Glass glass+tint PASS, stand-in on 27 FAIL; tint change while shown FAIL; materials differ PASS, two alike FAIL" "grep -q '^1' $T/t37-r1.txt && grep -q '^1' $T/t37-r2.txt && grep -q '^0' $T/t37-r3.txt && grep -q '^1' $T/t37-r4.txt && grep -q '^0' $T/t37-r5.txt && grep -q '^1' $T/t37-r6.txt && grep -q '^0' $T/t37-r7.txt && grep -q '^0' $T/t37-r11.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id

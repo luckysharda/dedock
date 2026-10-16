@@ -11,7 +11,8 @@
            since reading-from-line (the switch to Liquid Glass).
     t37.py materials <mean-json-file>
         -> "<0|1>\\t<detail>": one line per material "<material> <sidebar r g b> <content r g b>"; every pair
-           of materials differs by more than 4 (0-255, max channel) in the sidebar or in the content.
+           of materials differs by more than 4 (0-255, max channel) in the sidebar AND in the content
+           (or the pair has a stated reason in REASONS for an equal content column).
 """
 import json, re, sys
 from itertools import combinations
@@ -66,6 +67,10 @@ def tint(log, pid, start, reading_from=None):
         f"(exp ≥ 1; unavailable=1: {unavailable}); tint lines: {', '.join(a.split()[1] for a in applied) or 'none'}")
 
 
+# Material pairs whose content column may legitimately look the same, with the reason (none yet).
+REASONS: dict = {}
+
+
 def materials(path):
     rows = {}
     for l in open(path):
@@ -82,9 +87,12 @@ def materials(path):
     notes, ok = [], True
     for a, b in combinations(sorted(rows), 2):
         ds, dc = diff(rows[a][0], rows[b][0]), diff(rows[a][1], rows[b][1])
-        ok &= ds > 4 or dc > 4
-        notes.append(f"{a}/{b}: sidebar Δ{ds:.0f}, content Δ{dc:.0f}")
-    return int(ok), "; ".join(notes) + " (exp each pair > 4 in the sidebar or the content)"
+        # every pair must differ in the sidebar AND in the content column; a pair whose content
+        # cannot differ needs a stated reason in REASONS (none today), shown on the card
+        why = REASONS.get(frozenset((a, b)))
+        ok &= ds > 4 and (dc > 4 or why is not None)
+        notes.append(f"{a}/{b}: sidebar Δ{ds:.1f}, content Δ{dc:.1f}" + (f" (content waived: {why})" if why and dc <= 4 else ""))
+    return int(ok), "; ".join(notes) + " (exp each pair: sidebar Δ > 4 AND content Δ > 4, or a stated reason)"
 
 
 if __name__ == "__main__":
