@@ -49,6 +49,9 @@ public struct DockSurroundings: Sendable, Equatable {
     var onArmed: (() -> Void)?
     /// Called when a tile asks to be removed (context menu).
     var onRemoveTile: ((TileID) -> Void)?
+    /// Called when a reorder drag is dropped outside the dock, with the screen drop point; the
+    /// manager asks before removing (evaluation row 43).
+    var onDragOut: ((TileID, CGPoint) -> Void)?
     /// Called with the new tile order after a reorder drop (DD-975).
     var onReorder: (([TileID]) -> Void)?
     /// Called with dropped app/folder URLs and the insertion index (DD-975 item 4).
@@ -345,12 +348,18 @@ public struct DockSurroundings: Sendable, Equatable {
     private func endReorder(at p: CGPoint) {
         guard let session = reorder else { return }
         endDrag()
-        // Dropping outside the capsule (plus hysteresis) cancels in M1.
         let hysteresis = config.triggerParameters.hysteresis
         let inside = session.frozen.capsuleFrame.insetBy(dx: -hysteresis, dy: -hysteresis).contains(p)
         let from = session.order.firstIndex(of: session.tile) ?? 0
         guard inside, session.index != from else {
-            model.apply(layout: layout, tiles: tiles)
+            // The tile springs back to its place; dropped outside, the manager asks whether to
+            // remove it (row 43).
+            if reduceMotion {
+                model.apply(layout: layout, tiles: tiles)
+            } else {
+                withAnimation(.spring(duration: 0.2, bounce: 0)) { model.apply(layout: layout, tiles: tiles) }
+            }
+            if !inside { onDragOut?(session.tile, p) }
             return
         }
         let order = Self.reordered(session.order, moving: session.tile, to: session.index)

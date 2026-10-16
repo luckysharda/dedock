@@ -151,6 +151,10 @@ import SettingsStore
                 c.onChange = { [weak self] in self?.dockChanged() }
                 c.onArmed = { [weak self] in self?.logEdgeReady() }
                 c.onRemoveTile = { [weak self] tile in self?.remove(tile: tile, from: config.profileID) }
+                c.onDragOut = { [weak self, weak c] tile, point in
+                    guard let self, let c else { return }
+                    self.askToRemove(tile, from: config.profileID, coordinator: c, at: point)
+                }
                 c.onReorder = { [weak self] order in self?.reorder(order, in: config.profileID) }
                 c.onPin = { [weak self] urls, index in self?.pin(urls, at: index, in: config.profileID) }
                 coordinators[config.id] = c
@@ -295,6 +299,50 @@ import SettingsStore
 
     static func tileItem(for url: URL) -> TileItem {
         TileActions.pinKind(url) == .app ? .app(at: url) : .folder(at: url)
+    }
+
+    // MARK: Drag-out removal (evaluation row 43, design §2.3a)
+
+    /// The question being asked, if any (one at a time).
+    private(set) var pendingRemoval: RemovalConfirmation?
+    private var removalPanel: RemoveConfirmPanel?
+    /// Puts the question on screen. Replaced in tests; the default is `RemoveConfirmPanel`.
+    var presentRemoval: (_ name: String, _ confirmation: RemovalConfirmation, _ c: EdgeDockCoordinator, _ drop: CGPoint) -> Void = { _, _, _, _ in }
+    private var presentRemovalDefault = true
+
+    func askToRemove(_ tile: TileID, from profile: ProfileID, coordinator c: EdgeDockCoordinator, at drop: CGPoint) {
+        guard pendingRemoval == nil,
+              let item = settings.document.profile(profile)?.items.first(where: { $0.id == tile }) else { return }
+        let name = item.displayName ?? (item.kind == .separator ? "Separator" : (item.path.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "this tile"))
+        // The dock stays shown while the question is open.
+        c.controller.send(.hold(.popoverOpen, true))
+        let confirmation = RemovalConfirmation(tile: tile, clock: clock) { [weak self, weak c] result in
+            guard let self else { return }
+            c?.controller.send(.hold(.popoverOpen, false))
+            self.removalPanel?.close()
+            self.removalPanel = nil
+            self.pendingRemoval = nil
+            DedockLog.event(.tiles, "tile.removeConfirm", ["id": tile.rawValue, "result": result.rawValue])
+            if result == .remove {
+                self.remove(tile: tile, from: profile)
+                Task { await self.settings.flush() }
+            }
+        }
+        pendingRemoval = confirmation
+        if presentRemovalDefault {
+            let panel = RemoveConfirmPanel(name: name, confirmation: confirmation)
+            removalPanel = panel
+            panel.show(capsule: c.capsuleFrame, drop: drop, edge: c.config.edge, visible: c.display.visibleFrame)
+        } else {
+            presentRemoval(name, confirmation, c, drop)
+            confirmation.start()
+        }
+    }
+
+    /// Tests answer the question themselves instead of the panel.
+    func replaceRemovalPresenter(_ present: @escaping (_ name: String, _ confirmation: RemovalConfirmation, _ c: EdgeDockCoordinator, _ drop: CGPoint) -> Void) {
+        presentRemoval = present
+        presentRemovalDefault = false
     }
 
     private func remove(tile: TileID, from profile: ProfileID) {
