@@ -119,6 +119,22 @@ public enum LayoutEngine {
         case .bottom, .top: Interval(d.visibleFrame.minX + m.endMargin, d.visibleFrame.maxX - m.endMargin)
         }
 
+        // Only a separator with content on both sides (since the previous break) splits the
+        // dock; leading, trailing and doubled separators collapse to zero length and stay in
+        // the data, so the union never includes invisible glass. A spacer counts as content,
+        // so a spacer-only island is allowed.
+        var effective: Set<TileID> = []
+        var sawContent = false
+        for (i, tile) in tiles.enumerated() {
+            if tile.shape == .separator {
+                let contentAfter = tiles[(i + 1)...].contains { $0.shape != .separator }
+                if sawContent, contentAfter { effective.insert(tile.id); sawContent = false }
+            } else {
+                sawContent = true
+            }
+        }
+        let laid = tiles.filter { $0.shape != .separator || effective.contains($0.id) }
+
         func length(_ shape: TileShape, _ scale: CGFloat) -> CGFloat {
             switch shape {
             case .square(let units): CGFloat(units.rawValue) * t * scale
@@ -130,9 +146,9 @@ public enum LayoutEngine {
             }
         }
         func contentLength(_ scale: CGFloat) -> CGFloat {
-            guard !tiles.isEmpty else { return t * scale + 2 * m.padding }
-            let sum = tiles.reduce(0) { $0 + length($1.shape, scale) }
-            return sum + CGFloat(tiles.count - 1) * m.gap * scale + 2 * m.padding
+            guard !laid.isEmpty else { return t * scale + 2 * m.padding }
+            let sum = laid.reduce(0) { $0 + length($1.shape, scale) }
+            return sum + CGFloat(laid.count - 1) * m.gap * scale + 2 * m.padding
         }
 
         // Overflow: shrink uniformly down to minimumScale, then clip at the far end.
@@ -178,6 +194,13 @@ public enum LayoutEngine {
         var cursor: CGFloat = edge.isVertical ? capsule.maxY - m.padding : capsule.minX + m.padding
         let tileT = t * scale
         for tile in tiles {
+            guard tile.shape != .separator || effective.contains(tile.id) else {
+                // Collapsed: a zero-length frame where it sits, no gap.
+                frames[tile.id] = edge.isVertical
+                    ? CGRect(x: capsule.midX, y: cursor, width: 0, height: 0)
+                    : CGRect(x: cursor, y: capsule.midY, width: 0, height: 0)
+                continue
+            }
             let l = length(tile.shape, scale)
             let cross = tile.shape == .separator ? tileT : tileT
             let r: CGRect
@@ -205,10 +228,14 @@ public enum LayoutEngine {
             run.removeAll()
         }
         for tile in tiles {
-            if tile.shape == .separator { closeRun() } else if let r = frames[tile.id] { run.append(r) }
+            if tile.shape == .separator {
+                if effective.contains(tile.id) { closeRun() }
+            } else if let r = frames[tile.id] {
+                run.append(r)
+            }
         }
         closeRun()
-        if islands.isEmpty || !tiles.contains(where: { $0.shape == .separator }) { islands = [capsule] }
+        if islands.isEmpty || effective.isEmpty { islands = [capsule] }
 
         // Panel: from the true screen edge (or the native Dock's inner edge) through the capsule,
         // plus the label lane and shadow margin toward the centre; never into the menu bar.

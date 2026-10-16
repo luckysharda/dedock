@@ -147,6 +147,19 @@ import Testing
                                         TileSpec(id: "s1", shape: .separator), TileSpec(id: "s2", shape: .separator),
                                         TileSpec(id: "b")])
         #expect(odd.islands.count == 2)
+        // Collapsed separators add no length: the union is exactly the hull of the islands.
+        let lower = odd.islands.map(\.minY).min()!, upper = odd.islands.map(\.maxY).max()!
+        #expect(odd.capsuleFrame.minY == lower && odd.capsuleFrame.maxY == upper)
+        let plain = layout(.left, tiles: [TileSpec(id: "a"), TileSpec(id: "s", shape: .separator), TileSpec(id: "b")])
+        #expect(odd.capsuleFrame.height == plain.capsuleFrame.height)     // same as one clean split
+        #expect(odd.tileFrames["s0"]!.height == 0 && odd.tileFrames["s2"]!.height == 0)
+        // A trailing separator alone: one island, no extra glass.
+        let trailing = layout(.bottom, tiles: [TileSpec(id: "a"), TileSpec(id: "s", shape: .separator)])
+        #expect(trailing.islands == [trailing.capsuleFrame])
+        #expect(trailing.capsuleFrame.width == layout(.bottom, tiles: [TileSpec(id: "a")]).capsuleFrame.width)
+        // A spacer-only island is allowed.
+        let spacerIsland = layout(.left, tiles: [TileSpec(id: "a"), TileSpec(id: "s", shape: .separator), TileSpec(id: "p", shape: .spacer)])
+        #expect(spacerIsland.islands.count == 2)
     }
 
     @Test func appCellsUseTheirOwnLength() {
