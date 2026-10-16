@@ -16,6 +16,8 @@ public struct TileModel: Identifiable, Sendable, Equatable {
     public var running: Running = .none
     /// The app or folder no longer exists.
     public var isMissing = false
+    /// The app's window count, read for the hovered tile only (nil when unknown).
+    public var windowCount: Int?
 
     public init(id: TileID, kind: Kind, name: String, bundleID: String? = nil, url: URL? = nil) {
         self.id = id
@@ -70,4 +72,51 @@ public struct TileModel: Identifiable, Sendable, Equatable {
     }
 
     func icon(for tile: TileModel) -> NSImage? { icons.icon(for: tile) }
+
+    /// The hover label's lane: toward the screen centre, `labelGap` from the capsule, beside the
+    /// tile (DD-903 item 3), panel-local. The label sits at the lane's capsule-side end.
+    public static func labelLane(for tile: CGRect, capsule c: CGRect, edge: ScreenEdge, tokens t: DockTokens) -> CGRect {
+        let length = t.labelLane - t.labelGap
+        let across = labelHeight(t)
+        switch edge {
+        case .left: return CGRect(x: c.maxX + t.labelGap, y: tile.midY - across / 2, width: length, height: across)
+        case .right: return CGRect(x: c.minX - t.labelGap - length, y: tile.midY - across / 2, width: length, height: across)
+        case .bottom: return CGRect(x: tile.midX - length / 2, y: c.maxY + t.labelGap, width: length, height: across)
+        case .top: return CGRect(x: tile.midX - length / 2, y: c.minY - t.labelGap - across, width: length, height: across)
+        }
+    }
+
+    /// Two lines (name, state) plus padding.
+    static func labelHeight(_ t: DockTokens) -> CGFloat {
+        (t.labelFontSize + t.labelStateFontSize) * 1.3 + 2 * t.labelPaddingV + 2
+    }
+}
+
+/// What the H4 hover label says: the name, then the state (design.md §7.2a).
+public struct TileLabelContent: Equatable, Sendable {
+    public let name: String
+    public let state: String?
+    /// Draw the running dot before the state.
+    public let running: Bool
+
+    public init(_ tile: TileModel) {
+        name = tile.name
+        func windows(_ n: Int?) -> String {
+            guard let n else { return "" }
+            if n == 0 { return " \u{00B7} No windows" }
+            return " \u{00B7} \(n) \(n == 1 ? "window" : "windows")"
+        }
+        if tile.isMissing {
+            state = tile.kind == .folder ? "Folder not found" : "Not found"
+            running = false
+            return
+        }
+        switch (tile.kind, tile.running) {
+        case (.separator, _): state = nil; running = false
+        case (.folder, _): state = "Folder"; running = false
+        case (.app, .none): state = "Not running"; running = false
+        case (.app, .hidden): state = "Hidden" + windows(tile.windowCount); running = false
+        case (.app, .running), (.app, .frontmost): state = "Running" + windows(tile.windowCount); running = true
+        }
+    }
 }

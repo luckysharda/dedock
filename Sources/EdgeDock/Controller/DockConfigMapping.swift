@@ -70,7 +70,10 @@ extension DockConfig {
         case .black: .black
         case .lightGlass: .lightGlass
         }
-        var t = DockTokens.capsule(size, style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance)
+        // While the size slider is dragged the dock follows it on every frame (Z1).
+        var t = appearance.liveTilePt.map {
+            DockTokens.capsule(tile: CGFloat($0), style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance)
+        } ?? DockTokens.capsule(size, style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance)
         t.edgeGap = CGFloat(min(48, max(0, placement.edgeGapPt)))
         return t
     }

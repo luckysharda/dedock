@@ -2,6 +2,7 @@ import DedockCore
 import Foundation
 import AppKit
 import DedockTestSupport
+import DesignSystem
 import DisplayTopology
 import EventTapKit
 import SettingsStore
@@ -181,5 +182,159 @@ extension MappingRegressionTests {
         let panel = EdgeDockPanel(frame: CGRect(x: 0, y: 0, width: 78, height: 400), model: model)
         defer { panel.close() }
         #expect(panel.title == "Edge Dock")
+    }
+}
+
+/// T25 rolled-in M1 rows 10, 20 and 27 (macOS only).
+@Suite(.serialized) @MainActor struct T25RowTests {
+    /// Row 10: the label sits toward the screen centre on every edge, beside its tile.
+    @Test func labelLaneFacesTheScreenCentre() {
+        let t = DockTokens.capsule()
+        let tile = CGRect(x: 100, y: 300, width: 62, height: 54)
+        let left = DockViewModel.labelLane(for: tile, capsule: CGRect(x: 92, y: 100, width: 78, height: 400), edge: .left, tokens: t)
+        #expect(left.minX == CGFloat(170 + 10) && abs(left.midY - tile.midY) < 0.5)
+        let right = DockViewModel.labelLane(for: tile, capsule: CGRect(x: 92, y: 100, width: 78, height: 400), edge: .right, tokens: t)
+        #expect(right.maxX == CGFloat(92 - 10))
+        let bottom = DockViewModel.labelLane(for: tile, capsule: CGRect(x: 0, y: 0, width: 400, height: 78), edge: .bottom, tokens: t)
+        #expect(bottom.minY == CGFloat(78 + 10) && abs(bottom.midX - tile.midX) < 0.5)
+        let top = DockViewModel.labelLane(for: tile, capsule: CGRect(x: 0, y: 500, width: 400, height: 78), edge: .top, tokens: t)
+        #expect(top.maxY == CGFloat(500 - 10))
+    }
+
+    /// Row 10 (H4): the name, then the state.
+    @Test func labelSaysNameAndState() {
+        var app = TileModel(id: "a", kind: .app, name: "Calculator", bundleID: "com.apple.calculator")
+        let idle = TileLabelContent(app)
+        #expect(idle.name == "Calculator" && idle.state == "Not running" && !idle.running)
+        app.running = .running
+        app.windowCount = 2
+        #expect(TileLabelContent(app).state == "Running \u{00B7} 2 windows" && TileLabelContent(app).running)
+        app.windowCount = 1
+        #expect(TileLabelContent(app).state == "Running \u{00B7} 1 window")
+        app.running = .hidden
+        app.windowCount = nil
+        #expect(TileLabelContent(app).state == "Hidden" && !TileLabelContent(app).running)
+        #expect(TileLabelContent(TileModel(id: "f", kind: .folder, name: "Downloads")).state == "Folder")
+        #expect(TileLabelContent(TileModel(id: "s", kind: .separator, name: "")).state == nil)
+    }
+
+    func shownCoordinator(_ items: [TileItem]) -> (EdgeDockCoordinator, DockSurroundings, DisplaySnapshot) {
+        let config = DedockDocument.makeDefault().docks[0]
+        let made = AppRegressionTests().makeCoordinator(config, items: items)
+        let c = made.0
+        c.controller.send(.command(.reveal))
+        if let g = c.controller.machine.activeGeneration { c.controller.send(.animationFinished(generation: g)) }
+        return made
+    }
+
+    /// Row 10: the label appears on the same sample the pointer reaches a tile (no delay), and its
+    /// state line carries the window count.
+    @Test(.enabled(if: NSScreen.main != nil)) func hoverIsInstantWithLiveState() throws {
+        let (c, _, _) = shownCoordinator([TileItem(id: "fin", kind: .app, bundleID: "com.apple.finder")])
+        #expect(c.phase == .shown)
+        c.windowCounter = { _ in 3 }
+        let f = try #require(c.layout.tileFrames["fin"])
+        c.pointer(PointerSample(location: CGPoint(x: f.midX, y: f.midY), timestamp: .milliseconds(10)))
+        #expect(c.model.hoveredTile == "fin")
+        let tile = try #require(c.model.tiles.first)
+        #expect(TileLabelContent(tile).state == "Running \u{00B7} 3 windows")   // Finder always runs
+        c.teardown()
+    }
+
+    /// Row 20: moving the pointer through the zone and over the shown dock never relayouts.
+    @Test(.enabled(if: NSScreen.main != nil)) func noRelayoutWhileThePointerMoves() {
+        let (c, _, _) = shownCoordinator([TileItem(id: "t1", kind: .app, bundleID: "com.apple.calculator"),
+                                          TileItem(id: "t2", kind: .app, bundleID: "com.apple.TextEdit")])
+        let passes = c.layoutPasses
+        let cap = c.capsuleFrame
+        for i in 0..<200 {
+            let y = cap.minY + CGFloat(i % 50) * cap.height / 50
+            let x = i < 100 ? CGFloat(1) : cap.midX
+            c.pointer(PointerSample(location: CGPoint(x: x, y: y), timestamp: .milliseconds(i * 8)))
+        }
+        #expect(c.layoutPasses == passes)
+        c.teardown()
+    }
+
+    /// Row 27: each stop scales tiles, gaps and padding together.
+    @Test func sizeStopsScaleTheWholeDock() {
+        let expected: [(DockTokens.Size, CGFloat)] = [(.s, 48), (.m, 62), (.l, 76), (.xl, 92)]
+        for (size, tile) in expected {
+            let t = DockTokens.capsule(size)
+            #expect(t.tileThickness == tile)
+            #expect(abs(t.padding - 8 * tile / 62) < 0.001 && abs(t.gap - 8 * tile / 62) < 0.001)
+        }
+        #expect(DockTokens.Size.nearest(toTile: 70) == .l)
+        #expect(DockTokens.Size.nearest(toTile: 54) == .s)
+        #expect(DockTokens.capsule(tile: 200).tileThickness == 92)       // clamped to the range
+    }
+
+    /// Row 27: while the slider is dragged the dock follows (a relayout per change), and the
+    /// editing hold keeps it shown.
+    @Test(.enabled(if: NSScreen.main != nil)) func sizePreviewRelayoutsUnderTheEditingHold() {
+        var config = DedockDocument.makeDefault().docks[0]
+        let (c, s, d) = shownCoordinator([TileItem(id: "t1", kind: .app, bundleID: "com.apple.calculator")])
+        c.controller.send(.hold(.editing, true))
+        let before = c.capsuleFrame
+        config.appearance.liveTilePt = 85
+        c.update(config: config, profile: Profile(id: config.profileID, name: "p", items: [TileItem(id: "t1", kind: .app, bundleID: "com.apple.calculator")]),
+                 display: d, surroundings: s)
+        #expect(c.capsuleFrame != before)
+        #expect(c.model.tokens.tileThickness == 85)
+        #expect(c.phase == .shown)
+        c.teardown()
+    }
+}
+
+/// T25(5): the M1 criteria values, pinned (evaluation rows 23, 24, 26, 28, 34).
+@Suite(.serialized) @MainActor struct M1PinTests {
+    /// Row 23: the hide delay defaults to 400 ms.
+    @Test func hideDelayDefaultsTo400ms() {
+        #expect(RevealSettings().hideDelayMs == 400)
+        #expect(DedockDocument.makeDefault().docks[0].revealConfig(reduceMotion: false).hideDelay == .milliseconds(400))
+    }
+
+    /// Rows 24 and 26: the zone thickness is clamped to 1–20 pt and the edge inset to 0–48 pt.
+    @Test func zoneAndInsetClamps() {
+        var d = DedockDocument.makeDefault().docks[0]
+        d.reveal.triggerThicknessPt = 0
+        #expect(d.triggerParameters.thickness == 1)
+        d.reveal.triggerThicknessPt = 50
+        #expect(d.triggerParameters.thickness == 20)
+        d.placement.edgeGapPt = -5
+        #expect(d.tokens(lightAppearance: false, reduceTransparency: false).edgeGap == 0)
+        d.placement.edgeGapPt = 100
+        #expect(d.tokens(lightAppearance: false, reduceTransparency: false).edgeGap == 48)
+    }
+
+    /// Row 34: the popoverOpen and pinnedByUser holds keep the dock shown when the pointer leaves.
+    @Test(arguments: [HoldOpenToken.popoverOpen, .pinnedByUser])
+    func holdsKeepTheDockShown(token: HoldOpenToken) {
+        var m = RevealStateMachine()
+        _ = m.handle(.zoneEntered(.wall), progress: 0)
+        _ = m.handle(.timerFired(.dwell), progress: 0)
+        _ = m.handle(.animationFinished(generation: m.activeGeneration!), progress: 1)
+        _ = m.handle(.hold(token, true), progress: 1)
+        _ = m.handle(.zoneLeft, progress: 1)
+        let effects = m.handle(.pointerInside(false), progress: 1)
+        #expect(m.phase == .shown)
+        #expect(!effects.contains { if case .startTimer(.hide, _) = $0 { true } else { false } })
+        _ = m.handle(.hold(token, false), progress: 1)
+        #expect(m.phase == .armingHide)                  // released: the normal hide starts
+    }
+
+    /// Row 28: the panel stays at its fixed frame; only its content moves when revealing.
+    @Test(.enabled(if: NSScreen.main != nil)) func panelFrameIsFixedWhileRevealing() {
+        let config = DedockDocument.makeDefault().docks[0]
+        let (c, _, _) = AppRegressionTests().makeCoordinator(config)
+        let frame = c.panel.frame
+        #expect(frame == c.layout.panelFrame)
+        c.controller.send(.command(.reveal))
+        #expect(c.panel.frame == frame)
+        if let g = c.controller.machine.activeGeneration { c.controller.send(.animationFinished(generation: g)) }
+        #expect(c.panel.frame == frame)
+        c.controller.send(.command(.hide(explicit: true)))
+        #expect(c.panel.frame == frame)
+        c.teardown()
     }
 }

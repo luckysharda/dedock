@@ -421,6 +421,9 @@ public struct AppearanceSettings: JSONObjectModel, Sendable, Equatable {
     public enum Style: String, Sendable, Equatable, CaseIterable { case darkGlass, black, lightGlass }
 
     public var size: Size
+    /// The size slider's position while it is being dragged (tile points). Never saved: on
+    /// release the slider snaps `size` to the nearest stop and clears this (Z1).
+    public var liveTilePt: Double?
     public var style: Style
     public var dragToRearrange: Bool
     public var unknown: [String: JSONValue]

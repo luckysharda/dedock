@@ -156,6 +156,12 @@ import Diagnostics
 
     // MARK: - Menu-tracking fallback
 
+    /// The run-loop mode of the menu-tracking timer: `.common`, so it fires while a menu tracks
+    /// (row 35 pin).
+    static let menuTimerMode: RunLoop.Mode = .common
+    /// The running menu-tracking timer's interval (tests).
+    var menuTimerInterval: TimeInterval? { menuTimer?.timeInterval }
+
     /// Called on `NSMenu.didBeginTrackingNotification` (internal so tests can drive it).
     func menuTrackingBegan() {
         menuDepth += 1
@@ -169,7 +175,7 @@ import Diagnostics
         let timer = Timer(timeInterval: 1 / menuTimerRate, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.menuTimerTick() }
         }
-        RunLoop.main.add(timer, forMode: .common)
+        RunLoop.main.add(timer, forMode: Self.menuTimerMode)
         menuTimer = timer
     }
 

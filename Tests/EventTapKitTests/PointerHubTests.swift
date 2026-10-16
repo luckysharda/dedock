@@ -114,6 +114,16 @@ import Testing
         #expect(clock.sleeperCount == 0)
     }
 
+    /// Row 35 pin: while a menu tracks, the pointer is read by a 30 Hz timer in `.common` mode.
+    @Test func menuTimerRuns30HzInCommonMode() {
+        let hub = makeHub()
+        hub.menuTrackingBegan()
+        #expect(PointerHub.menuTimerMode == .common)
+        #expect(abs((hub.menuTimerInterval ?? 0) - 1.0 / 30) < 0.0001)
+        hub.menuTrackingEnded()
+        #expect(hub.menuTimerInterval == nil)
+    }
+
     @Test func menuTrackingSwapsMonitorsForTimerAndBack() {
         let hub = makeHub()
         #expect(source.installCount == 1)

@@ -16,9 +16,15 @@ public actor LayoutFile {
     public var fileURL: URL { directory.appendingPathComponent(Self.fileName) }
 
     private let fileManager = FileManager.default
+    private let steps: [Int: Migration.Step]
+    private let schema: Int
 
-    public init(directory: URL) {
+    /// - Parameters:
+    ///   - steps, schema: the migration table and target version (tests inject synthetic ones).
+    public init(directory: URL, steps: [Int: Migration.Step] = Migration.steps, schema: Int = DedockDocument.currentSchema) {
         self.directory = directory
+        self.steps = steps
+        self.schema = schema
     }
 
     /// How `load` produced its document; the caller logs it and shows the one-time notice.
@@ -35,10 +41,18 @@ public actor LayoutFile {
         public let source: Source
         /// Where a corrupt `layout.json` was moved, if it was.
         public let corruptFileMovedTo: URL?
+        /// The file was written by a newer build (its schema is above ours). It loads what we
+        /// understand, is never migrated down and is not written at launch; a later save keeps
+        /// its version and unknown keys (architecture §7).
+        public var newerSchema: Int? {
+            document.schemaVersion > DedockDocument.currentSchema ? document.schemaVersion : nil
+        }
     }
 
     /// Loads the document, recovering from corruption. Never fails on bad content; throws
-    /// `unreadable` if the file cannot be read at all, or if a corrupt file cannot be moved aside.
+    /// `unreadable` if the file cannot be read at all, or if a corrupt file cannot be moved aside,
+    /// and `migrationFailed` when a migration step throws: that file is not corrupt, so it is
+    /// left byte-identical in place and the app runs read-only on defaults.
     public func load(nativeDockEdge: ScreenEdge? = .bottom) throws -> LoadResult {
         var movedTo: URL?
         if fileManager.fileExists(atPath: fileURL.path) {
@@ -48,25 +62,34 @@ public actor LayoutFile {
             } catch {
                 throw LayoutFileError.unreadable(String(describing: error))
             }
-            if let doc = try? Self.decode(data) {
+            switch Result(catching: { try Self.decode(data, steps: steps, schema: schema) }) {
+            case .success(let doc):
                 return LoadResult(document: doc, source: .file, corruptFileMovedTo: nil)
+            case .failure(let error as LayoutFileError) where error.isMigration:
+                throw error
+            case .failure:
+                break
             }
             movedTo = try moveCorruptFileAside()
         }
         for n in 1...Self.backupCount {
             let url = backupURL(n)
-            guard fileManager.fileExists(atPath: url.path), let doc = try? Self.decode(Data(contentsOf: url)) else { continue }
+            guard fileManager.fileExists(atPath: url.path),
+                  let doc = try? Self.decode(Data(contentsOf: url), steps: steps, schema: schema) else { continue }
             return LoadResult(document: doc, source: .backup(n), corruptFileMovedTo: movedTo)
         }
         return LoadResult(document: .makeDefault(nativeDockEdge: nativeDockEdge), source: .defaultSeed,
                           corruptFileMovedTo: movedTo)
     }
 
-    /// Writes the document atomically, rotating the previous file into the backups.
+    /// Writes the document atomically, rotating the previous file into the backups. Identical
+    /// bytes are neither written nor rotated: a slow size-slider drag (transient, never-saved
+    /// state) would otherwise push the user's real backups out of `layout.json.1…5`.
     public func save(_ document: DedockDocument) throws {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try Self.encode(document)
         if fileManager.fileExists(atPath: fileURL.path) {
+            if (try? Data(contentsOf: fileURL)) == data { return }
             try rotateBackups()
         }
         try data.write(to: fileURL, options: .atomic)
@@ -76,10 +99,17 @@ public actor LayoutFile {
 
     // MARK: - Coding
 
-    public static func decode(_ data: Data) throws -> DedockDocument {
+    public static func decode(_ data: Data, steps: [Int: Migration.Step] = Migration.steps,
+                              schema: Int = DedockDocument.currentSchema) throws -> DedockDocument {
         let tree = try JSONDecoder().decode(JSONValue.self, from: data)
         guard let object = tree.objectValue else { throw LayoutFileError.notAnObject }
-        return DedockDocument(object: try Migration.migrate(object))
+        let migrated: [String: JSONValue]
+        do {
+            migrated = try Migration.migrate(object, steps: steps, to: schema)
+        } catch {
+            throw LayoutFileError.migrationFailed(String(describing: error))
+        }
+        return DedockDocument(object: migrated)
     }
 
     public static func encode(_ document: DedockDocument) throws -> Data {
@@ -121,4 +151,9 @@ public enum LayoutFileError: Error, Equatable {
     /// The file exists but could not be read (permissions, I/O). It is left untouched: only
     /// unparsable content counts as corruption (REG-036).
     case unreadable(String)
+    /// A migration step threw. The file is not corrupt (a newer step may fix it), so it is left
+    /// in place, byte-identical.
+    case migrationFailed(String)
+
+    var isMigration: Bool { if case .migrationFailed = self { true } else { false } }
 }

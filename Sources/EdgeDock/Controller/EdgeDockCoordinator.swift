@@ -186,6 +186,7 @@ public struct DockSurroundings: Sendable, Equatable {
             DedockLog.event(.tiles, "tile.indicator", ["bundle": tiles[change.index].bundleID ?? "-", "state": change.state.rawValue])
         }
         model.tiles = tiles
+        refreshHoverState()    // the state line updates live
     }
 
     /// Indicator changes for the dock's own app tiles only; other running apps never appear
@@ -274,8 +275,27 @@ public struct DockSurroundings: Sendable, Equatable {
         case .shown, .armingHide: model.tile(atScreen: p)
         default: nil
         }
-        if hover != model.hoveredTile { model.hoveredTile = hover }
+        // Instant (motion.tile.label): set on the same sample, no timer.
+        if hover != model.hoveredTile {
+            model.hoveredTile = hover
+            refreshHoverState()
+        }
     }
+
+    /// Reads the hovered app's window count for the H4 state line (only on hover or running
+    /// changes, never per sample).
+    var windowCounter: (String) -> Int = WindowCount.of
+    private func refreshHoverState() {
+        guard let id = model.hoveredTile, let i = tiles.firstIndex(where: { $0.id == id }),
+              tiles[i].kind == .app, let bundle = tiles[i].bundleID else { return }
+        let count: Int? = tiles[i].running == .none ? nil : windowCounter(bundle)
+        guard tiles[i].windowCount != count else { return }
+        tiles[i].windowCount = count
+        model.tiles = tiles
+    }
+
+    /// Layout passes since creation (row 20: none while the pointer moves).
+    private(set) var layoutPasses = 0
 
     private func logZoneChange(from old: HotZone?, to new: HotZone?, at s: PointerSample) {
         guard old?.id != new?.id else { return }
@@ -416,6 +436,7 @@ public struct DockSurroundings: Sendable, Equatable {
     }
 
     private func logLayout(reason: String) {
+        layoutPasses += 1
         DedockLog.event(.layout, "layout.pass", ["edge": config.edge.rawValue, "reason": reason, "tiles": tiles.count])
     }
 }

@@ -4,7 +4,27 @@ import AppKit
 /// user pick 2026-10-15). Views read sizes, colours, radii and materials only from here.
 /// Motion timings are not tokens of the look; they live in `EdgeMotion`.
 public struct DockTokens: Sendable {
-    public enum Size: String, Sendable, CaseIterable { case s, m, l, xl }
+    public enum Size: String, Sendable, CaseIterable {
+        case s, m, l, xl
+
+        /// Tile thickness at this stop (Z1 "Slider with stops", design.md §7.2a).
+        public var tile: CGFloat {
+            switch self {
+            case .s: 48
+            case .m: 62
+            case .l: 76
+            case .xl: 92
+            }
+        }
+
+        /// The stop nearest to a tile thickness (the slider snaps on release).
+        public static func nearest(toTile t: CGFloat) -> Size {
+            allCases.min { abs($0.tile - t) < abs($1.tile - t) } ?? .m
+        }
+    }
+
+    /// The continuous range the size slider moves through.
+    public static let tileRange: ClosedRange<CGFloat> = Size.s.tile...Size.xl.tile
 
     /// `dd.dock.style` (default Dark Glass).
     public enum Style: String, Sendable, CaseIterable { case darkGlass, black, lightGlass }
@@ -33,14 +53,17 @@ public struct DockTokens: Sendable {
     public var indicatorRunning: NSColor   // white @ 0.9
     public var indicatorHidden: NSColor    // white @ 0.45
 
-    // Label: native-Dock-style tooltip, instant, toward the screen centre.
-    public var labelFontSize: CGFloat      // 12 pt Medium
-    public var labelPaddingH: CGFloat      // 9 pt
-    public var labelPaddingV: CGFloat      // 4 pt
-    public var labelRadius: CGFloat        // 6 pt
+    // Label: H4 "Name and state" (design.md §7.2a), instant, toward the screen centre.
+    public var labelFontSize: CGFloat      // 13 pt semibold (name)
+    public var labelStateFontSize: CGFloat // 11 pt (state line)
+    public var labelPaddingH: CGFloat      // 12 pt
+    public var labelPaddingV: CGFloat      // 8 pt
+    public var labelRadius: CGFloat        // 10 pt
     public var labelGap: CGFloat           // 10 pt from the capsule
     public var labelFill: NSColor
     public var labelText: NSColor
+    public var labelStateText: NSColor     // #A0A0A5
+    public var labelRunningDot: NSColor    // systemGreen
     public var labelEdge: NSColor          // 1 px inner edge white @ 0.08
 
     // Capsule material.
@@ -62,12 +85,14 @@ public struct DockTokens: Sendable {
     /// E1 Capsule at a Dock Size, in a style; `reduceTransparency` swaps the blur for the solid fallback.
     public static func capsule(_ size: Size = .m, style: Style = .darkGlass, reduceTransparency: Bool = false,
                                lightAppearance: Bool = false) -> DockTokens {
-        let t: CGFloat = switch size {
-        case .s: 50
-        case .m: 62
-        case .l: 74
-        case .xl: 86
-        }
+        capsule(tile: size.tile, style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance)
+    }
+
+    /// E1 Capsule at any tile thickness in `tileRange` (the size slider's live preview): tiles,
+    /// gaps, padding and radii scale together with `tile / 62`.
+    public static func capsule(tile: CGFloat, style: Style = .darkGlass, reduceTransparency: Bool = false,
+                               lightAppearance: Bool = false) -> DockTokens {
+        let t = min(max(tile, tileRange.lowerBound), tileRange.upperBound)
         let k = t / 62
         func white(_ a: CGFloat) -> NSColor { NSColor(white: 1, alpha: a) }
         func hex(_ rgb: UInt32, _ a: CGFloat = 1) -> NSColor {
@@ -80,9 +105,11 @@ public struct DockTokens: Sendable {
             edgeGap: 8, shadowMargin: 24, endMargin: 24, labelLane: 220, tileRadius: 15 * k,
             dividerFraction: 0.6, dividerColor: white(0.18),
             indicatorDiameter: 4, indicatorOffset: 1, indicatorRunning: white(0.9), indicatorHidden: white(0.45),
-            labelFontSize: 12, labelPaddingH: 9, labelPaddingV: 4, labelRadius: 6, labelGap: 10,
-            labelFill: lightAppearance ? hex(0xF6F6F6, 0.95) : hex(0x202022, 0.92),
+            labelFontSize: 13, labelStateFontSize: 11, labelPaddingH: 12, labelPaddingV: 8, labelRadius: 10, labelGap: 10,
+            labelFill: lightAppearance ? hex(0xF6F6F6, 0.95) : hex(0x202022, 0.94),
             labelText: lightAppearance ? hex(0x111111) : white(1),
+            labelStateText: lightAppearance ? hex(0x555555) : hex(0xA0A0A5),
+            labelRunningDot: .systemGreen,
             labelEdge: white(0.08),
             style: style, blurMaterial: .hudWindow, capsuleTint: hex(0x121214, 0.55), capsuleEdge: white(0.10),
             widgetPlate: white(0.09), widgetPlateEdge: white(0.08), textPrimary: white(1), textSecondary: hex(0xA0A0A5),
