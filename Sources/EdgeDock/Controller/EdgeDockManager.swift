@@ -23,16 +23,11 @@ import SettingsStore
     private var topologyToken: ObservationToken?
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
-    /// The session is locked or the screens sleep: no D2 hello (T38). Seeded at launch from the
-    /// session dictionary, so a launch behind the lock screen counts as away.
-    private var sessionAway = EdgeDockManager.screenIsLocked()
+    /// The session is locked or the screens sleep: no D2 hello (T38). Starts false and follows
+    /// the lock and sleep notifications only: launch at login runs after unlock, so a launch
+    /// behind the lock screen is practically impossible and would at worst play an unseen hello.
+    private var sessionAway = false
     private var awayObservers: [(NotificationCenter, any NSObjectProtocol)] = []
-
-    /// `CGSSessionScreenIsLocked` in the current session dictionary (public CoreGraphics call).
-    static func screenIsLocked() -> Bool {
-        guard let info = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
-        return (info["CGSSessionScreenIsLocked"] as? Bool) ?? false
-    }
     private var appearanceObservation: NSKeyValueObservation?
     /// The document as of the last settings notification (for `settings.changed`).
     private var lastDocument: DedockDocument
