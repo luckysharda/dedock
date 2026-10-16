@@ -3,7 +3,8 @@
 
     Scripts/e2e/cua-eval.py <cua-dir> <geometry.json> <app-pid> <L|R>
 
-Prints "<check id>\t<0|1|skip|void>\t<detail>" per check (void: the probe point was occluded). Inputs: windows.jsonl / tree.jsonl / hit-*.json(l)
+Prints "<check id>\t<0|1|skip|void|env>\t<detail>" per check (void: the probe point was occluded;
+env: every tile centre on the edge was occluded, unverifiable in this environment). Inputs: windows.jsonl / tree.jsonl / hit-*.json(l)
 from Scripts/e2e/axprobe (which never records another app's role or label, REG-041), front-*.json,
 cua-state.json from cua-driver get_window_state.
 """
@@ -26,7 +27,8 @@ def jload(f, default):
     except (OSError, ValueError): return default
 # Occlusion (axprobe occluder): another app took the click at a point from a window above the dock's
 # level. A row probed there proves nothing about the dock: VOID (rerun), never PASS; and when no tile
-# centre of the edge was clear, FAIL "unverifiable" (the edge cannot be tested in this environment).
+# centre of the edge was clear, ENV "unverifiable" (the edge cannot be tested in this environment:
+# never a PASS, and not an app failure, so a third-party overlay cannot block a card).
 occl = {r["tile"]: r["occl"] for r in (rows(f"{C}/occl.jsonl") if os.path.exists(f"{C}/occl.jsonl") else [])}
 any_clear = not occl or any(not o.get("occluded") for o in occl.values())
 def occluded(cid, o, what):
@@ -34,7 +36,7 @@ def occluded(cid, o, what):
     if not o.get("occluded"): return False
     note = f"{what}: occluded by another app's window at layer {o.get('layer', '?')} (above the dock's 24)"
     if any_clear: res.append((f"cua {cid} {side}", "void", note + ": rerun"))
-    else: res.append((f"cua {cid} {side}", 0, note + "; unverifiable: every tile centre on this edge is occluded"))
+    else: res.append((f"cua {cid} {side}", "env", note + "; unverifiable here: every tile centre on this edge is occluded"))
     return True
 ws = [w for w in rows(f"{C}/windows.jsonl") if w["w"] > 50 and w["h"] > 50]
 px, py, pw, ph = d["panel"]["topLeft"]
@@ -92,11 +94,14 @@ else:
     chk("C6 click-through while hidden", clear_hid and all(h["hit"].get("pid") != pid for h in clear_hid),
         f"{sum(h['hit'].get('pid') != pid for h in clear_hid)}/{len(clear_hid)} tile centres reach the window underneath"
         + (f" ({n_occ} occluded by another app's window above the dock: not counted)" if n_occ else ""))
-t = json.load(open(f"{C}/hit-shown-tile.json")); o = json.load(open(f"{C}/hit-shown-outside.json"))
+# No tile to probe (regress.sh skips C7): the files are absent and every C7 row FAILs as "not probed".
+t = jload(f"{C}/hit-shown-tile.json", None); o = jload(f"{C}/hit-shown-outside.json", None)
 # The probe tile: the first tile whose centre no other app's window occluded (regress.sh probe-tile.txt).
 pick = first_line(f"{C}/probe-tile.txt") if os.path.exists(f"{C}/probe-tile.txt") else ""
-first = next((n for n in tiles if n.replace(" ", "_") == pick), next(iter(tiles)))
-if t.get("pid") == pid or not occluded("C7 shown tile takes the hit", jload(f"{C}/occl-tile.json", {}), f"pointer on '{first}'"):
+first = next((n for n in tiles if n.replace(" ", "_") == pick), next(iter(tiles), ""))
+if t is None:
+    chk("C7 shown tile takes the hit", False, "not probed: no tile to probe")
+elif t.get("pid") == pid or not occluded("C7 shown tile takes the hit", jload(f"{C}/occl-tile.json", {}), f"pointer on '{first}'"):
     chk("C7 shown tile takes the hit", t.get("pid") == pid and t.get("label") == first, f"pointer on '{first}': hit {'Dedock' if t.get('pid') == pid else 'other app'}, label '{t.get('label', '')}'")
 try:
     ce = json.load(open(f"{C}/hit-shown-cell.json"))
@@ -111,8 +116,20 @@ except Exception as ex:
     chk("C7 tile cell edge stays in the dock", False, f"not probed or unreadable: {type(ex).__name__}")
 gate_note = first_line(f"{C}/gate-outside.txt") if os.path.exists(f"{C}/gate-outside.txt") else ""
 # An occluder at the outside point would make "hit other app" a false PASS: VOID instead.
-if not occluded("C7 4 pt outside passes through", jload(f"{C}/occl-outside.json", {}), "4 pt outside the capsule"):
+if o is None:
+    chk("C7 4 pt outside passes through", False, "not probed: no tile to probe")
+elif not occluded("C7 4 pt outside passes through", jload(f"{C}/occl-outside.json", {}), "4 pt outside the capsule"):
     chk("C7 4 pt outside passes through", o.get("pid") != pid, f"4 pt outside the capsule: hit {'Dedock' if o.get('pid') == pid else 'other app'}" + (f"; {gate_note}" if gate_note else ""))
+# C7 leave: after the outside probe the pointer jumps 400 pt away; within 1 s the dock must have left
+# shown (armingHide) and begun hiding (hideDelay 400 ms). SKIP for older runs without the file.
+if os.path.exists(f"{C}/leave-away.txt"):
+    lv = (open(f"{C}/leave-away.txt").read().split() + ["0", "0", "0"])[:3]
+    leaves, hides, seen = int(lv[0]), int(lv[1]), int(lv[2] or 0)
+    chk("C7 leaving far from the shown dock hides it", leaves >= 1 and hides >= 1,
+        f"after the jump 400 pt away: leave (shown → armingHide) {leaves}, hide begun within 1 s {hides}; "
+        f"the move event seen by the listener: {'yes' if seen else 'no'}")
+else:
+    res.append((f"cua C7 leaving far from the shown dock hides it {side}", "skip", "not recorded by this harness version"))
 # C9: dd.dock.style in GEOM (Settings builds): the harness seed uses the default, Dark Glass, whose
 # material is hudWindow ('solid' under Reduce Transparency). SKIP when the build writes no style.
 MATERIALS = {"darkGlass": {"hudWindow", "solid"}, "black": {"hudWindow", "solid"}, "lightGlass": {"popover", "solid"}}

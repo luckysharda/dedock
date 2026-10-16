@@ -12,9 +12,11 @@ build/e2e/runs/<sub-run-id>/<scenario>-<L|R>/ with report.txt (ends "VERDICT ...
 
 Verdicts: FAIL if any gate failed; VOID if nothing failed but a scenario was contaminated by real
 input or a check's probe point was occluded by another app's window (rerun needed, not an app
-result); PASS otherwise. Drift: WARN when a metric moves more than
+result); PASS otherwise. An ENV check (every tile centre on its edge occluded by another app's window)
+is listed as unverifiable here and is neither a PASS nor a failure: with nothing failed or void, the
+verdict is PASS-ENV (exit 4), which needs a deliberate acknowledgement. Drift: WARN when a metric moves more than
 20 % from the baseline AND more than its absolute noise floor (floors live in the baseline file).
-Exit: 0 PASS, 1 FAIL, 3 VOID. Paths in the scorecard are repo-relative (the repo is public).
+Exit: 0 PASS, 1 FAIL, 3 VOID, 4 PASS-ENV. Paths in the scorecard are repo-relative (the repo is public).
 """
 import json
 import os
@@ -153,18 +155,25 @@ def write_scorecard(root, baseline_path):
     warns = drift(metrics, baseline)
 
     is_harness = lambda c: c["id"].startswith(HARNESS_IDS)
-    harness_failed = [c for c in checks if not c["ok"] and not c.get("void") and is_harness(c)]
+    harness_failed = [c for c in checks if not c["ok"] and not c.get("void") and not c.get("env") and is_harness(c)]
     live = [c for c in checks if not c.get("skip")]
     # A VOID check (its probe point was occluded by another app's window, cua-eval) is a rerun, like a
     # contaminated scenario: never a PASS, not an app failure.
     void_checks = [c for c in live if c.get("void")]
-    failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in live if not c["ok"] and not c.get("void") and not is_harness(c)]
+    # An ENV check (every tile centre on its edge occluded by another app's window): unverifiable in
+    # this environment. Shown, never a PASS, but not an app failure: an overlay cannot block a card.
+    env_checks = [c for c in live if c.get("env")]
+    failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in live if not c["ok"] and not c.get("void") and not c.get("env") and not is_harness(c)]
     health_ok, health_line = tool_health(root, checks)
     if not health_ok and os.path.exists(os.path.join(root, "expected.txt")):
         failed.append({"id": "tool health"})
     void = [s for s in scenarios if s["verdict"] == "VOID"]
     verdict = "FAIL" if failed else ("VOID" if void or void_checks else "PASS")
-    res = lambda c: "SKIP" if c.get("skip") else ("VOID" if c.get("void") else ("PASS" if c["ok"] else "FAIL"))
+    # PASS-ENV: nothing failed or voided, but some row was unverifiable here (ENV). Not a failure,
+    # yet not a plain PASS either: an edge nobody could check needs a deliberate acknowledgement.
+    if verdict == "PASS" and env_checks:
+        verdict = "PASS-ENV"
+    res = lambda c: "SKIP" if c.get("skip") else ("VOID" if c.get("void") else ("ENV" if c.get("env") else ("PASS" if c["ok"] else "FAIL")))
     if not scenarios and not checks:
         verdict = "FAIL"
 
@@ -193,7 +202,9 @@ def write_scorecard(root, baseline_path):
     L.append(f"**{verdict}** — scenarios: {sum(s['verdict'] == 'PASS' for s in scenarios)} pass, "
              f"{len([s for s in scenarios if s['verdict'] == 'FAIL'])} fail, {len(void)} void (contaminated, rerun); "
              f"run checks: {sum(c['ok'] for c in live)}/{len(live)} pass ({len(checks) - len(live)} skipped"
-             + (f", {len(void_checks)} void (occluded, rerun)" if void_checks else "") + f"); drift warnings: {len(warns)}"
+             + (f", {len(void_checks)} void (occluded, rerun)" if void_checks else "")
+             + (f", {len(env_checks)} ENV (unverifiable here: {', '.join(c['id'] for c in env_checks)})" if env_checks else "")
+             + f"); drift warnings: {len(warns)}"
              + (f"; HARNESS checks failing: {', '.join(c['id'] for c in harness_failed)} (harness bug, not an app result)" if harness_failed else ""))
     L.append("")
     key = [c for c in checks if "REG-040" in c["id"] or c["id"].startswith("cua C2")]
@@ -241,7 +252,7 @@ def write_scorecard(root, baseline_path):
     if not RETOOL:
         json.dump({"verdict": verdict, "metrics": metrics, "env": env}, open(os.path.join(root, "metrics.json"), "w"), indent=1, sort_keys=True)
     print(out)
-    return {"PASS": 0, "FAIL": 1, "VOID": 3}[verdict]
+    return {"PASS": 0, "FAIL": 1, "VOID": 3, "PASS-ENV": 4}[verdict]
 
 
 def write_baseline(root, out_path):

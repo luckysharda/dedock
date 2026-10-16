@@ -43,7 +43,7 @@ skipped=0
 skip() { echo "SKIP $1 ($2)"; skipped=$((skipped + 1)); }   # a skipped check is never a PASS
 
 echo "-- build"
-for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/e2e/backdrop.swift Scripts/e2e/notify.swift Scripts/e2e/axpress.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
+for src in Scripts/e2e/pointer.swift Scripts/e2e/listen.swift Scripts/e2e/analyze.swift Scripts/e2e/axprobe.swift Scripts/e2e/backdrop.swift Scripts/e2e/notify.swift Scripts/e2e/axpress.swift Scripts/e2e/ocr.swift Scripts/measure-pixels.swift Tests/E2E/selftest/fake-dock.swift; do
   out=$B/${${src:t}%.swift}
   check "compile ${src:t}" "swiftc -O $src -o $out 2>$T/${src:t}.err"
 done
@@ -236,10 +236,159 @@ open(d + '/probe-tile.txt', 'w').write(rows[1 if mode == 'first' else 0]['tile']
 mkocc $T/cua-occ first; python3 Scripts/e2e/cua-eval.py $T/cua-occ Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-occ.txt
 mkocc $T/cua-occall all; python3 Scripts/e2e/cua-eval.py $T/cua-occall Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-occall.txt
 check "cua-eval: occluded C7 probes are VOID (never PASS), C6 counts only clear tiles" "[[ \$(grep -cE \$'^cua C7 [^\t]*\tvoid\t.*layer 1500' $T/cua-occ.txt) == 3 ]] && grep -q \$'^cua C6 click-through while hidden L\t1\t.*1 occluded' $T/cua-occ.txt && grep -q \$'^cua C7 shown tile takes the hit L\tvoid\tpointer on .Notes.' $T/cua-occ.txt"
-check "cua-eval: every tile centre occluded → C6 and C7 FAIL as unverifiable" "[[ \$(grep -cE \$'^cua C(6|7) [^\t]*\t0\t.*unverifiable' $T/cua-occall.txt) == 4 ]] && ! grep -qE \$'^cua C(6|7) [^\t]*\t(1|void)\t' $T/cua-occall.txt"
+check "cua-eval: every tile centre occluded → C6 and C7 are ENV (unverifiable here), never PASS or VOID" "[[ \$(grep -cE \$'^cua C(6|7) [^\t]*\tenv\t.*unverifiable here' $T/cua-occall.txt) == 4 ]] && ! grep -qE \$'^cua C(6|7) [^\t]*\t(1|void)\t' $T/cua-occall.txt"
+rm -rf $T/cua-notile; cp -R Tests/E2E/selftest/cua-fixture $T/cua-notile; rm $T/cua-notile/hit-shown-*.json
+python3 Scripts/e2e/cua-eval.py $T/cua-notile Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-notile.txt 2> $T/cua-notile.err; echo $? > $T/cua-notile.rc
+check "cua-eval: no tile probed → every C7 row FAILs as not probed (no crash)" "[[ \$(cat $T/cua-notile.rc) == 0 && \$(grep -cE \$'^cua C7 [^\t]*\t0\tnot probed' $T/cua-notile.txt) == 3 ]]"
+mkfix selftest-senv PASS 1.2; print '{"id":"cua C7 shown tile takes the hit T","ok":false,"skip":false,"void":false,"env":true,"detail":"all occluded"}' >> $SR/selftest-senv/checks.jsonl
+python3 Scripts/e2e/score.py $SR/selftest-senv $T/m1.json > $T/s-env.txt; echo $? > $T/s-env.rc
+check "score: an ENV check is shown as ENV, listed as unverifiable; the card is PASS-ENV (exit 4), not FAIL" "[[ \$(cat $T/s-env.rc) == 4 ]] && grep -q 'M1 Edge Dock — PASS-ENV' $T/s-env.txt && grep -q '1 ENV (unverifiable here: cua C7 shown tile takes the hit T)' $T/s-env.txt && grep -q '| cua C7 shown tile takes the hit T | ENV |' $T/s-env.txt"
 mkfix selftest-socc PASS 1.2; print '{"id":"cua C7 shown tile takes the hit T","ok":false,"skip":false,"void":true,"detail":"occluded"}' >> $SR/selftest-socc/checks.jsonl
 python3 Scripts/e2e/score.py $SR/selftest-socc $T/m1.json > $T/s-occ.txt; echo $? > $T/s-occ.rc
 check "score: a VOID check makes the card VOID (exit 3), shown as VOID, not FAIL" "[[ \$(cat $T/s-occ.rc) == 3 ]] && grep -q '1 void (occluded, rerun)' $T/s-occ.txt && grep -q '| cua C7 shown tile takes the hit T | VOID |' $T/s-occ.txt"
+# x-19 gap hold (REG-067): the plan finds the band on top / beside the native Dock and SKIPs a side
+# edge; the judge needs no hide during the hold and a hide hideDelay ± 16 ms after the later leave.
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+tile = lambda x, y: {"id": "t-a", "name": "A", "frame": {"topLeft": [x, y, 54, 62]}}
+g = lambda e, cap, zones, t: {"docks": [{"edge": e, "capsule": {"topLeft": cap}, "zones": [{"rect": {"topLeft": z}} for z in zones], "tiles": [t], "showDwellMs": 300}]}
+json.dump(g("top", [832, 38, 256, 78], [[792, 0, 336, 3]], tile(840, 46)), open(f"{T}/gap-top.json", "w"))
+json.dump(g("bottom", [832, 916, 256, 78], [[24, 1074, 400, 6], [1496, 1074, 400, 6]], tile(840, 924)), open(f"{T}/gap-bottom.json", "w"))
+json.dump(g("left", [8, 400, 78, 256], [[0, 380, 3, 296]], tile(16, 408)), open(f"{T}/gap-left.json", "w"))
+json.dump({"docks": [{"reveal": {"hysteresisPt": 16, "hideDelayMs": 400}}]}, open(f"{T}/gap-layout.json", "w"))
+def log(name, ev):
+    with open(f"{T}/{name}", "w") as f:
+        f.write("Filtering the log data\n")
+        for ms, m in ev:
+            s, frac = divmod(ms, 1000)
+            f.write(json.dumps({"processID": 7, "timestamp": f"2026-10-16 10:00:{10 + s:02d}.{frac:03d}000+0530", "eventMessage": m}) + "\n")
+ok1 = [(0, "reveal.transition edge=top from=hidden to=arming cause=zone inh=-"), (300, "reveal.transition edge=top from=arming to=revealing cause=dwell inh=-"),
+       (520, "reveal.transition edge=top from=revealing to=shown cause=animationEnd inh=-")]
+ok2 = [(3000, "reveal.transition edge=top from=shown to=armingHide cause=leave inh=-"), (3405, "reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-")]
+log("gap-ok.ndjson", ok1 + ok2)
+log("gap-bad.ndjson", ok1 + [(1200, "reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-")]
+    + [(3000, "reveal.transition edge=top from=shown to=armingHide cause=leave inh=-"), (3600, "reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-")])
+PY
+for e in top bottom left; do python3 Scripts/e2e/gap-hold.py plan $T/gap-$e.json $T/gap-layout.json > $T/gap-plan-$e.txt; done
+python3 Scripts/e2e/gap-hold.py judge $T/gap-ok.ndjson 7 0 4 99 400 T > $T/gap-ok.txt
+python3 Scripts/e2e/gap-hold.py judge $T/gap-bad.ndjson 7 0 5 99 400 T > $T/gap-bad.txt
+check "x-19 gap-hold plan: band on top and beside the native Dock, SKIP where the capsule meets the zone" "python3 -c \"import sys; t=open(sys.argv[1]).read().split(); b=open(sys.argv[2]).read().split(); sys.exit(not (t[0]=='top' and 3 < float(t[5]) < 22 and b[0]=='bottom' and float(b[5]) > 1010 and float(b[4]) < 816))\" $T/gap-plan-top.txt $T/gap-plan-bottom.txt && grep -q '^skip no gap' $T/gap-plan-left.txt"
+check "x-19 gap-hold judge: held shown + hide 405 ms after the leave PASS; a hide in the hold or 600 ms late FAIL" "[[ \$(grep -c \$'\t1\t' $T/gap-ok.txt) == 2 && \$(grep -c \$'\t0\t' $T/gap-bad.txt) == 2 ]] && grep -q 'hide began 405 ms' $T/gap-ok.txt"
+# T25 drag-out plan: drop past the capsule + hysteresis, the padding click outside every tile cell
+python3 -c "
+import json, sys
+json.dump({'docks': [{'edge': 'right', 'capsule': {'topLeft': [1834, 388, 78, 256]}, 'zones': [{'rect': {'topLeft': [1917, 368, 3, 296]}}], 'showDwellMs': 120,
+  'tiles': [{'id': 't-calculator', 'name': 'Calculator', 'frame': {'topLeft': [1842, 396, 62, 54]}}]}]}, open(sys.argv[1] + '/t25-geom.json', 'w'))
+json.dump({'docks': [{'reveal': {'hysteresisPt': 16, 'hideDelayMs': 400}}], 'profiles': [{'items': [{'id': 't-calculator'}, {'id': 't-notes'}]}]}, open(sys.argv[1] + '/t25-layout.json', 'w'))" $T
+python3 Scripts/e2e/t25.py plan $T/t25-geom.json $T/t25-layout.json 0 > $T/t25-plan.txt
+python3 Scripts/e2e/t25.py ids $T/t25-layout.json > $T/t25-ids.txt
+check "T25 plan: drop 136 pt inside the capsule's inner side, padding click in the capsule outside the tile, the confirm's title" "python3 -c \"import sys; p=open(sys.argv[1]).read().split(); sys.exit(not (p[0]=='right' and float(p[4])==1698.0 and 1834 < float(p[6]) < 1842 and p[10]=='t-calculator' and ' '.join(p[11:])=='Remove “Calculator” from the Edge Dock?'))\" $T/t25-plan.txt && [[ \$(cat $T/t25-ids.txt) == 't-calculator t-notes' ]]"
+# H4 hover label: OCR of our own panel capture; name + state on the screen-centre side, AX-hidden
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+t = lambda i, n, k: {"id": f"t-{i}", "name": n, "kind": k, "running": "none", "frame": {"topLeft": [840 + 62 * i, 46, 54, 62]}}
+json.dump({"docks": [{"edge": "top", "capsule": {"topLeft": [832, 38, 256, 78]}, "zones": [{"rect": {"topLeft": [792, 0, 336, 3]}}],
+                      "tiles": [t(0, "Calculator", "app"), t(1, "TextEdit", "app"), t(2, "Downloads", "folder")]}]}, open(f"{T}/h4-geom.json", "w"))
+json.dump({"id": 9, "layer": 24, "x": 792, "y": 30, "w": 336, "h": 330}, open(f"{T}/h4-win.json", "w"))
+line = lambda s, y: json.dumps({"text": s, "x": 100, "y": y, "w": 160, "h": 26, "iw": 672, "ih": 660})
+open(f"{T}/h4-a.jsonl", "w").write(line("Calculator", 240) + "\n" + line("Not running", 270) + "\n")
+open(f"{T}/h4-f.jsonl", "w").write(line("Downloads", 240) + "\n" + line("Folder", 270) + "\n")
+open(f"{T}/h4-up.jsonl", "w").write(line("Calculator", 10) + "\n" + line("Not running", 30) + "\n")
+open(f"{T}/h4-tree-ok.jsonl", "w").write(json.dumps({"role": "AXButton", "label": "Calculator"}) + "\n")
+open(f"{T}/h4-tree-leak.jsonl", "w").write(json.dumps({"role": "AXStaticText", "label": "Calculator"}) + "\n")
+PY
+python3 Scripts/e2e/h4.py plan $T/h4-geom.json > $T/h4-plan.txt
+python3 Scripts/e2e/h4.py judge $T/h4-geom.json $T/h4-win.json $T/h4-a.jsonl $T/h4-f.jsonl $T/h4-tree-ok.jsonl T > $T/h4-ok.txt
+python3 Scripts/e2e/h4.py judge $T/h4-geom.json $T/h4-win.json $T/h4-up.jsonl $T/h4-f.jsonl $T/h4-tree-ok.jsonl T > $T/h4-side.txt
+python3 Scripts/e2e/h4.py judge $T/h4-geom.json $T/h4-win.json $T/h4-a.jsonl $T/h4-f.jsonl $T/h4-tree-leak.jsonl T > $T/h4-leak.txt
+check "H4 judge: name + state below a top dock PASS; above it (wrong side) or an AX static text with the name FAIL; plan hovers the app then the folder" "grep -q \$'^H4 hover label T\t1\t' $T/h4-ok.txt && grep -q \$'^H4 hover label T\t0\t.*found, wrong side' $T/h4-side.txt && grep -q \$'^H4 hover label T\t0\t.*static text with a tile name while hovering: 1' $T/h4-leak.txt && [[ \$(cut -d' ' -f3-6 $T/h4-plan.txt) == '867.0 77.0 991.0 77.0' ]]"
+print -r -- '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><rect width="400" height="120" fill="#202022"/><text x="20" y="50" font-family="Helvetica" font-weight="bold" font-size="26" fill="white">Calculator</text><text x="20" y="90" font-family="Helvetica" font-size="22" fill="#A0A0A5">Not running</text></svg>' > $T/ocr.svg
+if qlmanage -t -s 400 -o $T $T/ocr.svg > /dev/null 2>&1 && [[ -s $T/ocr.svg.png ]]; then
+  $B/ocr $T/ocr.svg.png > $T/ocr.jsonl 2> $T/ocr.err
+  check "ocr reads a rendered two-line label (name, state)" "grep -q '\"text\":\"Calculator\"' $T/ocr.jsonl && grep -q '\"text\":\"Not running\"' $T/ocr.jsonl"
+  python3 -c "
+import struct, sys, zlib
+w = h = 64
+raw = b''.join(b'\\x00' + b'\\x00\\x00\\x00\\x00' * w for _ in range(h))
+chunk = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+open(sys.argv[1], 'wb').write(b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))" $T/blank.png
+  $B/ocr stats $T/ocr.svg.png > /dev/null 2>&1; r_label=$?
+  $B/ocr stats $T/blank.png > /dev/null 2>&1; r_blank=$?
+  check "ocr stats: a rendered label is not blank (exit 0); a fully transparent capture is (exit 1)" "[[ $r_label == 0 && $r_blank == 1 ]]"
+else
+  skip "ocr reads a rendered two-line label" "qlmanage could not render the test image"
+fi
+# Z1 size slider: live mid-drag (between stops, shown, passes), snap to a stop with capsule = tile × (1 + 16/62)
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+g = lambda t, c, st: {"docks": [{"edge": "left", "state": st, "capsule": {"topLeft": [8, 400, c, 300]}, "tiles": [{"frame": {"topLeft": [16, 408, t, 54]}}]}]}
+json.dump(g(70.3, 88.4, "shown"), open(f"{T}/z1-mid.json", "w"))
+json.dump(g(92, 115.7, "shown"), open(f"{T}/z1-after.json", "w"))
+json.dump(g(92, 108, "shown"), open(f"{T}/z1-after-bad.json", "w"))
+json.dump(g(62, 78, "shown"), open(f"{T}/z1-still.json", "w"))
+json.dump({"docks": [{"appearance": {"size": "xl"}}]}, open(f"{T}/z1-layout.json", "w"))
+open(f"{T}/z1-tree.jsonl", "w").write(json.dumps({"role": "AXSlider", "name": "Dock size", "x": 300, "y": 200, "w": 220, "h": 20}) + "\n")
+PY
+python3 Scripts/e2e/z1.py judge $T/z1-mid.json $T/z1-after.json $T/z1-layout.json 12 > $T/z1-ok.txt
+python3 Scripts/e2e/z1.py judge $T/z1-still.json $T/z1-after-bad.json $T/z1-layout.json 0 > $T/z1-bad.txt
+python3 Scripts/e2e/z1.py points $T/z1-tree.jsonl > $T/z1-points.txt
+check "Z1 judge: live between stops + snapped XL with capsule 115.7 PASS; no live change, or capsule tile+16 (108) FAIL; knob points M→85" "[[ \$(grep -c \$'^1\t' $T/z1-ok.txt) == 2 && \$(grep -c \$'^0\t' $T/z1-bad.txt) == 2 && \$(cat $T/z1-points.txt) == '373.6 210.0 478.2' ]]"
+# REG-068: no press off every display (dry run: the pointer posts nothing either way), and every
+# pointer press in regress.sh / scenario.sh is guarded by an AX hit check (press_ok) on Dedock's target
+DEDOCK_POINTER_DRYRUN=1 $B/pointer click 1210 99999 > $T/press-off.out 2> $T/press-off.err; echo $? > $T/press-off.rc
+DEDOCK_POINTER_DRYRUN=1 $B/pointer drag 100 100 100 99999 300 > $T/drag-off.out 2> $T/drag-off.err; echo $? > $T/drag-off.rc
+check "REG-068 pointer refuses a click or drag off every display, before posting anything" "[[ \$(cat $T/press-off.rc) == 2 && \$(cat $T/drag-off.rc) == 2 && ! -s $T/press-off.out && ! -s $T/drag-off.out ]] && grep -q 'outside every display (REG-068); nothing posted' $T/press-off.err"
+check "REG-068 audit: every pointer click/drag line in the harness is marked guarded by press_ok" "! grep -nE 'pointer( -q)? (click|drag) ' Scripts/e2e/regress.sh Scripts/e2e/scenario.sh | grep -v 'guarded: press_ok' | grep -q . && grep -q '^press_ok() {' Scripts/e2e/regress.sh"
+# T26 SP3 Islands: two islands 8 pt apart = one dock (one zone, capsule = union); spacer = half a cell
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+t = lambda i, k, y, h=54: {"id": i, "kind": k, "name": i, "frame": {"topLeft": [16, y, 62, h]}}
+def g(gap, spacer_h, zones):
+    a = [8, 300, 78, 70 + 8 + 27 + 8 + 54 + 16 - 54]   # island 1: Calculator, spacer, TextEdit (padding 8)
+    a[3] = 8 + 54 + 8 + spacer_h + 8 + 54 + 8
+    b = [8, a[1] + a[3] + gap, 78, 8 + 54 + 8]
+    tiles = [t("t-calc", "app", a[1] + 8), t("s-spacer", "spacer", a[1] + 8 + 54 + 8, spacer_h), t("t-text", "app", a[1] + 8 + 54 + 8 + spacer_h + 8),
+             t("s-separator", "separator", a[1] + a[3] - 8, gap + 16 - 16), t("t-notes", "app", b[1] + 8)]
+    return {"docks": [{"edge": "left", "capsule": {"topLeft": [8, a[1], 78, b[1] + b[3] - a[1]]}, "islands": [{"topLeft": a}, {"topLeft": b}],
+                       "zones": [{"rect": {"topLeft": [0, 280, 3, 400]}}] * zones, "tiles": tiles}]}
+json.dump(g(8, 27, 1), open(f"{T}/t26-ok.json", "w"))
+json.dump(g(12, 54, 2), open(f"{T}/t26-bad.json", "w"))
+PY
+python3 Scripts/e2e/t26.py geom $T/t26-ok.json > $T/t26-ok.txt
+python3 Scripts/e2e/t26.py geom $T/t26-bad.json > $T/t26-bad.txt
+python3 Scripts/e2e/t26.py gap $T/t26-ok.json > $T/t26-gap.txt
+check "T26 islands: 8 pt gap, union, one zone, half-cell spacer PASS; 12 pt gap / two zones / full-cell spacer FAIL; gap point between the islands" "[[ \$(grep -c \$'\t1\t' $T/t26-ok.txt) == 2 && \$(grep -c \$'\t0\t' $T/t26-bad.txt) == 2 ]] && python3 -c \"import sys; p=open(sys.argv[1]).read().split(); sys.exit(not (p[0]=='left' and float(p[3]) > float(p[5]) and float(p[3]) < float(p[7])))\" $T/t26-gap.txt"
+# T27 recovery: killall Dock only for the REAL lock holder (a fake owner is always refused, nothing
+# killed); the relaunch judge needs dock.relaunch and a zones rebuild within 1 s
+DEDOCK_LOCK_OWNER=selftest-nobody Scripts/e2e/recover.sh killdock > $T/killdock.out 2> $T/killdock.err; echo $? > $T/killdock.rc
+check "T27 recover.sh refuses killall Dock without the REAL desktop lock (REG-051)" "[[ \$(cat $T/killdock.rc) == 2 && ! -s $T/killdock.out ]] && grep -q 'refusing' $T/killdock.err"
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+def log(name, ev):
+    with open(f"{T}/{name}", "w") as f:
+        f.write("Filtering\n")
+        for ms, m in ev:
+            s, fr = divmod(ms, 1000)
+            f.write(json.dumps({"processID": 7, "timestamp": f"2026-10-16 10:00:{10 + s:02d}.{fr:03d}000+0530", "eventMessage": m}) + "\n")
+log("t27-ok.ndjson", [(0, "dock.relaunch"), (240, "zones.computed edge=bottom dock=dock-0 rule=primary"), (300, "space.repair edge=bottom reason=dockRelaunch step=start")])
+log("t27-slow.ndjson", [(0, "dock.relaunch"), (1500, "layout.pass edge=bottom reason=update tiles=4")])
+log("t27-none.ndjson", [(0, "layout.pass edge=bottom reason=update tiles=4")])
+g = {"docks": [{"zones": [{"rect": {"topLeft": [24, 1074, 400, 6]}}, {"rect": {"topLeft": [1496, 1074, 400, 6]}}]}]}
+json.dump(g, open(f"{T}/t27-geom.json", "w"))
+PY
+for k in ok slow none; do python3 Scripts/e2e/recovery.py relaunch $T/t27-$k.ndjson 7 0 $T/t27-geom.json $T/t27-geom.json B > $T/t27-$k.txt; done
+check "T27 relaunch judge: rebuild 240 ms after dock.relaunch PASS (repair reported); 1500 ms or no relaunch FAIL" "grep -q \$'\t1\tdock.relaunch → zones.computed in 240 ms' $T/t27-ok.txt && grep -q '^repair=1' $T/t27-ok.txt && grep -q \$'\t0\t' $T/t27-slow.txt && grep -q \$'\t0\tno dock.relaunch' $T/t27-none.txt"
+# C7 leave: the jump far from the shown dock starts the hide (cand-c89d1c0); SKIP without the record
+for k in ok stuck; do rm -rf $T/cua-leave-$k; cp -R Tests/E2E/selftest/cua-fixture $T/cua-leave-$k; done
+print "1 1 1" > $T/cua-leave-ok/leave-away.txt; print "0 0 1" > $T/cua-leave-stuck/leave-away.txt
+python3 Scripts/e2e/cua-eval.py $T/cua-leave-ok Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-leave-ok.txt
+python3 Scripts/e2e/cua-eval.py $T/cua-leave-stuck Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-leave-stuck.txt
+check "cua-eval: C7 leaving far away hides PASS; no leave FAIL (move seen); SKIP when not recorded" "grep -q \$'^cua C7 leaving far from the shown dock hides it L\t1' $T/cua-leave-ok.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\t0\t.*seen by the listener: yes' $T/cua-leave-stuck.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\tskip' $T/cua.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id

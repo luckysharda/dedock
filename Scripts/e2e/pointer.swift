@@ -66,6 +66,25 @@ var buttonDown = false
 
 func currentLocation() -> CGPoint { CGEvent(source: nil)?.location ?? .zero }
 
+/// DEDOCK_POINTER_DRYRUN=1: print what would be posted, post nothing (self-test of the guards).
+let dryRun = ProcessInfo.processInfo.environment["DEDOCK_POINTER_DRYRUN"] == "1"
+
+/// REG-068: a press is only ever sent at a point that lies on a display. Off every display the
+/// cursor clamps to the nearest edge and the press lands on whatever is there (in cand-7a34887b,
+/// possibly the native Dock). Checked before ANY event of a click or drag is posted.
+func onSomeDisplay(_ p: CGPoint) -> Bool {
+    var ids = [CGDirectDisplayID](repeating: 0, count: 16)
+    var count: UInt32 = 0
+    CGGetActiveDisplayList(16, &ids, &count)
+    return ids.prefix(Int(count)).contains { CGDisplayBounds($0).contains(p) }
+}
+func requirePressable(_ pts: CGPoint...) {
+    for p in pts where !onSomeDisplay(p) {
+        FileHandle.standardError.write("pointer: refusing: press point \(p.x),\(p.y) is outside every display (REG-068); nothing posted\n".data(using: .utf8)!)
+        exit(2)
+    }
+}
+
 func screenBounds() -> CGRect {
     var ids = [CGDirectDisplayID](repeating: 0, count: 16)
     var count: UInt32 = 0
@@ -90,17 +109,18 @@ func post(to p: CGPoint, dx: Double? = nil, dy: Double? = nil) {
     e.setDoubleValueField(.mouseEventDeltaY, value: ddy)
     e.flags = modifierFlags
     e.setIntegerValueField(.eventSourceUserData, value: synTag)
-    e.post(tap: .cghidEventTap)
+    if !dryRun { e.post(tap: .cghidEventTap) }
     emit(buttonDown ? "drag" : "move", p, dx: ddx, dy: ddy)
 }
 
 func postButton(_ down: Bool, at p: CGPoint, clickState: Int64 = 1) {
+    if down { requirePressable(p) }   // backstop: every press path ends here
     let type: CGEventType = down ? .leftMouseDown : .leftMouseUp
     guard let e = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left) else { exit(3) }
     e.setIntegerValueField(.mouseEventClickState, value: clickState)
     e.flags = modifierFlags
     e.setIntegerValueField(.eventSourceUserData, value: synTag)
-    e.post(tap: .cghidEventTap)
+    if !dryRun { e.post(tap: .cghidEventTap) }
     buttonDown = down
     emit(down ? "down" : "up", p)
 }
@@ -119,7 +139,7 @@ func postModifier(_ key: String, down: Bool) {
     e.type = .flagsChanged
     e.flags = modifierFlags
     e.setIntegerValueField(.eventSourceUserData, value: synTag)
-    e.post(tap: .cghidEventTap)
+    if !dryRun { e.post(tap: .cghidEventTap) }
     emit(down ? "modDown" : "modUp", nil, extra: "key=\(key)")
 }
 
@@ -295,6 +315,7 @@ func run(_ args: [String], _ s: inout Schedule) {
 
     case "click": // click x y [cmd|opt|ctrl|shift ...]
         let p = CGPoint(x: d(0, "x"), y: d(1, "y"))
+        requirePressable(p)
         let mods = Array(a.dropFirst(2))
         mods.forEach { postModifier($0, down: true) }
         post(to: p)
@@ -306,6 +327,7 @@ func run(_ args: [String], _ s: inout Schedule) {
 
     case "drag": // drag x1 y1 x2 y2 ms [hold-ms] [cmd|opt|...]   press, travel, (hold), release
         let p1 = CGPoint(x: d(0, "x1"), y: d(1, "y1")), p2 = CGPoint(x: d(2, "x2"), y: d(3, "y2"))
+        requirePressable(p1, p2)   // the whole drag stays on the displays, or nothing is posted
         let ms = d(4, "ms"), hold = opt(5, 0)
         let mods = Array(a.dropFirst(a.count > 5 && Double(a[5]) != nil ? 6 : 5))
         mods.forEach { postModifier($0, down: true) }
