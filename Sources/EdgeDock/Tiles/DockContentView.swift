@@ -23,7 +23,7 @@ struct DockContentView: View {
             }
 
             if let id = model.hoveredTile, let tile = model.tiles.first(where: { $0.id == id }),
-               tile.kind != .separator, let f = model.tileFrames[id] {
+               !tile.isFiller, let f = model.tileFrames[id] {
                 let lane = labelLane(for: f)
                 LabelView(content: TileLabelContent(tile), tokens: t)
                     .frame(width: lane.width, height: lane.height, alignment: labelAlignment)
@@ -57,12 +57,10 @@ struct TileView: View {
         let t = model.tokens
         ZStack {
             switch tile.kind {
-            case .separator:
-                // 1 px divider across the cross axis, 60 % of t.
-                Rectangle()
-                    .fill(Color(nsColor: t.dividerColor))
-                    .frame(width: model.edge.isVertical ? t.tileThickness * t.dividerFraction : 1,
-                           height: model.edge.isVertical ? 1 : t.tileThickness * t.dividerFraction)
+            case .separator, .spacer:
+                // SP3 Islands: a separator is the clear gap between two capsules and a spacer is
+                // empty glass; neither draws anything of its own.
+                EmptyView()
             case .app, .folder:
                 // Bare icon, no plate and no hover highlight (E1).
                 if let icon = model.icon(for: tile) {

@@ -39,8 +39,8 @@ import SwiftUI
     /// The layer-backed view whose `sublayerTransform` slides (or whose opacity fades).
     public let container: NSView
     let model: DockViewModel
-    /// The Dark Glass capsule, under the tiles and inside the sliding container.
-    let capsule = CapsuleView(frame: .zero)
+    /// The capsules under the tiles, inside the sliding container: one per island (SP3).
+    private(set) var capsules: [CapsuleView] = []
     private let hosting: NSHostingView<DockContentView>
     /// Where point-based accessibility hit tests go: the SwiftUI content, which owns the tile
     /// elements. A seam for the REG-054 guard.
@@ -78,14 +78,20 @@ import SwiftUI
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
         registerForDraggedTypes([.fileURL])
-        container.addSubview(capsule)
         container.addSubview(hosting)
         addSubview(container)
     }
 
     /// Re-applies the capsule's frame and material from the model (after layout or token changes).
     func applyCapsule() {
-        capsule.apply(frame: model.capsule, tokens: model.tokens)
+        let frames = model.islands.isEmpty ? [model.capsule] : model.islands
+        while capsules.count < frames.count {
+            let c = CapsuleView(frame: .zero)
+            container.addSubview(c, positioned: .below, relativeTo: hosting)
+            capsules.append(c)
+        }
+        while capsules.count > frames.count { capsules.removeLast().removeFromSuperview() }
+        for (view, frame) in zip(capsules, frames) { view.apply(frame: frame, tokens: model.tokens) }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -114,7 +120,7 @@ import SwiftUI
     }
 
     override public func mouseDragged(with event: NSEvent) {
-        guard let start = downPoint, let id = model.pressedTile, model.tiles.first(where: { $0.id == id })?.kind != .separator
+        guard let start = downPoint, let id = model.pressedTile, model.tiles.first(where: { $0.id == id })?.isFiller == false
         else { return }
         let p = screenPoint(event)
         if !dragging {

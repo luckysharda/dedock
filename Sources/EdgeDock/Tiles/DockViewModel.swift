@@ -5,7 +5,7 @@ import Observation
 
 /// What a tile shows. Built from the profile's `TileItem`s plus live running state.
 public struct TileModel: Identifiable, Sendable, Equatable {
-    public enum Kind: String, Sendable { case app, folder, separator }
+    public enum Kind: String, Sendable { case app, folder, separator, spacer }
     public enum Running: String, Sendable { case none, running, frontmost, hidden }
 
     public let id: TileID
@@ -18,6 +18,9 @@ public struct TileModel: Identifiable, Sendable, Equatable {
     public var isMissing = false
     /// The app's window count, read for the hovered tile only (nil when unknown).
     public var windowCount: Int?
+
+    /// Separators and spacers: no icon, no hover, no click, hidden from accessibility (T26).
+    public var isFiller: Bool { kind == .separator || kind == .spacer }
 
     public init(id: TileID, kind: Kind, name: String, bundleID: String? = nil, url: URL? = nil) {
         self.id = id
@@ -37,6 +40,8 @@ public struct TileModel: Identifiable, Sendable, Equatable {
     /// Panel-local frames.
     public var panelSize: CGSize = .zero
     public var capsule: CGRect = .zero
+    /// The capsules drawn (SP3 Islands), panel-local.
+    public var islands: [CGRect] = []
     public var tileFrames: [TileID: CGRect] = [:]
     public var hoveredTile: TileID?
     public var pressedTile: TileID?
@@ -62,13 +67,14 @@ public struct TileModel: Identifiable, Sendable, Equatable {
         panelSize = layout.panelFrame.size
         edge = layout.edge
         capsule = layout.capsuleFrame.offsetBy(dx: -o.x, dy: -o.y)
+        islands = layout.islands.map { $0.offsetBy(dx: -o.x, dy: -o.y) }
         tileFrames = layout.tileFrames.mapValues { $0.offsetBy(dx: -o.x, dy: -o.y) }
         self.tiles = tiles
     }
 
     public func tile(atScreen p: CGPoint) -> TileID? {
         let local = CGPoint(x: p.x - panelOrigin.x, y: p.y - panelOrigin.y)
-        return tiles.first { $0.kind != .separator && (tileFrames[$0.id]?.contains(local) ?? false) }?.id
+        return tiles.first { !$0.isFiller && (tileFrames[$0.id]?.contains(local) ?? false) }?.id
     }
 
     func icon(for tile: TileModel) -> NSImage? { icons.icon(for: tile) }
@@ -112,7 +118,7 @@ public struct TileLabelContent: Equatable, Sendable {
             return
         }
         switch (tile.kind, tile.running) {
-        case (.separator, _): state = nil; running = false
+        case (.separator, _), (.spacer, _): state = nil; running = false
         case (.folder, _): state = "Folder"; running = false
         case (.app, .none): state = "Not running"; running = false
         case (.app, .hidden): state = "Hidden" + windows(tile.windowCount); running = false

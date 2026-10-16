@@ -114,12 +114,39 @@ import Testing
         #expect(layout(.left, tiles: lots).scale == 0.6)
     }
 
-    @Test func separatorsAreShort() {
+    /// SP3 Islands (T26): a separator splits the dock into two capsules 8 pt apart, each with its
+    /// own padding; the union frame is still one dock.
+    @Test func separatorsSplitTheDockIntoIslands() throws {
         let withSep = [TileSpec(id: "a"), TileSpec(id: "s", shape: .separator), TileSpec(id: "b")]
         let l = layout(.left, tiles: withSep)
-        #expect(l.tileFrames["s"]!.height == 10)
-        let expected: CGFloat = 56 + 10 + 56 + 16 + 12
-        #expect(l.capsuleFrame.height == expected)
+        // The cell: end padding + island gap + start padding, minus the two tile gaps around it.
+        let cell: CGFloat = 4                                              // 2 × 6 + 8 − 2 × 8
+        #expect(l.tileFrames["s"]!.height == cell)
+        let union: CGFloat = 144                                           // 56 + 4 + 56 + 2 × 8 + 2 × 6
+        #expect(l.capsuleFrame.height == union)
+        #expect(l.islands.count == 2)
+        let top = try #require(l.islands.max { $0.midY < $1.midY }), bottom = try #require(l.islands.min { $0.midY < $1.midY })
+        #expect(top.minY - bottom.maxY == 8)                               // the gap between islands
+        #expect(top.maxY == l.capsuleFrame.maxY && bottom.minY == l.capsuleFrame.minY)
+        let island: CGFloat = 68                                           // 56 + 2 × 6
+        #expect(top.height == island && bottom.height == island)
+        #expect(top.contains(CGPoint(x: l.tileFrames["a"]!.midX, y: l.tileFrames["a"]!.midY)))
+    }
+
+    @Test func spacerIsHalfACellOfGlass() {
+        let l = layout(.bottom, tiles: [TileSpec(id: "a"), TileSpec(id: "p", shape: .spacer), TileSpec(id: "b")])
+        #expect(l.tileFrames["p"]!.width == CGFloat(56) / 2)
+        #expect(l.islands == [l.capsuleFrame])                             // one capsule
+    }
+
+    @Test func withoutSeparatorsThereIsOneIsland() {
+        let l = layout(.right)
+        #expect(l.islands == [l.capsuleFrame])
+        // Leading or doubled separators never draw an empty capsule.
+        let odd = layout(.left, tiles: [TileSpec(id: "s0", shape: .separator), TileSpec(id: "a"),
+                                        TileSpec(id: "s1", shape: .separator), TileSpec(id: "s2", shape: .separator),
+                                        TileSpec(id: "b")])
+        #expect(odd.islands.count == 2)
     }
 
     @Test func appCellsUseTheirOwnLength() {

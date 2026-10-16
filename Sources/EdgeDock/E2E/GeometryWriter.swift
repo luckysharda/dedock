@@ -58,6 +58,7 @@ public struct GeometryWriter: Sendable {
             if let l = dock.layout {
                 o["panel"] = rect(l.panelFrame)
                 o["capsule"] = rect(l.capsuleFrame)
+                o["islands"] = l.islands.map { rect($0) }       // SP3: the capsules drawn
                 o["tiles"] = dock.tiles.compactMap { t -> [String: Any]? in
                     guard let f = l.tileFrames[t.id] else { return nil }
                     var tile: [String: Any] = ["id": t.id.rawValue, "kind": t.kind.rawValue, "name": t.name,

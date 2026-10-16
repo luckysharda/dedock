@@ -421,7 +421,7 @@ public struct DockSurroundings: Sendable, Equatable {
             switch t.kind {
             case .app: t.isMissing = TileActions.appURL(t) == nil
             case .folder: t.isMissing = !(t.url.map { FileManager.default.fileExists(atPath: $0.path) } ?? false)
-            case .separator: break
+            case .separator, .spacer: break
             }
             return t
         }

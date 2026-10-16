@@ -13,8 +13,10 @@ public enum TileShape: Sendable, Hashable {
     case square(TileLength)
     /// Apps and folders: a bare icon in a cell of `DockMetrics.appCellLength` along the axis.
     case app
-    /// The divider between sections.
+    /// Splits the dock into separate capsules ("islands", SP3) with `islandGap` between them.
     case separator
+    /// Half a cell of empty glass inside a capsule (SP3).
+    case spacer
 }
 
 public struct TileSpec: Sendable, Hashable, Identifiable {
@@ -50,6 +52,8 @@ public struct DockMetrics: Sendable, Hashable {
     /// visible edge − 48 pt, i.e. 24 pt per end).
     public var endMargin: CGFloat = 8
     public var minimumScale: CGFloat = 0.6
+    /// Clear space between two islands (SP3 Islands, design.md §7.2a).
+    public var islandGap: CGFloat = 8
 
     public var tileThickness: CGFloat { thickness - 2 * padding }
 
@@ -83,7 +87,12 @@ public struct PlacementInput: Sendable, Hashable {
 public struct DockLayout: Sendable, Hashable {
     /// The fixed, fully shown panel frame (AppKit global). It never moves while revealing.
     public let panelFrame: CGRect
+    /// The whole dock along the edge, every island included. It is still ONE dock for the trigger
+    /// zone, hysteresis and click-through region (SP3).
     public let capsuleFrame: CGRect
+    /// The capsules actually drawn: one per run of tiles between separators (SP3 Islands). Equal
+    /// to `[capsuleFrame]` without separators.
+    public let islands: [CGRect]
     /// At the shown position, AppKit global, in tile order.
     public let tileFrames: [TileID: CGRect]
     public let order: [TileID]
@@ -114,7 +123,10 @@ public enum LayoutEngine {
             switch shape {
             case .square(let units): CGFloat(units.rawValue) * t * scale
             case .app: (m.appCellLength ?? t) * scale
-            case .separator: max(1, m.separatorLength * scale)
+            // An island break: the end padding of one island, the gap, the start padding of the
+            // next, minus the tile gaps already on either side of the cell.
+            case .separator: max(1, 2 * m.padding + m.islandGap - 2 * m.gap * scale)
+            case .spacer: (m.appCellLength ?? t) * scale / 2
             }
         }
         func contentLength(_ scale: CGFloat) -> CGFloat {
@@ -179,6 +191,25 @@ public enum LayoutEngine {
             frames[tile.id] = aligned(r)
         }
 
+        // Islands: each run of tiles between separators gets its own capsule (padding at both ends).
+        var islands: [CGRect] = []
+        var run: [CGRect] = []
+        func closeRun() {
+            guard let first = run.first, let last = run.last else { return }
+            let r: CGRect = edge.isVertical
+                ? CGRect(x: capsule.minX, y: last.minY - m.padding, width: capsule.width,
+                         height: first.maxY - last.minY + 2 * m.padding)
+                : CGRect(x: first.minX - m.padding, y: capsule.minY, width: last.maxX - first.minX + 2 * m.padding,
+                         height: capsule.height)
+            islands.append(aligned(r.intersection(capsule)))
+            run.removeAll()
+        }
+        for tile in tiles {
+            if tile.shape == .separator { closeRun() } else if let r = frames[tile.id] { run.append(r) }
+        }
+        closeRun()
+        if islands.isEmpty || !tiles.contains(where: { $0.shape == .separator }) { islands = [capsule] }
+
         // Panel: from the true screen edge (or the native Dock's inner edge) through the capsule,
         // plus the label lane and shadow margin toward the centre; never into the menu bar.
         let inward = m.labelLane + m.shadowMargin
@@ -203,7 +234,7 @@ public enum LayoutEngine {
         let travel = m.thickness + m.edgeGap + max(8, m.shadowMargin)
         let o = edge.outward
         return DockLayout(
-            panelFrame: panel, capsuleFrame: capsule, tileFrames: frames, order: tiles.map(\.id),
+            panelFrame: panel, capsuleFrame: capsule, islands: islands, tileFrames: frames, order: tiles.map(\.id),
             indicatorSide: edge.opposite, hiddenOffset: CGVector(dx: o.dx * travel, dy: o.dy * travel),
             scale: scale, contentSpan: edge.isVertical ? Interval(capsule.minY, capsule.maxY) : Interval(capsule.minX, capsule.maxX),
             edge: edge)
