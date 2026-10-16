@@ -379,6 +379,20 @@ Light / Dark / System appearance applies to panels (DD-704); the dock style is c
 
 All 11 app UI surfaces are picked.
 
+**P2 Capsule toast (T37c; the notice and the drag-out confirm).**
+
+| Part | Rule |
+|---|---|
+| Shape | 52 pt tall pill, radius 26; width fits the content, 240–520 pt; padding: leading 10 pt with an icon, 18 pt without, trailing 8 pt, gap 12 pt |
+| Material | the dock style (§7.2, "panels that grow out of it"): Dark Glass, Black, Dark, Light Glass, or Liquid Glass with the dock's current LG4 tint; Reduce Transparency gives the style's solid form (`#1C1C1E` / `#EAEDF2`) |
+| Text | 13 pt Medium, white (light styles `#111`); one line |
+| Buttons | 26 pt capsules (radius 13), fill `white @ 0.12` (light styles `black @ 0.08`), 12 pt Semibold, padding 0 × 12 pt; only the notice's OK is accent-filled (`controlAccentColor`) |
+| Confirm | [32 pt tile icon, radius 9] "Remove “Name”?" [Remove] [Keep]; Remove has `systemRed` text, no red fill; Keep is the default (Return when focused), trailing, not accent-filled; the name middle-truncates to fit; the full sentence "Remove “Name” from the Edge Dock?" is the AX title and the announcement |
+| Notice | one line plus [OK], for example "Your Edge Dock layout was damaged. Dedock started fresh."; each kind has its own one-liner written to fit; the longer explanation goes in the AX description (and the log), no Details button in M2; it never auto-dismisses: OK or a click elsewhere closes it; one at a time, later ones queue |
+| Place | confirm: 10 pt from the capsule's inner side, centred on the slot (beside it on left and right docks, above or below it on bottom and top docks); notice: 6 pt below the menu bar, centred on Dedock's status item, or top centre of the menu-bar display when the item is hidden or its frame is unknown; both clamped 8 pt inside `visibleFrame` |
+| Motion | in: a clip reveal that starts at the side touching its origin (the dock or the menu bar) and grows away from it, 0.22 s on the reveal curve; out: 0.30 s fade; Reduce Motion: a 0.15 s fade in place |
+| Behaviour | never key, never modal, an accessibility announcement on show; Esc only when it has focus (rules below) |
+
 **Drag-out confirm (T25, row 43; P2 when built).**
 
 - On drop the tile springs straight back to its slot (0.2 s, instant under Reduce Motion) while the question is open, so the dock never shows a gap; Remove then closes the gap with the normal relayout.
