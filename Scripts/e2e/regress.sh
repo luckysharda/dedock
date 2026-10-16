@@ -324,8 +324,8 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   $B/pointer -q move ${out[1]} ${out[2]}
   for k in {1..20}; do sleep 0.05; (( $(log_count $R/log.ndjson $pid '^gate[.]mouse .*ignores=true' $g0) > 0 )) && { gated=1; break }; done
   wait $lo 2>/dev/null
-  local seen=$(grep -c "ev=move x=${out[1]%.*}" $C/listen-outside.txt 2>/dev/null || echo 0)
-  print -r -- "gate closed after the move: $( (( gated )) && echo "yes ($(( k * 50 )) ms)" || echo 'no (1 s)'); move event seen by the listener: $( (( seen > 0 )) && echo yes || echo no)" > $C/gate-outside.txt
+  local seen=$(grep -c "ev=move x=${out[1]%.*}" $C/listen-outside.txt 2>/dev/null || true)
+  print -r -- "gate closed after the move: $( (( gated )) && echo "yes ($(( k * 50 )) ms)" || echo 'no (1 s)'); move event seen by the listener: $( (( ${seen:-0} > 0 )) && echo yes || echo no)" > $C/gate-outside.txt
   $B/axprobe at ${out[1]} ${out[2]} only=$pid > $C/hit-shown-outside.json
   $B/axprobe front > $C/front-shown.json
   $B/pointer -q move ${awy[1]} ${awy[2]}   # leave: the dock hides before the next step
