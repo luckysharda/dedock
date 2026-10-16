@@ -40,3 +40,37 @@ import Foundation
     public func updateHitRegion(_ rects: [CGRect]) { hitRegion = rects }
     public func pointerMoved(_ location: CGPoint) {}
 }
+
+/// One native-Dock cell for the T31 matrix (DD-991/992): the `com.apple.dock` values dedock
+/// reads, and a 1920 × 1080 display whose `visibleFrame` leaves room for a visible Dock the way
+/// macOS does (an auto-hidden Dock leaves none). Read-only by construction: it is a value.
+public struct FakeDockPreferences: Sendable {
+    public let prefs: NativeDockPreferences
+    public let display: DisplaySnapshot
+
+    /// The visible Dock's thickness (tile 48 + padding), which macOS takes from `visibleFrame`.
+    public static let visibleThickness: CGFloat = 70
+
+    public init(edge: ScreenEdge, autohide: Bool, apps: Int = 8, others: Int = 2) {
+        prefs = NativeDockPreferences(orientation: edge, autohide: autohide, tileSize: 48,
+                                      persistentAppCount: apps, persistentOtherCount: others)
+        let frame = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        var visible = CGRect(x: 0, y: 0, width: 1920, height: 1056)   // below the 24 pt menu bar
+        let t = autohide ? 0 : Self.visibleThickness
+        switch edge {
+        case .bottom: visible = CGRect(x: 0, y: t, width: 1920, height: 1056 - t)
+        case .left: visible = CGRect(x: t, y: 0, width: 1920 - t, height: 1056)
+        case .right: visible = CGRect(x: 0, y: 0, width: 1920 - t, height: 1056)
+        case .top: break
+        }
+        display = DisplaySnapshot(identity: DisplayIdentity(uuid: "matrix"), frame: frame, visibleFrame: visible,
+                                  menuBarHeight: 24, menuBarAutoHides: false, isMain: true, backingScale: 1)
+    }
+
+    /// The native Dock's estimated footprint as a screen rect (for overlap checks).
+    public var footprintRect: CGRect? {
+        NativeDockPreferences.footprint(prefs: prefs, display: display).map {
+            $0.edge.strip(of: display.frame, along: $0.span, thickness: $0.thickness)
+        }
+    }
+}

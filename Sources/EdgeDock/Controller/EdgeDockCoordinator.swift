@@ -503,7 +503,16 @@ public struct DockSurroundings: Sendable, Equatable {
         return others
     }
 
-    private var layoutInset: CGFloat { max(0, layout.panelFrame.minY - display.frame.minY) * (config.edge == .bottom ? 1 : 0) }
+    /// The native Dock inset the current layout was built with (the panel starts at it).
+    private var layoutInset: CGFloat {
+        let p = layout.panelFrame, f = display.frame
+        return switch config.edge {
+        case .left: max(0, p.minX - f.minX)
+        case .right: max(0, f.maxX - p.maxX)
+        case .bottom: max(0, p.minY - f.minY)
+        case .top: 0
+        }
+    }
 
     // MARK: Pure helpers
 
@@ -521,11 +530,24 @@ public struct DockSurroundings: Sendable, Equatable {
     }
 
     static func layout(_ config: DockConfig, tiles: [TileItem], display: DisplaySnapshot, surroundings s: DockSurroundings) -> DockLayout {
-        // Bottom edge beside a visible native Dock: sit above it (visibleFrame.minY).
-        let inset: CGFloat = (config.edge == .bottom && s.nativeDock.orientation == .bottom && !s.nativeDock.autohide)
-            ? max(0, display.visibleFrame.minY - display.frame.minY) : 0
+        // Beside a visible native Dock on the same edge: sit on its inner side, where macOS's
+        // visibleFrame ends (REG-070: the left and right edges sat over the Dock).
+        let inset: CGFloat = Self.nativeDockInset(edge: config.edge, display: display, nativeDock: s.nativeDock)
         let placement = PlacementInput(display: display, edge: config.edge, alignment: config.dockAlignment, nativeDockInset: inset)
         return LayoutEngine.layout(tiles.map(\.tileSpec), placement, config.tokens.metrics)
+    }
+
+    /// The visible native Dock's thickness on `edge`, from the `visibleFrame` gap macOS leaves
+    /// for it; 0 when the Dock is on another edge or auto-hides.
+    static func nativeDockInset(edge: ScreenEdge, display: DisplaySnapshot, nativeDock: NativeDockPreferences) -> CGFloat {
+        guard nativeDock.orientation == edge, !nativeDock.autohide else { return 0 }
+        let f = display.frame, v = display.visibleFrame
+        return switch edge {
+        case .left: max(0, v.minX - f.minX)
+        case .right: max(0, f.maxX - v.maxX)
+        case .bottom: max(0, v.minY - f.minY)
+        case .top: 0
+        }
     }
 
     private func logLayout(reason: String) {
