@@ -119,6 +119,58 @@ import Testing
         #expect(withOption.contains(.zoneEntered(.wall)))
     }
 
+    /// REG-067: on the top edge (and beside the native Dock) the shown capsule does not touch its
+    /// zone, so the pointer travelling from the zone to the dock was outside zone ∪ capsule ± 16;
+    /// a pause over 400 ms there hid the dock. The reveal corridor counts that path as inside
+    /// until the pointer first reaches the capsule.
+    @Test("REG-067: the path from the zone to the capsule stays inside until the first visit")
+    func reg067() {
+        func inside(_ events: [RevealEvent]) -> Bool? {
+            events.compactMap { if case .pointerInside(let on) = $0 { on } else { nil } }.last
+        }
+        func sample(_ x: CGFloat, _ y: CGFloat, _ ms: Int) -> PointerSample {
+            PointerSample(location: CGPoint(x: x, y: y), timestamp: .milliseconds(ms))
+        }
+
+        // Top (AppKit, 1080 high): zone y 1077–1080 over x 792–1128; capsule below the menu bar.
+        let top = HotZone(id: "z-0", rect: CGRect(x: 792, y: 1077, width: 336, height: 3), kind: .wall)
+        let topCapsule = CGRect(x: 832, y: 964, width: 256, height: 78)    // capsule ± 16 reaches y 1058
+        var e = TriggerEvaluator()
+        func step(_ x: CGFloat, _ y: CGFloat, _ ms: Int, _ cap: CGRect, _ zones: [HotZone], _ edge: ScreenEdge) -> [RevealEvent] {
+            e.evaluate(sample(x, y, ms), zones: zones, capsule: cap, edge: edge, onDockDisplay: true)
+        }
+        #expect(inside(step(960, 1079, 0, topCapsule, [top], .top)) == true)        // zone entered
+        let gap = step(960, 1068, 20, topCapsule, [top], .top)                     // the menu-bar band
+        #expect(gap.contains(.zoneLeft))
+        #expect(inside(gap) == nil)                                                // still inside: no hide armed
+        #expect(inside(step(960, 1068, 900, topCapsule, [top], .top)) == nil)      // a long pause changes nothing
+        #expect(inside(step(960, 1000, 950, topCapsule, [top], .top)) == nil)      // reaches the dock
+        #expect(inside(step(960, 1068, 1000, topCapsule, [top], .top)) == false)   // visited: the band is outside now
+        // A new zone entry starts a new corridor.
+        #expect(inside(step(960, 1079, 1100, topCapsule, [top], .top)) == true)
+        #expect(inside(step(960, 1068, 1120, topCapsule, [top], .top)) == nil)
+
+        // Bottom beside the native Dock (footprint 424–1496): zone strips at the sides, capsule above.
+        let strip = HotZone(id: "z-0", rect: CGRect(x: 24, y: 0, width: 400, height: 6), kind: .wall)
+        let bottomCapsule = CGRect(x: 832, y: 86, width: 256, height: 78)
+        e = TriggerEvaluator()
+        #expect(inside(step(300, 3, 0, bottomCapsule, [strip], .bottom)) == true)
+        #expect(inside(step(600, 60, 30, bottomCapsule, [strip], .bottom)) == nil)  // the diagonal midpoint
+        let hull = TriggerEvaluator.corridorHull(entry: CGPoint(x: 300, y: 3), zone: strip.rect, capsule: bottomCapsule,
+                                                 hysteresis: TriggerParameters().hysteresis, edge: .bottom)
+        #expect(!TriggerEvaluator.convexContains(hull, CGPoint(x: 700, y: 3)))      // the Dock's own edge
+        #expect(!TriggerEvaluator.convexContains(hull, CGPoint(x: 960, y: 3)))
+        #expect(TriggerEvaluator.convexContains(hull, CGPoint(x: 600, y: 60)))
+
+        // Left: capsule ± 16 already overlaps the zone; the path never goes outside (unchanged).
+        let left = HotZone(id: "z-0", rect: CGRect(x: 0, y: 400, width: 3, height: 300), kind: .wall)
+        let leftCapsule = CGRect(x: 8, y: 410, width: 78, height: 280)
+        e = TriggerEvaluator()
+        var events: [RevealEvent] = []
+        for (i, x) in [CGFloat(1), 4, 10, 30, 60].enumerated() { events += step(x, 550, i * 20, leftCapsule, [left], .left) }
+        #expect(!events.contains(.pointerInside(false)))
+    }
+
     /// REG-023: integer-literal arithmetic in test arguments compiled on macOS but not on Linux
     /// (no implicit Int → CGFloat there), and with swift-testing `#expect(cgFloat == 1080 - 48)`
     /// reads false even when equal: the macro type-checks the bare right-hand side on its own.

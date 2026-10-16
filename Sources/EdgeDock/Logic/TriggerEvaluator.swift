@@ -20,6 +20,16 @@ public struct TriggerEvaluator: Sendable {
     private var bandEnteredAt: Duration?
     /// Ring of recent samples in a shared band, for the speed window.
     private var recent: [(time: Duration, point: CGPoint)] = []
+    /// The reveal corridor (REG-067): where the pointer entered the zone, and the convex hull
+    /// of that entry segment and the capsule ± hysteresis. On the top edge (and beside the
+    /// native Dock) the capsule does not touch its zone, so the path between them counts as
+    /// inside until the pointer first reaches the capsule.
+    private var entry: (point: CGPoint, zone: CGRect)?
+    private var corridor: [CGPoint] = []
+    private var corridorCapsule: CGRect?
+
+    /// Half the entry segment's length along the edge.
+    public static let corridorHalfWidth: CGFloat = 24
 
     public init(parameters: TriggerParameters = .init()) {
         self.parameters = parameters
@@ -63,6 +73,8 @@ public struct TriggerEvaluator: Sendable {
             if currentZone != nil { events.append(.zoneLeft) }
             if let z = hit {
                 events.append(.zoneEntered(z.kind))
+                entry = (s.location, z.rect)    // a fresh corridor from this entry point
+                corridorCapsule = nil
                 pushAccumulated = 0
                 pushFired = false
                 recent.removeAll(keepingCapacity: true)
@@ -96,12 +108,71 @@ public struct TriggerEvaluator: Sendable {
             }
         }
 
-        let nowInside = hit != nil || capsule.map { Self.contains($0.insetBy(dx: -parameters.hysteresis, dy: -parameters.hysteresis), s.location) } ?? false
+        let inCapsule = capsule.map { Self.contains($0.insetBy(dx: -parameters.hysteresis, dy: -parameters.hysteresis), s.location) } ?? false
+        if inCapsule { dropCorridor() }          // visited: from now on zone ∪ capsule only
+        let nowInside = hit != nil || inCapsule || inCorridor(s.location, capsule: capsule, edge: edge)
         if nowInside != inside {
             inside = nowInside
             events.append(.pointerInside(nowInside))
         }
         return events
+    }
+
+    /// Ends the corridor (the dock is hidden again, or the capsule was reached). An explicit
+    /// reveal never gets one: it already waits for the first visit (S-13).
+    public mutating func dropCorridor() {
+        entry = nil
+        corridor.removeAll(keepingCapacity: true)
+        corridorCapsule = nil
+    }
+
+    /// Whether `p` lies in the corridor; the hull is rebuilt only when the capsule's frame
+    /// changes (a relayout), never per sample.
+    private mutating func inCorridor(_ p: CGPoint, capsule: CGRect?, edge: ScreenEdge) -> Bool {
+        guard let entry, let capsule else { return false }
+        if corridorCapsule != capsule {
+            corridorCapsule = capsule
+            corridor = Self.corridorHull(entry: entry.point, zone: entry.zone, capsule: capsule,
+                                         hysteresis: parameters.hysteresis, edge: edge)
+        }
+        return Self.convexContains(corridor, p)
+    }
+
+    /// The convex hull of the entry segment (entry ± `corridorHalfWidth` along the edge,
+    /// clamped to the zone, at the zone's full depth) and the capsule outset by `hysteresis`.
+    public static func corridorHull(entry e: CGPoint, zone z: CGRect, capsule: CGRect, hysteresis h: CGFloat,
+                                    edge: ScreenEdge) -> [CGPoint] {
+        let w = corridorHalfWidth
+        let segment: CGRect = edge.isVertical
+            ? CGRect(x: z.minX, y: max(z.minY, e.y - w), width: z.width, height: min(z.maxY, e.y + w) - max(z.minY, e.y - w))
+            : CGRect(x: max(z.minX, e.x - w), y: z.minY, width: min(z.maxX, e.x + w) - max(z.minX, e.x - w), height: z.height)
+        let c = capsule.insetBy(dx: -h, dy: -h)
+        var points = [segment, c].flatMap { r in
+            [CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.maxX, y: r.minY), CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.minX, y: r.maxY)]
+        }
+        // Andrew's monotone chain, counter-clockwise.
+        points.sort { ($0.x, $0.y) < ($1.x, $1.y) }
+        func cross(_ o: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat { (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x) }
+        var lower: [CGPoint] = [], upper: [CGPoint] = []
+        for p in points {
+            while lower.count >= 2, cross(lower[lower.count - 2], lower[lower.count - 1], p) <= 0 { lower.removeLast() }
+            lower.append(p)
+        }
+        for p in points.reversed() {
+            while upper.count >= 2, cross(upper[upper.count - 2], upper[upper.count - 1], p) <= 0 { upper.removeLast() }
+            upper.append(p)
+        }
+        return Array(lower.dropLast() + upper.dropLast())
+    }
+
+    /// Point in a counter-clockwise convex polygon, edges included.
+    static func convexContains(_ hull: [CGPoint], _ p: CGPoint) -> Bool {
+        guard hull.count >= 3 else { return false }
+        for i in hull.indices {
+            let a = hull[i], b = hull[(i + 1) % hull.count]
+            if (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x) < 0 { return false }
+        }
+        return true
     }
 
     /// Forget membership (after a geometry rebuild the next sample re-derives it).
