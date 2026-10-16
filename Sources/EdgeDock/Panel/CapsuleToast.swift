@@ -1,6 +1,7 @@
 import AppKit
 import DedockCore
 import DesignSystem
+import Diagnostics
 import QuartzCore
 
 /// A button inside a P2 Capsule toast (design.md §7.2a): a 26 pt capsule (radius 13), 12 pt
@@ -138,6 +139,8 @@ import QuartzCore
         var accessibilityTitle: String
         /// A longer explanation, read as the toast's accessibility help (not shown).
         var accessibilityHelp: String?
+        /// `kind=` in the `toast.show` log line (`confirm`, `notice`).
+        var logKind = "toast"
     }
 
     static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
@@ -295,6 +298,12 @@ import QuartzCore
     /// never key.
     func show(at frame: CGRect, growth: ToastLayout.Growth, reduceMotion: Bool) {
         panel.setFrame(frame.insetBy(dx: -margin, dy: -margin), display: false)
+        // The PILL's frame (not the window's, which adds the shadow margin), AppKit global, for
+        // E2E: its height, its gap under the menu bar, clicks beside it.
+        DedockLog.event(.app, "toast.show", [
+            "kind": content.logKind, "growth": growth.rawValue, "reduceMotion": reduceMotion,
+            "pill": [frame.minX, frame.minY, frame.width, frame.height].map { DedockLog.pt(Double($0)) }.joined(separator: ","),
+        ])
         if reduceMotion {
             panel.alphaValue = 0
             panel.orderFrontRegardless()

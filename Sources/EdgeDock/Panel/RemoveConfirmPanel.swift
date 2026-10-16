@@ -73,7 +73,7 @@ import Diagnostics
         let room = L.maxWidth - L.leadingWithIcon - CapsuleToast.iconSize - L.spacing - buttonsWidth - L.trailing - 2
         toast = CapsuleToast(CapsuleToast.Content(
             icon: icon, text: Self.shortText(for: name, room: room, measure: CapsuleToast.measure), truncation: .byTruncatingMiddle,
-            buttons: buttons, accessibilityTitle: Self.title(for: name)), look: .dock(tokens))
+            buttons: buttons, accessibilityTitle: Self.title(for: name), logKind: "confirm"), look: .dock(tokens))
         super.init()
         weakSelf = self
     }

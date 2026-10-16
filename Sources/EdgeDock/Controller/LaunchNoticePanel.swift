@@ -41,7 +41,7 @@ import DesignSystem
         toast = CapsuleToast(CapsuleToast.Content(
             icon: nil, text: text.line, truncation: .byTruncatingTail,
             buttons: [CapsuleToast.Button(title: "OK", role: .accent, isDefault: true) { weakSelf?.dismiss() }],
-            accessibilityTitle: text.line, accessibilityHelp: text.detail),
+            accessibilityTitle: text.line, accessibilityHelp: text.detail, logKind: "notice"),
             look: .window(look, dark: Self.isDark(look)))
         super.init()
         weakSelf = self
