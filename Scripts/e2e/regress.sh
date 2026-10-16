@@ -168,9 +168,9 @@ cleanup() {
 trap cleanup EXIT
 trap 'echo "interrupted: tearing down" >&2; exit 130' INT TERM
 
-check() {  # check <id> <0|1|skip> <detail>
-  python3 -c 'import json,sys; s=sys.argv[2]; print(json.dumps({"id": sys.argv[1], "ok": s == "1", "skip": s == "skip", "detail": sys.argv[3]}))' "$1" "$2" "$3" >> $root/checks.jsonl
-  print -r -- "$(case $2 in 1) echo PASS ;; skip) echo SKIP ;; *) echo FAIL ;; esac) $1: $3"
+check() {  # check <id> <0|1|skip|void> <detail>   (void: the probe was occluded, rerun; never a PASS)
+  python3 -c 'import json,sys; s=sys.argv[2]; print(json.dumps({"id": sys.argv[1], "ok": s == "1", "skip": s == "skip", "void": s == "void", "detail": sys.argv[3]}))' "$1" "$2" "$3" >> $root/checks.jsonl
+  print -r -- "$(case $2 in 1) echo PASS ;; skip) echo SKIP ;; void) echo VOID ;; *) echo FAIL ;; esac) $1: $3"
 }
 rmetric() { print -r -- "{\"metric\":\"$1\",\"value\":$2}" >> $root/run-metrics.jsonl }
 
@@ -283,11 +283,23 @@ for t in g['docks'][0]['tiles']:
   x,y,w,h=t['frame']['topLeft']; print(t['name'].replace(' ','_'), x+w/2, y+h/2)" > $C/tiles.txt
   : > $C/hit-hidden.jsonl
   while read -r name x y; do print -rn -- "{\"tile\":\"$name\",\"hit\":" >> $C/hit-hidden.jsonl; $B/axprobe at $x $y only=$pid | tr -d '\n' >> $C/hit-hidden.jsonl; print "}" >> $C/hit-hidden.jsonl; done < $C/tiles.txt
+  # Occlusion: another app's window above the dock's level that takes the click at a tile centre
+  # (a top-centre overlay, cand-95411f2c) makes a hit there say nothing about the dock. Rows probed
+  # under one are VOID, never PASS; C7 probes the first tile that is not occluded.
+  : > $C/occl.jsonl
+  while read -r name x y; do print -rn -- "{\"tile\":\"$name\",\"occl\":" >> $C/occl.jsonl; $B/axprobe occluder $x $y $pid | tr -d '\n' >> $C/occl.jsonl; print "}" >> $C/occl.jsonl; done < $C/tiles.txt
   $B/axprobe front > $C/front-launch.json
   # C7: reveal by dwell, pointer on a tile → Dedock gets the hit; 4 pt outside the capsule → other app.
   # Probe points per edge (top-left global): along = the capsule centre along the edge; for the
-  # first tile, "outside" = 4 pt past the capsule's inner side and "away" = 400 pt past it.
-  local first=($(head -1 $C/tiles.txt))
+  # probe tile (the first un-occluded one), "outside" = 4 pt past the capsule's inner side and
+  # "away" = 400 pt past it.
+  local first=($(python3 -c "
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
+clear = [r['tile'] for r in rows if not r['occl'].get('occluded')]
+pick = clear[0] if clear else rows[0]['tile']
+print(next(l for l in open(sys.argv[2]) if l.split()[0] == pick).strip())" $C/occl.jsonl $C/tiles.txt))
+  print -r -- ${first[1]} > $C/probe-tile.txt
   local pts=($(python3 -c "
 import json, sys; d = json.load(open(sys.argv[1]))['docks'][0]; x, y, w, h = d['capsule']['topLeft']; e = d['edge']
 tx, ty = float(sys.argv[2]), float(sys.argv[3])
@@ -307,14 +319,17 @@ print(e, al, *o, *a)" $R/data/e2e/geometry.json ${first[2]} ${first[3]}))
   print -l "edge $edge $along" "wait 600" "glide ${first[2]} ${first[3]} 80" "wait 150" > $C/reveal.txt
   $B/pointer -q script $C/reveal.txt
   $B/axprobe at ${first[2]} ${first[3]} only=$pid > $C/hit-shown-tile.json
-  # C7 cell edge: inside the first tile's GEOM cell but outside its (smaller) icon/AX frame, 2 pt in
+  $B/axprobe occluder ${first[2]} ${first[3]} $pid > $C/occl-tile.json
+  # C7 cell edge: inside the probe tile's GEOM cell but outside its (smaller) icon/AX frame, 2 pt in
   # from the cell's edge on the side away from the screen edge (along x on left/right docks, along y on
   # bottom/top docks): still the dock, never the window under it.
   local cell=($(python3 -c "
-import json; d = json.load(open('$R/data/e2e/geometry.json'))['docks'][0]; x, y, w, h = d['tiles'][0]['frame']['topLeft']
+import json; d = json.load(open('$R/data/e2e/geometry.json'))['docks'][0]
+x, y, w, h = next(t for t in d['tiles'] if t['name'].replace(' ', '_') == '${first[1]}')['frame']['topLeft']
 print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (x + w / 2, y + 2), 'top': (x + w / 2, y + h - 2)}[d['edge']])"))
   $B/pointer -q move ${cell[1]} ${cell[2]}; sleep 0.15
   $B/axprobe at ${cell[1]} ${cell[2]} only=$pid > $C/hit-shown-cell.json
+  $B/axprobe occluder ${cell[1]} ${cell[2]} $pid > $C/occl-cell.json
   # Probe 4 pt outside only once the mouse gate has closed (gate.mouse ignores=true after the move),
   # up to 1 s: an AX hit taken before the app processed the move measured timing, not click-through.
   local g0=$(wc -l < $R/log.ndjson) k gated=0 lo
@@ -327,6 +342,7 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   local seen=$(grep -c "ev=move x=${out[1]%.*}" $C/listen-outside.txt 2>/dev/null || true)
   print -r -- "gate closed after the move: $( (( gated )) && echo "yes ($(( k * 50 )) ms)" || echo 'no (1 s)'); move event seen by the listener: $( (( ${seen:-0} > 0 )) && echo yes || echo no)" > $C/gate-outside.txt
   $B/axprobe at ${out[1]} ${out[2]} only=$pid > $C/hit-shown-outside.json
+  $B/axprobe occluder ${out[1]} ${out[2]} $pid > $C/occl-outside.json
   $B/axprobe front > $C/front-shown.json
   $B/pointer -q move ${awy[1]} ${awy[2]}   # leave: the dock hides before the next step
   sleep 1

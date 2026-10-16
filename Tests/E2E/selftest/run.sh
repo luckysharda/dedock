@@ -218,6 +218,28 @@ rm -rf $T/cua-061b; cp -R Tests/E2E/selftest/cua-fixture $T/cua-061b
 print -r -- '{"pid":99,"role":"AXButton","label":"Calculator","other_app":false}' > $T/cua-061b/hit-shown-cell.json
 DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py $T/cua-061b Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061b.txt
 check "cua-eval: REG-061 gates (C3 whole cell; C7 cell edge needs the tile's AXButton)" "grep -q \$'^cua C3 tiles in AX tree L\t1.*REG-061' $T/cua-061.txt && grep -q \$'^cua C3 tiles in AX tree L\t0' $T/cua-061-tiny.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t0' $T/cua-061.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t1' $T/cua-061b.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t1.*REG-061 pending' $T/cua.txt"
+# Occlusion (cand-95411f2c: another app's window above the dock over the top centre): a row probed
+# under one is VOID (never PASS); with no clear tile centre on the edge it FAILs as unverifiable.
+mkocc() {  # mkocc <dir> <occluded tiles: all|first>
+  rm -rf $1; cp -R Tests/E2E/selftest/cua-fixture $1
+  python3 -c "
+import json, sys
+d, mode = sys.argv[1], sys.argv[2]
+rows = [json.loads(l) for l in open(d + '/hit-hidden.jsonl') if l.strip()]
+occ = {'occluded': True, 'layer': 1500, 'x': 0, 'y': 0, 'w': 400, 'h': 200}
+with open(d + '/occl.jsonl', 'w') as f:
+    for i, r in enumerate(rows): f.write(json.dumps({'tile': r['tile'], 'occl': occ if mode == 'all' or i == 0 else {'occluded': False}}) + '\n')
+for k in ('tile', 'cell', 'outside'):
+    json.dump(occ, open(f'{d}/occl-{k}.json', 'w')); json.dump({'pid': 5, 'role': '', 'label': '', 'other_app': True}, open(f'{d}/hit-shown-{k}.json', 'w'))
+open(d + '/probe-tile.txt', 'w').write(rows[1 if mode == 'first' else 0]['tile'] + '\n')" $1 $2
+}
+mkocc $T/cua-occ first; python3 Scripts/e2e/cua-eval.py $T/cua-occ Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-occ.txt
+mkocc $T/cua-occall all; python3 Scripts/e2e/cua-eval.py $T/cua-occall Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-occall.txt
+check "cua-eval: occluded C7 probes are VOID (never PASS), C6 counts only clear tiles" "[[ \$(grep -cE \$'^cua C7 [^\t]*\tvoid\t.*layer 1500' $T/cua-occ.txt) == 3 ]] && grep -q \$'^cua C6 click-through while hidden L\t1\t.*1 occluded' $T/cua-occ.txt && grep -q \$'^cua C7 shown tile takes the hit L\tvoid\tpointer on .Notes.' $T/cua-occ.txt"
+check "cua-eval: every tile centre occluded → C6 and C7 FAIL as unverifiable" "[[ \$(grep -cE \$'^cua C(6|7) [^\t]*\t0\t.*unverifiable' $T/cua-occall.txt) == 4 ]] && ! grep -qE \$'^cua C(6|7) [^\t]*\t(1|void)\t' $T/cua-occall.txt"
+mkfix selftest-socc PASS 1.2; print '{"id":"cua C7 shown tile takes the hit T","ok":false,"skip":false,"void":true,"detail":"occluded"}' >> $SR/selftest-socc/checks.jsonl
+python3 Scripts/e2e/score.py $SR/selftest-socc $T/m1.json > $T/s-occ.txt; echo $? > $T/s-occ.rc
+check "score: a VOID check makes the card VOID (exit 3), shown as VOID, not FAIL" "[[ \$(cat $T/s-occ.rc) == 3 ]] && grep -q '1 void (occluded, rerun)' $T/s-occ.txt && grep -q '| cua C7 shown tile takes the hit T | VOID |' $T/s-occ.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id

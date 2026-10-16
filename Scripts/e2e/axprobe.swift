@@ -17,6 +17,14 @@
 //                                when the system refuses, e.g. kAXErrorCannotComplete); front = the
 //                                frontmost app's pid; app_focus = whether <pid> reports a focused element
 //                                of its own (a key window). Pids and booleans only: never content.
+//   axprobe occluder <x> <y> <pid> [above=24]
+//                                whether ANOTHER app takes the click at the global top-left point from a
+//                                window above layer <above> (over the dock's level): the AX hit there
+//                                belongs to an app other than <pid> AND that app has an on-screen window
+//                                above <above> covering the point. A window that only covers the point
+//                                (a mouse-transparent full-screen overlay) does not count. Output:
+//                                {"occluded","layer","x","y","w","h"} of that window, or {"occluded":false}.
+//                                Layer and bounds only: never a name or a pid.
 //
 // One JSON object per line. Needs Accessibility for the host process (tree / at).
 
@@ -70,7 +78,7 @@ func walk(_ e: AXUIElement, depth: Int, max: Int) {
 func fail(_ m: String) -> Never { FileHandle.standardError.write("axprobe: \(m)\n".data(using: .utf8)!); exit(2) }
 
 let a = Array(CommandLine.arguments.dropFirst())
-guard let cmd = a.first else { fail("usage: axprobe windows|tree|at|front ...") }
+guard let cmd = a.first else { fail("usage: axprobe windows|tree|at|focus|occluder|front ...") }
 
 switch cmd {
 case "windows":
@@ -136,6 +144,26 @@ case "focus":
         appFocus = el != nil
     }
     out(["pid": Int(pid), "source": source, "front": front, "app_focus": appFocus])
+case "occluder":
+    guard a.count > 3, let x = Double(a[1]), let y = Double(a[2]), let pid = Int32(a[3]) else { fail("occluder <x> <y> <pid> [above]") }
+    let above = a.count > 4 ? Int(a[4].replacingOccurrences(of: "above=", with: "")) ?? 24 : 24
+    guard AXIsProcessTrusted() else { fail("this process lacks Accessibility") }
+    var hit: AXUIElement?, hitPid: pid_t = -1
+    if AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(x), Float(y), &hit) == .success, let e = hit {
+        AXUIElementGetPid(e, &hitPid)
+    }
+    var d: [String: Any] = ["occluded": false]
+    // On-screen windows come front to back, so the first match is the topmost occluder.
+    let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]) ?? []
+    for w in list where hitPid > 0 && hitPid != pid && (w[kCGWindowOwnerPID as String] as? Int32) == hitPid {
+        let layer = w[kCGWindowLayer as String] as? Int ?? 0
+        let b = w[kCGWindowBounds as String] as? [String: Double] ?? [:]
+        let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
+        guard layer > above, (w[kCGWindowAlpha as String] as? Double ?? 0) > 0, r.contains(CGPoint(x: x, y: y)) else { continue }
+        d = ["occluded": true, "layer": layer, "x": r.minX, "y": r.minY, "w": r.width, "h": r.height]
+        break
+    }
+    out(d)
 case "front":
     let f = NSWorkspace.shared.frontmostApplication
     out(["pid": Int(f?.processIdentifier ?? -1), "app": f?.localizedName ?? "", "bundle": f?.bundleIdentifier ?? ""])

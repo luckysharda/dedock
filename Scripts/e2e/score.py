@@ -11,7 +11,8 @@ The root run dir holds index.txt ("<tag> <sub-run-id>" per line, e.g. "L L-run")
 build/e2e/runs/<sub-run-id>/<scenario>-<L|R>/ with report.txt (ends "VERDICT ...") and metrics.jsonl.
 
 Verdicts: FAIL if any gate failed; VOID if nothing failed but a scenario was contaminated by real
-input (rerun needed, not an app result); PASS otherwise. Drift: WARN when a metric moves more than
+input or a check's probe point was occluded by another app's window (rerun needed, not an app
+result); PASS otherwise. Drift: WARN when a metric moves more than
 20 % from the baseline AND more than its absolute noise floor (floors live in the baseline file).
 Exit: 0 PASS, 1 FAIL, 3 VOID. Paths in the scorecard are repo-relative (the repo is public).
 """
@@ -152,15 +153,18 @@ def write_scorecard(root, baseline_path):
     warns = drift(metrics, baseline)
 
     is_harness = lambda c: c["id"].startswith(HARNESS_IDS)
-    harness_failed = [c for c in checks if not c["ok"] and is_harness(c)]
+    harness_failed = [c for c in checks if not c["ok"] and not c.get("void") and is_harness(c)]
     live = [c for c in checks if not c.get("skip")]
-    failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in live if not c["ok"] and not is_harness(c)]
+    # A VOID check (its probe point was occluded by another app's window, cua-eval) is a rerun, like a
+    # contaminated scenario: never a PASS, not an app failure.
+    void_checks = [c for c in live if c.get("void")]
+    failed = [s for s in scenarios if s["verdict"] == "FAIL"] + [c for c in live if not c["ok"] and not c.get("void") and not is_harness(c)]
     health_ok, health_line = tool_health(root, checks)
     if not health_ok and os.path.exists(os.path.join(root, "expected.txt")):
         failed.append({"id": "tool health"})
     void = [s for s in scenarios if s["verdict"] == "VOID"]
-    verdict = "FAIL" if failed else ("VOID" if void else "PASS")
-    res = lambda c: "SKIP" if c.get("skip") else ("PASS" if c["ok"] else "FAIL")
+    verdict = "FAIL" if failed else ("VOID" if void or void_checks else "PASS")
+    res = lambda c: "SKIP" if c.get("skip") else ("VOID" if c.get("void") else ("PASS" if c["ok"] else "FAIL"))
     if not scenarios and not checks:
         verdict = "FAIL"
 
@@ -188,7 +192,8 @@ def write_scorecard(root, baseline_path):
     L.append("")
     L.append(f"**{verdict}** — scenarios: {sum(s['verdict'] == 'PASS' for s in scenarios)} pass, "
              f"{len([s for s in scenarios if s['verdict'] == 'FAIL'])} fail, {len(void)} void (contaminated, rerun); "
-             f"run checks: {sum(c['ok'] for c in live)}/{len(live)} pass ({len(checks) - len(live)} skipped); drift warnings: {len(warns)}"
+             f"run checks: {sum(c['ok'] for c in live)}/{len(live)} pass ({len(checks) - len(live)} skipped"
+             + (f", {len(void_checks)} void (occluded, rerun)" if void_checks else "") + f"); drift warnings: {len(warns)}"
              + (f"; HARNESS checks failing: {', '.join(c['id'] for c in harness_failed)} (harness bug, not an app result)" if harness_failed else ""))
     L.append("")
     key = [c for c in checks if "REG-040" in c["id"] or c["id"].startswith("cua C2")]
