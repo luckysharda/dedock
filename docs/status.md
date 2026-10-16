@@ -4,6 +4,63 @@ Newest entry first. Each entry: done, in progress, next, blockers and notes, the
 
 ---
 
+## 2026-10-16, M1 closed
+
+### Done: M1 closes on the four-edge card
+
+The owner's rule: M1 closes when REG-065 and REG-066 pass on a card that covers all four edges. The card for `95411f2` (#34 head) is posted on #34:
+
+| Run | Harness | Edges counted | Result |
+|---|---|---|---|
+| `cand-95411f2c` | `8436d8e` | L, B | every L and B scenario and check PASS, including B "native Dock span never triggers". Real pointer input stopped the run during its final idle step; its R and T rows were redone in `cand-95411f2d` (its top probes had hit another app's window above the dock's level over the top centre; since #32 such probes are VOID) |
+| `cand-95411f2d` | `67d0d3a` | R, T | 21/21 scenarios, 69/69 checks (1 SKIP), tool health OK, 0 foreign events; 3 drift warnings (not gated) |
+
+Not covered: the L and B pinned-dock screenshots (local-only visual checks, no gate).
+
+The four rows that were Missing on the M1 list (10 hover label, 20 no relayout while moving, 27 size control, 43 drag out to remove) moved into M2 as T25, as the owner decided. The rest of the M1 Partial evidence is on the M2 E2E list (`docs/plan.md` §6a.2). `docs/evaluation.md` §11 now reads 16 Pass, 37 Partial, 4 Missing.
+
+### Merged since the second update
+
+| PR | Content | Merged |
+|---|---|---|
+| #27 | Settings window: Edge Dock pane, scenario cards, dock style; REG-063 named value fields, REG-064 Settings hold | `6d42112` |
+| #29 | Status after the follow-up stack; design rules (§2.3a, Settings hold, AX frames, named controls, §4.3) | `4fc7bdb` |
+| #30 | E2E: key-focus check, C8 scroller exclusion, notify by pid under the real lock | `4bc4f61` |
+| #31 | Debug commands act only in the process they name | `973c171` |
+| #33 | M1 acceptance list filled in; top and bottom zone rules | `a237db3` |
+| #35 | M2 task breakdown (T24–T40); owner decisions | `266e062` |
+| #36 | Pillar C owner decisions | `d52582c` |
+| #37 | All 11 app UI picks; Dark and Liquid Glass dock styles; window appearance and material | `5211061` |
+| #38 | Reveal corridor rule (REG-067); M8 top-dock occlusion note | `3de87e1` |
+| #34 | REG-065/066: bottom zone beside the native Dock, top zone fallbacks | `6929d88` |
+| #32 | E2E: bottom and top edges on the card (x-18), occlusion VOID | `8523526` |
+
+### Closed from the second update's open list
+
+| Item | Closed by |
+|---|---|
+| #27 REG-063 / REG-064 and the C8 card | #27, #30 |
+| Bottom and top edges on the card (S-5) | the `95411f2` card |
+| AX hit test honours the click-through gate outside the capsule | C7 "4 pt outside passes through" on all four edges |
+| Debug channel scoping | #31 |
+| Notice focus read from the frontmost app | #30 |
+| DD-934 pointer-sharing edges | owner chose (b), per-edge setting (#35, T40) |
+
+### Next: M2
+
+| Item | Owner |
+|---|---|
+| REG-067 reveal corridor, its own fix/ PR after #34 | implementer, then E2E lane |
+| T25 M1 rows, T26 separators (SP3 islands), T24 signing, T27 health and recovery | implementer |
+| Slice 2 (permissions hot start, onboarding, AX walks) needs the signing identity | owner runs `Scripts/make-signing-identity.sh` |
+| An ENV verdict for edges that no rerun can clear (every probe occluded), so a third-party overlay cannot block a card (#32 review) | E2E lane |
+
+### Owner items
+
+Run the signing-identity script; grant and revoke Accessibility for the hot-start check; OK each `killall Dock`, sleep window, Dock setting change and Login Item change; put the clean-room string list in a repository secret (T39); later, whether LG4 may use the Screen Recording grant (M3) and the visual sign-offs for M1 rows 11, 51 and 56.
+
+---
+
 ## 2026-10-16, second update
 
 ### Done: follow-up stack merged

@@ -450,7 +450,7 @@ Verdict: Done / Not done — signed: ____
 
 ## 11. M1 Edge Dock acceptance list (filled in)
 
-Status on 2026-10-16 (develop `4bc4f61`; card `be64d3c`, edges L and R): **15 Pass, 38 Partial, 4 Missing.** Each Status cell gives the evidence, then what is still missing. "x" = run for left and right.
+Status on 2026-10-16 (develop `4bc4f61`; card `be64d3c`, edges L and R; updated for the `95411f2` card, edges L, R, B, T): **16 Pass, 37 Partial, 4 Missing.** Each Status cell gives the evidence, then what is still missing. "x" = run for left and right.
 
 | # | ID | Criterion | Layers | Test / scenario | Status |
 |---|---|---|---|---|---|
@@ -459,7 +459,7 @@ Status on 2026-10-16 (develop `4bc4f61`; card `be64d3c`, edges L and R): **15 Pa
 | 3 | DD-901 | Works over full-screen apps (`.fullScreenAuxiliary`), no Space switch | E2E | x-10 | **Partial**: full-screen detection + dwell unit tests; missing: x-10 (REG-007/008) |
 | 4 | DD-901 | System overlays (Control Center, Notification Center, banners, menu-bar menus) draw above a right dock | E2E | R-12 | **Partial**: geom-check below the menu bar; missing: x-12 overlays |
 | 5 | DD-901 | Runs with no Accessibility or Screen Recording grant; no prompt | E2E | x-00 | **Pass**: x-00 rows (UIElement, status item, no prompt, starts hidden) |
-| 6 | DD-902 | Edge ∈ {left, right} (bottom, top-below-menu-bar optional); slide axis X on sides, Y on bottom/top | L1, E2E | §3.2, x-01, x-18 | **Partial**: edge-parameterised unit tests; x-01 L/R; missing: bottom/top on the card (x-18; REG-065/066) |
+| 6 | DD-902 | Edge ∈ {left, right} (bottom, top-below-menu-bar optional); slide axis X on sides, Y on bottom/top | L1, E2E | §3.2, x-01, x-18 | **Pass**: edge-parameterised unit tests; x-01 L/R; x-18 bottom and top on the `95411f2` card (REG-065/066) |
 | 7 | DD-902 | Trigger, hysteresis maths are axis-generic; one suite runs for all edges | L1 | §3.2 parameterised over edges | **Partial**: push direction and zone tests over all edges; missing: hysteresis suite per edge |
 | 8 | DD-902 | Changing the edge re-lays out and re-animates within one reveal cycle | L1, L2 | §3.5 "Edge change", §4 | **Partial**: REG-062 unit + card row; REG-027/038; missing: "within one reveal cycle" timing |
 | 9 | DD-903 | Thickness / length grammar, concentric radii, top-to-bottom flow on side docks | L1, L6 | §3.5, §9.3 | **Partial**: tile grammar, top-to-bottom flow; geom-check; missing: concentric radii; L6 |
@@ -511,9 +511,9 @@ Rows added because `docs/plan.md` §4.1 puts them in M1 scope (beyond the brief'
 
 | # | ID | Criterion | Layers | Test / scenario | Status |
 |---|---|---|---|---|---|
-| 53 | DD-1141 (beta) | Top edge: reveals below the menu bar, never over it; zone spans only the dock's length, excludes the notch and status items; with an auto-hiding menu bar only ⌥ reveals | L1, E2E | §3.2 top rows, x-18 | **Partial**: top zone unit test (zone on the menu-bar line, dock below it), REG-044; missing: top on the card (REG-066); ⌥-only reveal |
+| 53 | DD-1141 (beta) | Top edge: reveals below the menu bar, never over it; zone spans only the dock's length, excludes the notch and status items; with an auto-hiding menu bar only ⌥ reveals | L1, E2E | §3.2 top rows, x-18 | **Partial**: top zone unit test (zone on the menu-bar line, dock below it), REG-044; top on the `95411f2` card (REG-066); missing: ⌥-only reveal |
 | 54 | DD-941 (partial) | Dock on the main display, falls back to the built-in display when it is disconnected | L2 | §4 "Display removed while shown" | **Partial**: main and built-in display selection; missing: L2 display removed while shown |
-| 55 | DD-991 / DD-992 (partial) | Native Dock prefs read only, never written; change picked up within 1 s; bottom dock sits above a visible native Dock with its span excluded | L1, L2, E2E | §3.2 bottom rows, REG-006, x-18 | **Partial**: native Dock parse and footprint; bottom dock above the Dock; span excluded; REG-006; missing: bottom on the card (REG-065); 1 s pickup |
+| 55 | DD-991 / DD-992 (partial) | Native Dock prefs read only, never written; change picked up within 1 s; bottom dock sits above a visible native Dock with its span excluded | L1, L2, E2E | §3.2 bottom rows, REG-006, x-18 | **Partial**: native Dock parse and footprint; bottom dock above the Dock; span excluded; REG-006; bottom on the `95411f2` card (REG-065); missing: 1 s pickup |
 | 56 | DD-978 (basic) | Basic appearance renders the `docs/design.md` style in light and dark, with its Reduce Transparency solid form | L6 | §9.3 | **Partial**: style and appearance tokens (unit); cua C9; missing: L6 rendering (owner) |
 | 57 | DD-814 (subset) | Edge trace logs every transition with monotonic time, position, zone and inhibitors; no window titles | L2, E2E | LOG checks in §7 | **Partial**: contract checks (REG-018/043/059); trace causes; capped text; missing: required fields; no window titles |
 
