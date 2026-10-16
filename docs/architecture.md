@@ -888,7 +888,9 @@ Pillar A needs a **stable signing identity** before it is useful, because Access
 | Panels, levels, Spaces | `NSPanel`, `collectionBehavior` | none |
 | App tiles, launch, running state | `NSWorkspace`, `NSRunningApplication` | none |
 | Native Dock and Hot Corner settings | `CFPreferencesCopyAppValue("…", "com.apple.dock")` | none (read-only; dedock never writes Dock preferences in v0) |
-| Fullscreen probe, status-item rects | `CGWindowListCopyWindowInfo` owner, layer, alpha, bounds | none; window titles would need Screen Recording and are not read *(inferred)* |
+| Fullscreen probe, status-item rects, H4 window count (M2) | `CGWindowListCopyWindowInfo` owner, layer, alpha, bounds | none; window titles would need Screen Recording and are not read *(inferred)* |
+| Lock and display-sleep state for the D2 hello (M2) | `CGSessionCopyCurrentDictionary()` key `CGSSessionScreenIsLocked` at launch; `DistributedNotificationCenter` names `com.apple.screenIsLocked` / `com.apple.screenIsUnlocked`; `NSWorkspace` `screensDidSleep` / `screensDidWake` | none; public API, but the session key and the two notification names are undocumented strings, so a macOS change could silence them (the hello would then also play behind the lock screen, which nobody sees) |
+| Display binding and fallback (M2) | `CGDirectDisplayID` → `DisplayIdentity` (UUID) via `CGDisplayCreateUUIDFromDisplayID`; `CGDisplayIsBuiltin` | none |
 | Folder tiles | user-picked folders stored as bookmarks; the stack list enumerates the folder, Finder mode uses `NSWorkspace.open` | the user's pick grants access; protected folders such as `~/Downloads` may still raise a one-time Files and Folders prompt for the stack list *(inferred; checked by `docs/evaluation.md` x-00 / x-15)* |
 
 Never requested in v0: Accessibility, Screen Recording, Input Monitoring, Automation.
