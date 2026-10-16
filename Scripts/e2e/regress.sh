@@ -317,10 +317,15 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   $B/axprobe at ${cell[1]} ${cell[2]} only=$pid > $C/hit-shown-cell.json
   # Probe 4 pt outside only once the mouse gate has closed (gate.mouse ignores=true after the move),
   # up to 1 s: an AX hit taken before the app processed the move measured timing, not click-through.
-  local g0=$(wc -l < $R/log.ndjson) k gated=0
+  local g0=$(wc -l < $R/log.ndjson) k gated=0 lo
+  # A listener around the move tells "the move event never reached the system" (not seen) from
+  # "it arrived but the app didn't act on it" (seen, gate unchanged): e7's question, 95411f2.
+  $B/listen 2 > $C/listen-outside.txt & lo=$!; sleep 0.3
   $B/pointer -q move ${out[1]} ${out[2]}
   for k in {1..20}; do sleep 0.05; (( $(log_count $R/log.ndjson $pid '^gate[.]mouse .*ignores=true' $g0) > 0 )) && { gated=1; break }; done
-  print -r -- "gate closed after the move: $( (( gated )) && echo "yes ($(( k * 50 )) ms)" || echo 'no (1 s)')" > $C/gate-outside.txt
+  wait $lo 2>/dev/null
+  local seen=$(grep -c "ev=move x=${out[1]%.*}" $C/listen-outside.txt 2>/dev/null || echo 0)
+  print -r -- "gate closed after the move: $( (( gated )) && echo "yes ($(( k * 50 )) ms)" || echo 'no (1 s)'); move event seen by the listener: $( (( seen > 0 )) && echo yes || echo no)" > $C/gate-outside.txt
   $B/axprobe at ${out[1]} ${out[2]} only=$pid > $C/hit-shown-outside.json
   $B/axprobe front > $C/front-shown.json
   $B/pointer -q move ${awy[1]} ${awy[2]}   # leave: the dock hides before the next step
