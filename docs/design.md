@@ -384,9 +384,9 @@ All 11 app UI surfaces are picked.
 | Part | Rule |
 |---|---|
 | Shape | 52 pt tall pill, radius 26; width fits the content, 240–520 pt; padding: leading 10 pt with an icon, 18 pt without, trailing 8 pt, gap 12 pt |
-| Material | the dock style (§7.2, "panels that grow out of it"): Dark Glass, Black, Dark, Light Glass, or Liquid Glass with the dock's current LG4 tint; Reduce Transparency gives the style's solid form (`#1C1C1E` / `#EAEDF2`) |
-| Text | 13 pt Medium, white (light styles `#111`); one line |
-| Buttons | 26 pt capsules (radius 13), fill `white @ 0.12` (light styles `black @ 0.08`), 12 pt Semibold, padding 0 × 12 pt; only the notice's OK is accent-filled (`controlAccentColor`) |
+| Material | confirm: the dock style (§7.2, "panels that grow out of it"): Dark Glass, Black, Dark, Light Glass, or Liquid Glass with the dock's current LG4 tint, and Reduce Transparency gives the style's solid form (`#1C1C1E` / `#EAEDF2`); notice: the Window appearance and Window material (§7.2: notices are windows' business), so Frosted, Liquid Glass or Solid in light or dark, and Reduce Transparency gives Solid |
+| Text | 13 pt Medium, white on dark materials, `#111` on light ones; one line |
+| Buttons | 26 pt capsules (radius 13), fill `white @ 0.12` (light materials `black @ 0.08`), 12 pt Semibold, padding 0 × 12 pt; only the notice's OK is accent-filled (`controlAccentColor`) |
 | Confirm | [32 pt tile icon, radius 9] "Remove “Name”?" [Remove] [Keep]; Remove has `systemRed` text, no red fill; Keep is the default (Return when focused), trailing, not accent-filled; the name middle-truncates to fit; the full sentence "Remove “Name” from the Edge Dock?" is the AX title and the announcement |
 | Notice | one line plus [OK], for example "Your Edge Dock layout was damaged. Dedock started fresh."; each kind has its own one-liner written to fit; the longer explanation goes in the AX description (and the log), no Details button in M2; it never auto-dismisses: OK or a click elsewhere closes it; one at a time, later ones queue |
 | Place | confirm: 10 pt from the capsule's inner side, centred on the slot (beside it on left and right docks, above or below it on bottom and top docks); notice: 6 pt below the menu bar, centred on Dedock's status item, or top centre of the menu-bar display when the item is hidden or its frame is unknown; both clamped 8 pt inside `visibleFrame` |
