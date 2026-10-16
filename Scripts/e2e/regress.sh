@@ -73,8 +73,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary reg067=0 t25=0 h4=0 z1=0 t26=0
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; t26=*) t26=${kv#t26=} ;; reg067=*) reg067=${kv#reg067=} ;; t25=*) t25=${kv#t25=} ;; h4=*) h4=${kv#h4=} ;; z1=*) z1=${kv#z1=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary reg067=0 t25=0 h4=0 z1=0 t26=0 t27=0
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; t26=*) t26=${kv#t26=} ;; t27=*) t27=${kv#t27=} ;; reg067=*) reg067=${kv#reg067=} ;; t25=*) t25=${kv#t25=} ;; h4=*) h4=${kv#h4=} ;; z1=*) z1=${kv#z1=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -157,6 +157,8 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
   (( t25 )) && print -l "T25 drag-out asks without taking focus R" "T25 Keep keeps the tile R" "T25 a click elsewhere in Dedock keeps the tile (local-monitor path) R" \
                         "T25 Remove removes the tile and persists it R" "T25 a new drag answers Keep, and its drop asks again R" \
                         "T25 no answer in 8 s keeps the tile R" "REG-006 D"
+  (( t27 )) && for t in B L; do print -l "T27 Dock relaunch: logged and zones rebuilt within 1 s $t" "T27 Dock relaunch: the shown dock stays on screen and a dwell reveal works after $t" "REG-006 K$t"; done
+  (( t27 )) && print -l "T27 display sleep and wake"
   (( t26 )) && print -l "T26 separator makes two islands 8 pt apart, one dock" "T26 spacer is half an app cell" \
                         "T26 separators and spacers are hidden from accessibility" "T26 crossing the island gap keeps the dock shown, gate open" "REG-006 P"
   (( z1 )) && print -l "Z1 size slider drives the live dock while dragged" "Z1 release snaps to a stop and persists" "REG-006 Z"
@@ -624,6 +626,45 @@ json.dump(w or {}, open(sys.argv[1], 'w'))" $R/h4-window.json
   done
 }
 
+t27_rows() {  # t27_rows <run dir> <pid> <B|L>: T27 Dock relaunch with the dock SHOWN (t27=1)
+  # Debug reveal, then killall Dock (recover.sh, REAL lock): dock.relaunch logged and the zones
+  # rebuilt within 1 s (recovery.py); the shown panel stays on screen (layer 24, on screen), any
+  # space.repair reported; then hide, and a dwell reveal at the zone works on the rebuilt zones.
+  local R=$1 pid=$2 side=$3 L=$1/log.ndjson G=$1/data/e2e/geometry.json n0 n2 lp k on=0
+  local c1="T27 Dock relaunch: logged and zones rebuilt within 1 s $side" c2="T27 Dock relaunch: the shown dock stays on screen and a dwell reveal works after $side"
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
+  $B/listen 20 > $R/t27-listen.txt & lp=$!; sleep 0.3
+  $B/notify $pid reveal > /dev/null; sleep 0.6
+  cp $G $R/t27-geom-before.json 2>/dev/null
+  n0=$(wc -l < $L)
+  $E/recover.sh killdock > $R/t27-kill.txt 2>&1; tool "recover killdock $side" $? 0
+  for k in {1..50}; do sleep 0.1; (( $(log_count $L $pid '^dock[.]relaunch' $n0) > 0 )) && break; done
+  sleep 2
+  cp $G $R/t27-geom-after.json 2>/dev/null
+  $B/axprobe windows $pid | python3 -c "
+import json, sys
+ws = [json.loads(l) for l in sys.stdin if l.strip()]
+sys.exit(not any(w['layer'] == 24 and w['onscreen'] and w['w'] > 50 for w in ws))" && on=1
+  python3 $E/recovery.py relaunch $L $pid $n0 $R/t27-geom-before.json $R/t27-geom-after.json $side > $R/t27-results.txt 2> $R/t27.err; tool "recovery judge $side" $? 0
+  $B/notify $pid hide > /dev/null; sleep 0.8
+  local pts=($(python3 $E/h4.py plan $G 2>/dev/null)) dwell=$(python3 -c "import json,sys; print(int(json.load(open(sys.argv[1]))['docks'][0].get('showDwellMs', 300)))" $G)
+  n2=$(wc -l < $L)
+  if (( ${#pts} >= 8 )); then
+    print -l "move ${pts[7]} ${pts[8]}" "wait 400" "edge ${pts[1]} ${pts[2]}" "wait $(( dwell + 500 ))" "move ${pts[7]} ${pts[8]}" "wait 800" > $R/t27-reveal.txt
+    $B/pointer -q script $R/t27-reveal.txt
+  fi
+  local rev=$(log_count $L $pid '^reveal[.]transition .*to=revealing' $n2)
+  wait $lp 2>/dev/null
+  $B/analyze contamination $R/t27-listen.txt > $R/t27-contam.txt 2>&1; tool "analyze contamination t27 $side" $? 0 1
+  local foreign=$(grep -c '^FAIL input contamination' $R/t27-contam.txt) cid ok detail
+  { head -1 $R/t27-results.txt
+    print -r -- "$c2	$(( on && rev > 0 ))	panel on screen after the relaunch: $( (( on )) && echo yes || echo no); $(sed -n 's/^repair=//p' $R/t27-results.txt) space.repair line(s); dwell reveal on the rebuilt zones afterwards: $( (( rev )) && echo yes || echo no)"
+  } | while IFS=$'\t' read -r cid ok detail; do
+    if (( foreign )); then check "$cid" void "real input during the probe (rerun): $detail"; else check "$cid" ${ok:-0} "$detail"; fi
+  done
+}
+
 t26_rows() {  # t26_rows <run dir> <pid>: T26 SP3 Islands (t26=1), own launch on the left edge
   # GEOM: two islands 8 pt apart, the capsule their union, one zone; the spacer half an app cell.
   # AX: only the three apps are buttons (fillers hidden). Probe: reveal, rest on the tile before the
@@ -1051,6 +1092,29 @@ if (( t25 )); then
     teardown_check $sub; check "REG-006 D" $(( $? == 0 )) "native Dock prefs unchanged"
   else
     check "launch D" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-D.txt)"
+  fi
+fi
+
+if (( t27 )); then
+  # T27 recovery (killall Dock restarts the user's native Dock): only in a window the user confirmed
+  # for exactly this; recover.sh refuses without the REAL lock. Dock prefs must stay byte-identical.
+  echo "t27"
+  for tag in B L; do
+    [[ $tag == L ]] && set_edge=() || set_edge=(--set "docks[0].edge=\"$(edge_of $tag)\"")
+    sub=$id-K$tag
+    if launch $sub --app $app $set_edge --timeout 8 > $root/launch-K$tag.txt 2>&1 && launched $root/launch-K$tag.txt; then
+      print -r -- "K$tag $sub" >> $root/index.txt
+      sleep 1
+      t27_rows $B/runs/$sub $(sed -n 's/^APP_PID=//p' $B/runs/$sub/run.env) $tag
+      teardown_check $sub; check "REG-006 K$tag" $(( $? == 0 )) "native Dock prefs unchanged"
+    else
+      check "launch K$tag" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-K$tag.txt)"
+    fi
+  done
+  if $E/recover.sh sleepcheck > $root/sleepcheck.txt 2>&1; then
+    check "T27 display sleep and wake" skip "pending user step: display sleep is not driven by the harness yet"
+  else
+    check "T27 display sleep and wake" skip "pending user step: the session may lock at display sleep ($(head -1 $root/sleepcheck.txt)); the harness never posts input to a possibly locked session"
   fi
 fi
 

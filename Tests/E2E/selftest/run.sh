@@ -362,6 +362,27 @@ python3 Scripts/e2e/t26.py geom $T/t26-ok.json > $T/t26-ok.txt
 python3 Scripts/e2e/t26.py geom $T/t26-bad.json > $T/t26-bad.txt
 python3 Scripts/e2e/t26.py gap $T/t26-ok.json > $T/t26-gap.txt
 check "T26 islands: 8 pt gap, union, one zone, half-cell spacer PASS; 12 pt gap / two zones / full-cell spacer FAIL; gap point between the islands" "[[ \$(grep -c \$'\t1\t' $T/t26-ok.txt) == 2 && \$(grep -c \$'\t0\t' $T/t26-bad.txt) == 2 ]] && python3 -c \"import sys; p=open(sys.argv[1]).read().split(); sys.exit(not (p[0]=='left' and float(p[3]) > float(p[5]) and float(p[3]) < float(p[7])))\" $T/t26-gap.txt"
+# T27 recovery: killall Dock only for the REAL lock holder (a fake owner is always refused, nothing
+# killed); the relaunch judge needs dock.relaunch and a zones rebuild within 1 s
+DEDOCK_LOCK_OWNER=selftest-nobody Scripts/e2e/recover.sh killdock > $T/killdock.out 2> $T/killdock.err; echo $? > $T/killdock.rc
+check "T27 recover.sh refuses killall Dock without the REAL desktop lock (REG-051)" "[[ \$(cat $T/killdock.rc) == 2 && ! -s $T/killdock.out ]] && grep -q 'refusing' $T/killdock.err"
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+def log(name, ev):
+    with open(f"{T}/{name}", "w") as f:
+        f.write("Filtering\n")
+        for ms, m in ev:
+            s, fr = divmod(ms, 1000)
+            f.write(json.dumps({"processID": 7, "timestamp": f"2026-10-16 10:00:{10 + s:02d}.{fr:03d}000+0530", "eventMessage": m}) + "\n")
+log("t27-ok.ndjson", [(0, "dock.relaunch"), (240, "zones.computed edge=bottom dock=dock-0 rule=primary"), (300, "space.repair edge=bottom reason=dockRelaunch step=start")])
+log("t27-slow.ndjson", [(0, "dock.relaunch"), (1500, "layout.pass edge=bottom reason=update tiles=4")])
+log("t27-none.ndjson", [(0, "layout.pass edge=bottom reason=update tiles=4")])
+g = {"docks": [{"zones": [{"rect": {"topLeft": [24, 1074, 400, 6]}}, {"rect": {"topLeft": [1496, 1074, 400, 6]}}]}]}
+json.dump(g, open(f"{T}/t27-geom.json", "w"))
+PY
+for k in ok slow none; do python3 Scripts/e2e/recovery.py relaunch $T/t27-$k.ndjson 7 0 $T/t27-geom.json $T/t27-geom.json B > $T/t27-$k.txt; done
+check "T27 relaunch judge: rebuild 240 ms after dock.relaunch PASS (repair reported); 1500 ms or no relaunch FAIL" "grep -q \$'\t1\tdock.relaunch → zones.computed in 240 ms' $T/t27-ok.txt && grep -q '^repair=1' $T/t27-ok.txt && grep -q \$'\t0\t' $T/t27-slow.txt && grep -q \$'\t0\tno dock.relaunch' $T/t27-none.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id
