@@ -383,7 +383,7 @@ All 11 app UI surfaces are picked.
 
 - On drop the tile springs straight back to its slot (0.2 s, instant under Reduce Motion) while the question is open, so the dock never shows a gap; Remove then closes the gap with the normal relayout.
 - The panel never takes key focus, so Esc and Return reach it only when it has focus (VoiceOver, Full Keyboard Access). A click elsewhere and the 8 s timeout always mean Keep. With Accessibility granted (T28), a global key monitor makes Esc work everywhere; the panel still does not take focus to get it.
-- One question at a time; a second drag-out while one is open is ignored.
+- One question at a time. The mouse-down that starts a new drag counts as a click elsewhere, so the open question answers Keep (logged first) and closes before the new drop asks again; at most one question window exists at any moment, and the dock stays shown through the switch.
 - The panel posts an accessibility announcement with its question when it shows.
 
 **H4 state line.** "No windows" when the count is 0. In M2 the count comes from the window list (owner, layer, alpha and size, never titles) and is read when a tile becomes hovered and on running changes; it is approximate and not live while the label is shown until T28's Accessibility window list.
