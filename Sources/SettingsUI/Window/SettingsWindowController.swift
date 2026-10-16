@@ -28,6 +28,8 @@ import SwiftUI
     private var backdrop: WindowBackdropView?
     private let chrome = SettingsChrome()
     private var settingsObserver: UUID?
+    /// The look last applied; every settings change calls `applyLook`, most change nothing here.
+    private var appliedLook: WindowLook?
     private var accessibilityObserver: (any NSObjectProtocol)?
     private let settings: SettingsModel
     private let environment: SettingsEnvironment
@@ -90,6 +92,8 @@ import SwiftUI
     private func applyLook() {
         guard let window else { return }
         let look = look
+        guard look != appliedLook else { return }
+        appliedLook = look
         window.appearance = look.nsAppearance
         window.isOpaque = look.backdrop == .solid
         window.backgroundColor = look.backdrop == .solid ? .windowBackgroundColor : .clear
