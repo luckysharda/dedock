@@ -58,6 +58,15 @@ import QuartzCore
     override var focusRingMaskBounds: NSRect { bounds }
 }
 
+/// The toast's content: only the pill takes the mouse; the shadow margin around it is empty.
+@MainActor final class PillHitView: NSView {
+    var pill: CGRect = .zero
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = superview.map { convert(point, from: $0) } ?? point
+        return pill.contains(local) ? super.hitTest(point) : nil
+    }
+}
+
 /// The toast's window: borderless and non-activating. It can become key only when VoiceOver
 /// or Full Keyboard Access moves focus into it; it never takes focus on its own.
 @MainActor final class ToastWindow: NSPanel {
@@ -69,8 +78,8 @@ import QuartzCore
 }
 
 /// The pill of a P2 toast in the window look (the launch notice, design.md §7.2a): the Window
-/// material (Frosted, Liquid Glass, Solid) clipped to the pill, a 1 px inner edge and the soft
-/// shadow.
+/// material (Frosted, Liquid Glass, Solid) clipped to the pill and a 1 px inner edge; no
+/// shadow, like the window materials.
 @MainActor final class WindowPillView: NSView {
     private let backdrop = WindowBackdropView(frame: .zero)
     private let edge = CALayer()
@@ -79,11 +88,6 @@ import QuartzCore
         super.init(frame: frame)
         wantsLayer = true
         appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.25
-        layer?.shadowRadius = 12
-        layer?.shadowOffset = CGSize(width: 0, height: -8)
-        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
         backdrop.frame = bounds
         backdrop.wantsLayer = true
         backdrop.layer?.cornerRadius = radius
@@ -139,8 +143,19 @@ import QuartzCore
     static let font = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let iconSize: CGFloat = 32
     static let iconRadius: CGFloat = 9
-    /// Room around the pill for its shadow (0 8 24).
-    static let shadowMargin: CGFloat = 24
+    /// Room around the pill for its shadow: the dock look's 0 8 24; the window look has none.
+    static func margin(for look: Look) -> CGFloat {
+        switch look {
+        case .dock: 24
+        case .window: 0
+        }
+    }
+
+    /// A mouse-down is "elsewhere" unless it lands on the pill itself: another window, or this
+    /// window's transparent shadow margin (a click there must not be swallowed).
+    static func clickIsElsewhere(eventWindow: Int, panelWindow: Int, location: CGPoint, pill: CGRect) -> Bool {
+        eventWindow != panelWindow || !pill.contains(location)
+    }
     static let revealDuration: CFTimeInterval = 0.22
     static let fadeOutDuration: TimeInterval = 0.30
     static let reducedFadeIn: TimeInterval = 0.15
@@ -150,6 +165,9 @@ import QuartzCore
     /// The pill's width, fitted to the content (240–520 pt).
     let width: CGFloat
     let look: Look
+    /// The shadow room around the pill, and the pill's rect in window coordinates.
+    let margin: CGFloat
+    let pillRect: CGRect
     private let clip = NSView()
     private let label: NSTextField
     private var iconView: NSImageView?
@@ -205,7 +223,9 @@ import QuartzCore
         let textWidth = min(Self.measure(content.text) + 2, L.maxWidth - fixed)
         width = L.width(fitting: fixed + textWidth)
 
-        let m = Self.shadowMargin
+        let m = Self.margin(for: look)
+        margin = m
+        pillRect = CGRect(x: m, y: m, width: width, height: L.height)
         let size = CGSize(width: width + 2 * m, height: L.height + 2 * m)
         panel = ToastWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
@@ -223,7 +243,8 @@ import QuartzCore
         panel.setAccessibilityLabel(content.accessibilityTitle)
         if let help = content.accessibilityHelp { panel.setAccessibilityHelp(help) }
 
-        let root = NSView(frame: CGRect(origin: .zero, size: size))
+        let root = PillHitView(frame: CGRect(origin: .zero, size: size))
+        root.pill = pillRect
         clip.frame = root.bounds
         clip.wantsLayer = true
         root.addSubview(clip)
@@ -273,8 +294,7 @@ import QuartzCore
     /// Shows the pill at `frame` (AppKit global), unrolling from its `growth` origin side;
     /// never key.
     func show(at frame: CGRect, growth: ToastLayout.Growth, reduceMotion: Bool) {
-        let m = Self.shadowMargin
-        panel.setFrame(frame.insetBy(dx: -m, dy: -m), display: false)
+        panel.setFrame(frame.insetBy(dx: -margin, dy: -margin), display: false)
         if reduceMotion {
             panel.alphaValue = 0
             panel.orderFrontRegardless()

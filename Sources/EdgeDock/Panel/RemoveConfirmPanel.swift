@@ -93,11 +93,14 @@ import Diagnostics
         if let m = NSEvent.addLocalMonitorForEvents(matching: mask.union(.keyDown), handler: { [weak self] event in
             let esc = event.type == .keyDown && event.keyCode == 53
             let click = event.type != .keyDown
-            let window = event.windowNumber
+            let window = event.windowNumber, location = event.locationInWindow
             let consumed = MainActor.assumeIsolated { () -> Bool in
                 guard let self else { return false }
                 if esc { self.keep(); return true }      // Esc keeps (only when focused, see above)
-                if click, window != self.panel.windowNumber { self.keep() }           // a click elsewhere keeps
+                if click, CapsuleToast.clickIsElsewhere(eventWindow: window, panelWindow: self.panel.windowNumber,
+                                                        location: location, pill: self.toast.pillRect) {
+                    self.keep()                                                       // a click elsewhere keeps
+                }
                 return false
             }
             return consumed ? nil : event

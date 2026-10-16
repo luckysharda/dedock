@@ -44,7 +44,7 @@ struct CapsuleToastTests {
         #expect(long.width > 480 && long.width <= 520)                                            // as wide as it may be
         #expect(long.content.text.contains("\u{2026}"))                                          // the name, middle-truncated
         #expect(long.content.text.hasPrefix("Remove \u{201C}Very") && long.content.text.hasSuffix("\u{201D}?"))
-        #expect(short.panel.frame.height == 52 + 2 * CapsuleToast.shadowMargin)
+        #expect(short.panel.frame.height == CGFloat(52 + 2 * 24))                                         // the dock look's shadow room
     }
 
     @Test func confirmWearsTheDockStyleIncludingALightTint() {
@@ -69,6 +69,31 @@ struct CapsuleToastTests {
         }
     }
 
+    @Test func theNoticeHasNoShadowAndNoMargin() {
+        let n = LaunchNoticePanel(.readOnly).toast
+        #expect(n.margin == 0 && n.panel.frame.height == 52)
+        #expect((n.pill.layer?.shadowOpacity ?? 0) == 0)
+        #expect(confirm("Mail").toast.margin == 24)                                              // the confirm keeps the dock's
+    }
+
+    /// A click in the confirm's transparent shadow margin is elsewhere (it keeps), not swallowed.
+    @Test func aClickInTheShadowMarginIsElsewhere() {
+        let t = confirm("Mail").toast
+        let pill = t.pillRect
+        func elsewhere(_ p: CGPoint, window: Int? = nil) -> Bool {
+            CapsuleToast.clickIsElsewhere(eventWindow: window ?? t.panel.windowNumber, panelWindow: t.panel.windowNumber,
+                                          location: p, pill: pill)
+        }
+        #expect(!elsewhere(CGPoint(x: pill.midX, y: pill.midY)))                                 // on the pill
+        #expect(elsewhere(CGPoint(x: pill.minX - 10, y: pill.midY)))                             // in the margin
+        #expect(elsewhere(CGPoint(x: pill.midX, y: pill.maxY + 5)))
+        #expect(elsewhere(CGPoint(x: pill.midX, y: pill.midY), window: t.panel.windowNumber + 1)) // another window
+        // The margin does not hit-test either: only the pill takes the mouse.
+        let root = t.panel.contentView
+        #expect(root?.hitTest(CGPoint(x: pill.minX - 10, y: pill.midY)) == nil)
+        #expect(root?.hitTest(CGPoint(x: t.buttons[1].frame.midX, y: t.buttons[1].frame.midY)) === t.buttons[1])
+    }
+
     @Test func noticeWearsTheWindowLook() {
         for (material, backdrop) in [(WindowLook.Material.frosted, WindowLook.Backdrop.frosted), (.solid, .solid)] {
             let look = WindowLook(appearance: .light, material: material, reduceTransparency: false)
@@ -87,7 +112,7 @@ struct CapsuleToastTests {
         #expect(n.panel.isVisible && !n.panel.isKeyWindow)
         #expect(NSApplication.shared.modalWindow == nil)
         #expect(n.panel.styleMask.contains(.nonactivatingPanel))
-        #expect(n.panel.frame.maxY - CapsuleToast.shadowMargin == 1050)                          // 6 pt under the menu bar
+        #expect(n.panel.frame.maxY == 1050)                                                     // 6 pt under the menu bar, no margin
         n.dismiss()
         #expect(n.panel.title.isEmpty && n.panel.ignoresMouseEvents && !n.panel.isAccessibilityElement())  // no longer a question
         try await Task.sleep(for: .milliseconds(600))

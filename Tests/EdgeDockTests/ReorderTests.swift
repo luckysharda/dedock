@@ -116,7 +116,7 @@ import Testing
         #expect(p.panel.styleMask.contains(.nonactivatingPanel))
         #expect(p.panel.title == "Remove \u{201C}Calculator\u{201D} from the Edge Dock?")
         // The pill (inside the window's shadow margin) sits beside the dock, toward the centre.
-        #expect(p.panel.frame.minX + CapsuleToast.shadowMargin == CGFloat(86 + 10))
+        #expect(p.panel.frame.minX + p.toast.margin == CGFloat(86 + 10))
         p.remove()
         #expect(confirmation.result == .remove)
         p.close()
