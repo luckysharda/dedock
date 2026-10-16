@@ -391,6 +391,29 @@ python3 Scripts/e2e/cua-eval.py $T/cua-leave-stuck Tests/E2E/selftest/cua-geom.j
 check "cua-eval: C7 leaving far away hides PASS; no leave FAIL (move seen); SKIP when not recorded" "grep -q \$'^cua C7 leaving far from the shown dock hides it L\t1' $T/cua-leave-ok.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\t0\t.*seen by the listener: yes' $T/cua-leave-stuck.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\tskip' $T/cua.txt"
 # T37a style tokens: the default gate is unchanged; Dark → solid and Liquid Glass → glass are known
 check "cua-eval: T37a style/material map knows dark (solid) and liquidGlass (glass and its stand-ins)" "python3 -c \"import re,sys; src=open('Scripts/e2e/cua-eval.py').read(); m=re.search(r'MATERIALS = (\{.*?\})\n', src, re.S); d=eval(m.group(1)); sys.exit(not (d['dark']=={'solid'} and {'glass','hudWindow','popover','solid'}<=d['liquidGlass'] and d['darkGlass']=={'hudWindow','solid'}))\""
+# T37 rows: style GEOM (Dark solid / Liquid Glass glass + tint), tint never changes while shown, materials differ
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+g = lambda st, mat, tint=None: {"docks": [dict({"style": st, "material": mat}, **({"liquidTint": tint} if tint else {}))]}
+json.dump(g("dark", "solid"), open(f"{T}/t37-dark.json", "w"))
+json.dump(g("liquidGlass", "glass", "dark"), open(f"{T}/t37-lg.json", "w"))
+json.dump(g("liquidGlass", "hudWindow", "dark"), open(f"{T}/t37-lg-old.json", "w"))
+def log(name, ev):
+    with open(f"{T}/{name}", "w") as f:
+        f.write("Filtering\n")
+        for m in ev: f.write(json.dumps({"processID": 7, "eventMessage": m}) + "\n")
+base = ["dock.tint.reading luminance=0.31 pending=dark applied=dark", "reveal.transition edge=left from=revealing to=shown cause=animationEnd inh=-"]
+log("t37-tint-ok.ndjson", base + ["reveal.transition edge=left from=shown to=armingHide cause=leave inh=-", "dock.tint tint=light"])
+log("t37-tint-bad.ndjson", base + ["dock.tint tint=light", "reveal.transition edge=left from=shown to=armingHide cause=leave inh=-"])
+open(f"{T}/t37-means-ok.txt", "w").write("frosted 40 40 42 30 30 32\nliquidGlass 52 52 55 31 31 33\nsolid 30 29 27 20 20 20\nFAIL tool x exited 2 a b\n")
+open(f"{T}/t37-means-same.txt", "w").write("frosted 40 40 42 30 30 32\nliquidGlass 41 41 43 31 31 33\nsolid 30 29 27 20 20 20\n")
+PY
+python3 Scripts/e2e/t37.py style $T/t37-dark.json dark 27 > $T/t37-r1.txt; python3 Scripts/e2e/t37.py style $T/t37-lg.json liquidGlass 27 > $T/t37-r2.txt
+python3 Scripts/e2e/t37.py style $T/t37-lg-old.json liquidGlass 27 > $T/t37-r3.txt
+python3 Scripts/e2e/t37.py tint $T/t37-tint-ok.ndjson 7 0 > $T/t37-r4.txt; python3 Scripts/e2e/t37.py tint $T/t37-tint-bad.ndjson 7 0 > $T/t37-r5.txt
+python3 Scripts/e2e/t37.py materials $T/t37-means-ok.txt > $T/t37-r6.txt; python3 Scripts/e2e/t37.py materials $T/t37-means-same.txt > $T/t37-r7.txt
+check "T37: Dark solid / Liquid Glass glass+tint PASS, stand-in on 27 FAIL; tint change while shown FAIL; materials differ PASS, two alike FAIL" "grep -q '^1' $T/t37-r1.txt && grep -q '^1' $T/t37-r2.txt && grep -q '^0' $T/t37-r3.txt && grep -q '^1' $T/t37-r4.txt && grep -q '^0' $T/t37-r5.txt && grep -q '^1' $T/t37-r6.txt && grep -q '^0' $T/t37-r7.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id

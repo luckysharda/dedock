@@ -1,7 +1,7 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [settings=1] [reg067=1] [t25=1] [h4=1] [z1=1] [t26=1] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [settings=1] [reg067=1] [t25=1] [h4=1] [z1=1] [t26=1] [t27=1] [t37=1] [dry=1]
 #       reg061=1: gate REG-061 (the tile's AX element is the whole cell): C3 AX frame = GEOM cell ±1 pt,
 #       C7 cell edge = AXButton with the tile's label. Off until a build carries the fix.
 #       settings=1: run C8 (open Settings over the debug channel, labels, the editing hold, close via its
@@ -19,6 +19,9 @@
 #       t26=1: T26 SP3 Islands, own launch with a spacer and a separator seeded in its data dir:
 #       two islands 8 pt apart as one dock, the spacer half a cell, fillers AX-hidden, and the gap
 #       between the islands inside the dock (no leave or hide, gate open).
+#       t37=1: T37a/b, own launches: Settings' Style → Dark and → Liquid Glass (AX presses on our window;
+#       GEOM style/material/liquidTint), no tint change while shown; one launch per window material
+#       (seeded) with the Settings sidebar and content pixel means compared (our window only).
 #       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
 #       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
 #       (never committed; no user window is ever in the frame).
@@ -73,8 +76,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary reg067=0 t25=0 h4=0 z1=0 t26=0 t27=0
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; t26=*) t26=${kv#t26=} ;; t27=*) t27=${kv#t27=} ;; reg067=*) reg067=${kv#reg067=} ;; t25=*) t25=${kv#t25=} ;; h4=*) h4=${kv#h4=} ;; z1=*) z1=${kv#z1=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary reg067=0 t25=0 h4=0 z1=0 t26=0 t27=0 t37=0
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; t37=*) t37=${kv#t37=} ;; t26=*) t26=${kv#t26=} ;; t27=*) t27=${kv#t27=} ;; reg067=*) reg067=${kv#reg067=} ;; t25=*) t25=${kv#t25=} ;; h4=*) h4=${kv#h4=} ;; z1=*) z1=${kv#z1=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -92,10 +95,10 @@ edge_list=(${(s:,:)edges})
 # Calibrated on the first full run (2026-10-15: 489 s for edges L,R + idle): launches, settle
 # waits and VOID re-runs make each edge ~200 s; each extra x-06 seed ~15 s.
 # Calibrated on the 82d2d69 candidate (edges L,R + 3 extra x-06 seeds + shots + idle: 293 s measured).
-est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0) + (reg067 ? 8 : 0) + (h4 ? 8 : 0)) + (idle ? 70 : 0) + (t25 ? 45 : 0) + (z1 ? 15 : 0) + (t26 ? 15 : 0) ))
+est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0) + (reg067 ? 8 : 0) + (h4 ? 8 : 0)) + (idle ? 70 : 0) + (t25 ? 45 : 0) + (z1 ? 15 : 0) + (t26 ? 15 : 0) + (t37 ? 50 : 0) ))
 echo "regress $id: app $(git -C $app rev-parse --short HEAD) edges=$edges idle=$idle — moves the cursor for about $est s"
 if (( dry )); then
-  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}$( (( reg067 )) && print -n '; x-19 gap hold (REG-067) per edge')$( (( h4 )) && print -n '; H4 hover label + row 20 per edge')$( (( t25 )) && print -n '; T25 drag-out (own launch, right edge)')$( (( t26 )) && print -n '; T26 islands (own launch)')$( (( z1 )) && print -n '; Z1 size slider (own launch)'); idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
+  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}$( (( reg067 )) && print -n '; x-19 gap hold (REG-067) per edge')$( (( h4 )) && print -n '; H4 hover label + row 20 per edge')$( (( t25 )) && print -n '; T25 drag-out (own launch, right edge)')$( (( t26 )) && print -n '; T26 islands (own launch)')$( (( t37 )) && print -n '; T37 styles + window materials (own launches)')$( (( z1 )) && print -n '; Z1 size slider (own launch)'); idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
   exit 0
 fi
 
@@ -159,6 +162,9 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
                         "T25 no answer in 8 s keeps the tile R" "REG-006 D"
   (( t27 )) && for t in B L; do print -l "T27 Dock relaunch: logged and zones rebuilt within 1 s $t" "T27 Dock relaunch: the shown dock stays on screen and a dwell reveal works after $t" "REG-006 K$t"; done
   (( t27 )) && print -l "T27 display sleep and wake"
+  (( t37 )) && print -l "T37 Settings switches the dock to Dark" "T37 Settings switches the dock to Liquid Glass" \
+                        "T37 Liquid Glass tint never changes while the dock is shown" "REG-006 Y" \
+                        "T37 window material changes the Settings sidebar and content" "REG-006 Wfrosted" "REG-006 WliquidGlass" "REG-006 Wsolid"
   (( t26 )) && print -l "T26 separator makes two islands 8 pt apart, one dock" "T26 spacer is half an app cell" \
                         "T26 separators and spacers are hidden from accessibility" "T26 crossing the island gap keeps the dock shown, gate open" "REG-006 P"
   (( z1 )) && print -l "Z1 size slider drives the live dock while dragged" "Z1 release snaps to a stop and persists" "REG-006 Z"
@@ -671,6 +677,57 @@ sys.exit(not any(w['layer'] == 24 and w['onscreen'] and w['w'] > 50 for w in ws)
   done
 }
 
+t37_styles() {  # t37_styles <run dir> <pid>: T37a, Settings' Style control → Dark, then Liquid Glass
+  # (AX presses on our own window); GEOM style/material/liquidTint after each; then, on Liquid
+  # Glass, a dwell reveal held 1.5 s: no tint change while shown (t37.py).
+  local R=$1 pid=$2 L=$1/log.ndjson G=$1/data/e2e/geometry.json major=$(sw_vers -productVersion | cut -d. -f1) r n0 lp
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
+  $B/notify $pid openSettings > /dev/null; tool "notify openSettings Y" $? 0
+  sleep 1.5
+  $B/axpress press $pid "Dedock Settings" "Dark" > $R/t37-dark.txt 2>&1; tool "axpress Dark" $? 0
+  sleep 1; cp $G $R/t37-geom-dark.json 2>/dev/null
+  r=$(python3 $E/t37.py style $R/t37-geom-dark.json dark $major 2>&1); check "T37 Settings switches the dock to Dark" ${r%%	*} "${r#*	}"
+  $B/axpress press $pid "Dedock Settings" "Liquid Glass" > $R/t37-lg.txt 2>&1; tool "axpress Liquid Glass" $? 0
+  sleep 1.5; cp $G $R/t37-geom-lg.json 2>/dev/null
+  r=$(python3 $E/t37.py style $R/t37-geom-lg.json liquidGlass $major 2>&1); check "T37 Settings switches the dock to Liquid Glass" ${r%%	*} "${r#*	}"
+  $B/axpress close $pid "Dedock Settings" > /dev/null 2>&1; tool "axpress close Settings Y" $? 0
+  sleep 1
+  local p=($(python3 $E/h4.py plan $G 2>/dev/null)) dwell=$(python3 -c "import json,sys; print(int(json.load(open(sys.argv[1]))['docks'][0].get('showDwellMs', 300)))" $G)
+  $B/listen 8 > $R/t37-listen.txt & lp=$!; sleep 0.3
+  n0=$(wc -l < $L)
+  if (( ${#p} >= 8 )); then
+    print -l "move ${p[7]} ${p[8]}" "wait 500" "edge ${p[1]} ${p[2]}" "wait $(( dwell + 500 ))" "glide ${p[3]} ${p[4]} 120" "wait 1500" "move ${p[7]} ${p[8]}" "wait 900" > $R/t37-reveal.txt
+    $B/pointer -q script $R/t37-reveal.txt
+  fi
+  wait $lp 2>/dev/null
+  $B/analyze contamination $R/t37-listen.txt > $R/t37-contam.txt 2>&1; tool "analyze contamination t37" $? 0 1
+  r=$(python3 $E/t37.py tint $L $pid $n0 2>&1)
+  if grep -q '^FAIL input contamination' $R/t37-contam.txt; then check "T37 Liquid Glass tint never changes while the dock is shown" void "real input during the probe (rerun): ${r#*	}"
+  else check "T37 Liquid Glass tint never changes while the dock is shown" ${r%%	*} "${r#*	}"; fi
+}
+
+t37_material() {  # t37_material <run dir> <pid> <material>: prints "<material> <sidebar rgb> <content rgb>"
+  local R=$1 pid=$2 mat=$3 wid
+  $B/notify $pid openSettings > /dev/null; tool "notify openSettings W$mat" $? 0
+  sleep 2
+  wid=$($B/axprobe windows $pid | python3 -c "
+import json, sys
+ws = [json.loads(l) for l in sys.stdin if l.strip()]
+ws = [w for w in ws if w['layer'] == 0 and w['onscreen'] and w['w'] > 300 and w['h'] > 300]
+print(max(ws, key=lambda w: w['w'] * w['h'])['id'] if ws else '')")
+  if [[ -n $wid ]]; then
+    screencapture -x -o -l $wid $R/t37-settings-$mat.png; tool "screencapture Settings $mat" $? 0
+    $B/ocr stats $R/t37-settings-$mat.png > /dev/null 2>&1; tool "t37 capture not blank $mat" $? 0
+    local sb=$($B/ocr mean $R/t37-settings-$mat.png 0.02 0.15 0.20 0.90 | python3 -c "import json,sys; d=json.load(sys.stdin); print(round(d['r'],1), round(d['g'],1), round(d['b'],1))")
+    local ct=$($B/ocr mean $R/t37-settings-$mat.png 0.45 0.15 0.95 0.90 | python3 -c "import json,sys; d=json.load(sys.stdin); print(round(d['r'],1), round(d['g'],1), round(d['b'],1))")
+    print -r -- "$mat $sb $ct"
+  else
+    tool "t37 no Settings window for $mat" 2 0
+  fi
+  $B/axpress close $pid "Dedock Settings" > /dev/null 2>&1; sleep 0.5
+}
+
 t26_rows() {  # t26_rows <run dir> <pid>: T26 SP3 Islands (t26=1), own launch on the left edge
   # GEOM: two islands 8 pt apart, the capsule their union, one zone; the spacer half an app cell.
   # AX: only the three apps are buttons (fillers hidden). Probe: reveal, rest on the tile before the
@@ -1122,6 +1179,36 @@ if (( t27 )); then
   else
     check "T27 display sleep and wake" skip "pending user step: the session may lock at display sleep ($(head -1 $root/sleepcheck.txt)); the harness never posts input to a possibly locked session"
   fi
+fi
+
+if (( t37 )); then
+  echo "t37"
+  # Dock styles through Settings' own controls (AX presses on our window), one launch.
+  sub=$id-Y
+  if launch $sub --app $app --timeout 8 > $root/launch-Y.txt 2>&1 && launched $root/launch-Y.txt; then
+    print -r -- "Y $sub" >> $root/index.txt
+    sleep 1
+    t37_styles $B/runs/$sub $(sed -n 's/^APP_PID=//p' $B/runs/$sub/run.env)
+    teardown_check $sub; check "REG-006 Y" $(( $? == 0 )) "native Dock prefs unchanged"
+  else
+    check "launch Y" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-Y.txt)"
+  fi
+  # Window material: one launch per material, seeded in its own data dir (app.windowMaterial);
+  # Settings captured (our window only, kept in the run dir), sidebar and content means compared.
+  : > $root/t37-means.txt
+  for mat in frosted liquidGlass solid; do
+    sub=$id-W$mat
+    if launch $sub --app $app --set "app.windowMaterial=\"$mat\"" --timeout 8 > $root/launch-W$mat.txt 2>&1 && launched $root/launch-W$mat.txt; then
+      print -r -- "W$mat $sub" >> $root/index.txt
+      sleep 1
+      t37_material $B/runs/$sub $(sed -n 's/^APP_PID=//p' $B/runs/$sub/run.env) $mat >> $root/t37-means.txt
+      teardown_check $sub; check "REG-006 W$mat" $(( $? == 0 )) "native Dock prefs unchanged"
+    else
+      check "launch W$mat" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-W$mat.txt)"
+    fi
+  done
+  local_r=$(python3 $E/t37.py materials $root/t37-means.txt 2> $root/t37-materials.err)
+  check "T37 window material changes the Settings sidebar and content" ${local_r%%	*} "${local_r#*	}"
 fi
 
 if (( t26 )); then
