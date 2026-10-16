@@ -120,6 +120,16 @@ if o is None:
     chk("C7 4 pt outside passes through", False, "not probed: no tile to probe")
 elif not occluded("C7 4 pt outside passes through", jload(f"{C}/occl-outside.json", {}), "4 pt outside the capsule"):
     chk("C7 4 pt outside passes through", o.get("pid") != pid, f"4 pt outside the capsule: hit {'Dedock' if o.get('pid') == pid else 'other app'}" + (f"; {gate_note}" if gate_note else ""))
+# C7 leave: after the outside probe the pointer jumps 400 pt away; within 1 s the dock must have left
+# shown (armingHide) and begun hiding (hideDelay 400 ms). SKIP for older runs without the file.
+if os.path.exists(f"{C}/leave-away.txt"):
+    lv = (open(f"{C}/leave-away.txt").read().split() + ["0", "0", "0"])[:3]
+    leaves, hides, seen = int(lv[0]), int(lv[1]), int(lv[2] or 0)
+    chk("C7 leaving far from the shown dock hides it", leaves >= 1 and hides >= 1,
+        f"after the jump 400 pt away: leave (shown → armingHide) {leaves}, hide begun within 1 s {hides}; "
+        f"the move event seen by the listener: {'yes' if seen else 'no'}")
+else:
+    res.append((f"cua C7 leaving far from the shown dock hides it {side}", "skip", "not recorded by this harness version"))
 # C9: dd.dock.style in GEOM (Settings builds): the harness seed uses the default, Dark Glass, whose
 # material is hudWindow ('solid' under Reduce Transparency). SKIP when the build writes no style.
 MATERIALS = {"darkGlass": {"hudWindow", "solid"}, "black": {"hudWindow", "solid"}, "lightGlass": {"popover", "solid"}}

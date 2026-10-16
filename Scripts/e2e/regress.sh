@@ -141,7 +141,7 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
     print -l "geom $t (REG-013 …)" "REG-043 $t" "REG-018 $t" "REG-059 $t" "REG-014 $t" "contract $t" "REG-006 $t" "REG-006 ${t}0" \
              "cua C1 panel window $t" "cua C1 REG-056 panel AX identity $t" "cua C2 cua-driver sees tiles $t" "cua C3 tiles in AX tree $t" "cua C3 REG-040 tiles are buttons $t" \
              "cua C3 REG-040 tiles pressable $t" "cua C4 status item $t" "cua C5 non-activating $t" "cua C6 click-through while hidden $t" \
-             "cua C7 shown tile takes the hit $t" "cua C7 tile cell edge stays in the dock $t" "cua C7 4 pt outside passes through $t" \
+             "cua C7 shown tile takes the hit $t" "cua C7 tile cell edge stays in the dock $t" "cua C7 4 pt outside passes through $t" "cua C7 leaving far from the shown dock hides it $t" \
              "cua C9 dock style tokens $t"
     # Settings rows (C8, the C9 live switch) once per run, on the left launch (x-18 plan)
     [[ $t == B ]] && print -l "B native Dock span never triggers"
@@ -372,8 +372,14 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   $B/axprobe at ${out[1]} ${out[2]} only=$pid > $C/hit-shown-outside.json
   $B/axprobe occluder ${out[1]} ${out[2]} $pid > $C/occl-outside.json
   $B/axprobe front > $C/front-shown.json
+  local nl=$(wc -l < $R/log.ndjson) la
+  $B/listen 2 > $C/listen-away.txt & la=$!; sleep 0.3
   $B/pointer -q move ${awy[1]} ${awy[2]}   # leave: the dock hides before the next step
   sleep 1
+  wait $la 2>/dev/null
+  # C7 leave: the jump far from the shown dock must start the hide (cand-c89d1c0 R: no leave for 8 s);
+  # the listener tells whether the move event reached the system at all
+  print -r -- "$(log_count $R/log.ndjson $pid '^reveal[.]transition .*from=shown to=armingHide' $g0) $(log_count $R/log.ndjson $pid '^reveal[.]transition .*to=hiding' $nl) $(grep -c "ev=move x=${awy[1]%.*}" $C/listen-away.txt 2>/dev/null || true)" > $C/leave-away.txt
   fi
   # C8 (settings=1, a build with Settings): openSettings over the debug channel → a titled Settings
   # window from our pid, every control labelled, the dock held shown (editing) while it is open; its

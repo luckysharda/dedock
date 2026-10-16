@@ -100,14 +100,25 @@ if a[0] == "scroll" {
     var area: AXUIElement? = attr(target, kAXParentAttribute)
     while let e = area, (attr(e, kAXRoleAttribute) as String?) != "AXScrollArea" { area = attr(e, kAXParentAttribute) }
     guard let sa = area else { fail("'\(a[3])' has no AXScrollToVisible and no enclosing scroll area") }
+    func inside() -> Bool { if let c = frame(target), let v = frame(sa) { return v.contains(c) } else { return false } }
+    if inside() { print("'\(a[3])' already in view in '\(a[2])'"); exit(0) }
+    // Page the area; some SwiftUI scroll areas list the page actions but refuse them.
     for _ in 0..<30 {
         guard let c = frame(target), let v = frame(sa) else { fail("no frames to compare") }
-        if v.contains(c) { print("paged '\(a[3])' into view in '\(a[2])'"); exit(0) }
         let action = c.midY > v.midY ? "AXScrollDownByPage" : "AXScrollUpByPage"
-        guard AXUIElementPerformAction(sa, action as CFString) == .success else { fail("\(action) failed") }
+        guard AXUIElementPerformAction(sa, action as CFString) == .success else { break }
         usleep(150_000)
+        if inside() { print("paged '\(a[3])' into view in '\(a[2])'"); exit(0) }
     }
-    fail("'\(a[3])' still not inside its scroll area after 30 pages")
+    // Last resort: the area's own vertical scroll bar value (0 top … 1 bottom), stepped until it fits.
+    guard let bar: AXUIElement = attr(sa, kAXVerticalScrollBarAttribute) else { fail("'\(a[3])' is out of view and its scroll area has no vertical scroll bar") }
+    for step in 0...20 {
+        let f = Double(step) / 20
+        guard AXUIElementSetAttributeValue(bar, kAXValueAttribute as CFString, NSNumber(value: f)) == .success else { fail("setting the scroll bar value failed") }
+        usleep(150_000)
+        if inside() { print("scrolled '\(a[3])' into view in '\(a[2])' (scroll bar \(f))"); exit(0) }
+    }
+    fail("'\(a[3])' still not inside its scroll area")
 }
 let r = AXUIElementPerformAction(target, kAXPressAction as CFString)
 guard r == .success else { fail("AXPress failed: \(r.rawValue)") }

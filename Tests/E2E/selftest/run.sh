@@ -383,6 +383,12 @@ json.dump(g, open(f"{T}/t27-geom.json", "w"))
 PY
 for k in ok slow none; do python3 Scripts/e2e/recovery.py relaunch $T/t27-$k.ndjson 7 0 $T/t27-geom.json $T/t27-geom.json B > $T/t27-$k.txt; done
 check "T27 relaunch judge: rebuild 240 ms after dock.relaunch PASS (repair reported); 1500 ms or no relaunch FAIL" "grep -q \$'\t1\tdock.relaunch → zones.computed in 240 ms' $T/t27-ok.txt && grep -q '^repair=1' $T/t27-ok.txt && grep -q \$'\t0\t' $T/t27-slow.txt && grep -q \$'\t0\tno dock.relaunch' $T/t27-none.txt"
+# C7 leave: the jump far from the shown dock starts the hide (cand-c89d1c0); SKIP without the record
+for k in ok stuck; do rm -rf $T/cua-leave-$k; cp -R Tests/E2E/selftest/cua-fixture $T/cua-leave-$k; done
+print "1 1 1" > $T/cua-leave-ok/leave-away.txt; print "0 0 1" > $T/cua-leave-stuck/leave-away.txt
+python3 Scripts/e2e/cua-eval.py $T/cua-leave-ok Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-leave-ok.txt
+python3 Scripts/e2e/cua-eval.py $T/cua-leave-stuck Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-leave-stuck.txt
+check "cua-eval: C7 leaving far away hides PASS; no leave FAIL (move seen); SKIP when not recorded" "grep -q \$'^cua C7 leaving far from the shown dock hides it L\t1' $T/cua-leave-ok.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\t0\t.*seen by the listener: yes' $T/cua-leave-stuck.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\tskip' $T/cua.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id
