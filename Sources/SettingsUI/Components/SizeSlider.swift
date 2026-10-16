@@ -54,16 +54,10 @@ struct SizeSlider: View {
             live = nil
             return
         }
-        let path = Self.snapCurve(from: from, to: Self.tile(target))
         let setLive = $live, setSize = $size
-        Task { @MainActor in
-            for value in path {
-                setLive.wrappedValue = value
-                try? await Task.sleep(for: .milliseconds(16))
-            }
-            setSize.wrappedValue = target
-            setLive.wrappedValue = nil
-        }
+        SnapRunner.shared.run(path: Self.snapCurve(from: from, to: Self.tile(target)),
+                              step: { setLive.wrappedValue = $0 },
+                              finish: { setSize.wrappedValue = target; setLive.wrappedValue = nil })
     }
 
     var body: some View {
@@ -72,7 +66,10 @@ struct SizeSlider: View {
                 if live == nil { size = Self.discrete(size, to: value) } else { live = value }
             }), in: Self.range) { editing in
                 if editing {
-                    live = Self.tile(size)           // a drag begins: preview from here
+                    // A new grab during the release snap stops it and continues from where it is
+                    // (e9's #42 review): the old snap must not write `live` under the new drag.
+                    SnapRunner.shared.cancel()
+                    live = live ?? Self.tile(size)   // a drag begins: preview from here
                 } else {
                     release()
                 }
@@ -99,5 +96,47 @@ struct SizeSlider: View {
             .frame(width: 220)
             .accessibilityHidden(true)
         }
+        .onDisappear { SnapRunner.shared.finishNow() }   // never leave a live value behind
     }
+}
+
+/// Owns the one release snap in flight (the size slider exists once). Cancelling stops further
+/// writes; `finishNow` completes it at once (the Settings window closed mid-snap).
+@MainActor final class SnapRunner {
+    static let shared = SnapRunner()
+    private var task: Task<Void, Never>?
+    private var pendingFinish: (() -> Void)?
+
+    func run(path: [Double], frame: Duration = .milliseconds(16), step: @escaping (Double) -> Void,
+             finish: @escaping () -> Void) {
+        cancel()
+        pendingFinish = finish
+        task = Task { @MainActor [weak self] in
+            for value in path {
+                guard !Task.isCancelled else { return }
+                step(value)
+                try? await Task.sleep(for: frame)
+            }
+            guard !Task.isCancelled else { return }
+            self?.finishNow()
+        }
+    }
+
+    /// Stops the snap without finishing it (a new drag takes over).
+    func cancel() {
+        task?.cancel()
+        task = nil
+        pendingFinish = nil
+    }
+
+    /// Completes a pending snap immediately.
+    func finishNow() {
+        task?.cancel()
+        task = nil
+        let finish = pendingFinish
+        pendingFinish = nil
+        finish?()
+    }
+
+    var isRunning: Bool { task != nil }
 }

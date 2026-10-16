@@ -45,6 +45,28 @@ import Testing
         #expect(SizeSlider.discrete(.m, to: 62) == .m)
     }
 
+    /// A new grab during the snap stops it: no further writes and no late finish (e9's #42 review).
+    @Test func aNewGrabCancelsTheSnap() async {
+        let runner = SnapRunner()
+        var steps: [Double] = []
+        var finished = 0
+        runner.run(path: [1, 2, 3, 4], frame: .milliseconds(5), step: { steps.append($0) }, finish: { finished += 1 })
+        for _ in 0..<3 { await Task.yield() }
+        runner.cancel()
+        let seen = steps.count
+        try? await Task.sleep(for: .milliseconds(60))
+        #expect(steps.count == seen)
+        #expect(finished == 0)
+        #expect(!runner.isRunning)
+
+        // Closing the window mid-snap completes it at once.
+        runner.run(path: [1, 2, 3, 4], frame: .milliseconds(50), step: { steps.append($0) }, finish: { finished += 1 })
+        runner.finishNow()
+        #expect(finished == 1)
+        try? await Task.sleep(for: .milliseconds(120))
+        #expect(finished == 1)                                             // not twice
+    }
+
     /// The release snap eases to the stop and ends exactly on it.
     @Test func snapCurveEndsOnTheStop() {
         let path = SizeSlider.snapCurve(from: 69, to: 76)
