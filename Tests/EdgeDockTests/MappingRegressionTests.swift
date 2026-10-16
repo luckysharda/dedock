@@ -242,16 +242,19 @@ extension MappingRegressionTests {
         for _ in 0..<100 { await Task.yield() }
     }
 
-    /// D2: after a move to another display the dock reveals once, holds 1.0 s, then hides.
+    func move(_ c: EdgeDockCoordinator, to d: DisplaySnapshot, _ s: DockSurroundings) {
+        c.update(config: c.config, profile: nil, display: d, surroundings: s)
+    }
+
+    /// D2: after a move, the display set settles 1 s, then one reveal, a 1.0 s hold, a hide.
     @Test(.enabled(if: NSScreen.main != nil)) func helloRevealOnTheNewDisplay() async {
         let clock = ManualClock()
         let (c, s, _, air) = coordinator(clock: clock)
-        let config = c.config
-        #expect(c.phase == .hidden)
-        c.update(config: config, profile: nil, display: air, surroundings: s)
+        move(c, to: air, s)
+        #expect(c.phase == .hidden)                       // waiting for the display set to settle
+        await advance(clock, .milliseconds(1000))
         #expect(c.phase == .revealing)
         finishAnimation(c)
-        #expect(c.phase == .shown)
         await advance(clock, .milliseconds(900))
         #expect(c.phase == .shown)
         await advance(clock, .milliseconds(150))
@@ -259,11 +262,76 @@ extension MappingRegressionTests {
         c.teardown()
     }
 
+    /// D2: two moves 300 ms apart give one hello, 1 s after the second.
+    @Test(.enabled(if: NSScreen.main != nil)) func flappingDisplaysGiveOneHello() async {
+        let clock = ManualClock()
+        let (c, s, main, air) = coordinator(clock: clock)
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(300))
+        move(c, to: main, s)
+        await advance(clock, .milliseconds(700))
+        #expect(c.phase == .hidden)                       // the first one was superseded
+        await advance(clock, .milliseconds(300))
+        #expect(c.phase == .revealing)
+        c.teardown()
+    }
+
+    /// D2: at most one hello per 10 s.
+    @Test(.enabled(if: NSScreen.main != nil)) func oneHelloPerTenSeconds() async {
+        let clock = ManualClock()
+        let (c, s, main, air) = coordinator(clock: clock)
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(1000))
+        finishAnimation(c)
+        await advance(clock, .milliseconds(1000))         // hold over: hiding
+        if let g = c.controller.machine.activeGeneration { c.controller.send(.animationFinished(generation: g)) }
+        #expect(c.phase == .hidden)
+        move(c, to: main, s)                              // 2 s after the first hello
+        await advance(clock, .milliseconds(1000))
+        #expect(c.helloSkipReason() == "rateLimit" && c.phase == .hidden)
+        await advance(clock, .milliseconds(8000))         // > 10 s since the first
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(1000))
+        #expect(c.phase == .revealing)
+        c.teardown()
+    }
+
+    /// D2: skipped while away, on a full-screen Space, in Pinned mode, or when already shown.
+    @Test(.enabled(if: NSScreen.main != nil)) func helloSkips() async {
+        let clock = ManualClock()
+        var (c, s, main, air) = coordinator(clock: clock)
+        c.helloAllowed = { false }                        // locked or screens asleep
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(1100))
+        #expect(c.phase == .hidden && c.helloSkipReason() == "away")
+        c.teardown()
+
+        (c, s, main, air) = coordinator(clock: ManualClock())
+        s.fullscreen = [air.identity: true]
+        #expect(c.helloSkipReason() == nil)
+        c.update(config: c.config, profile: nil, display: air, surroundings: s)
+        #expect(c.helloSkipReason() == "fullscreen")
+        c.teardown()
+
+        (c, s, main, air) = coordinator(clock: ManualClock())
+        c.controller.send(.hold(.pinnedByUser, true))     // Keep Open
+        #expect(c.helloSkipReason() == "shown")
+        c.teardown()
+
+        (c, s, main, air) = coordinator(clock: ManualClock())
+        var pinned = c.config
+        pinned.mode = .pinned
+        c.update(config: pinned, profile: nil, display: main, surroundings: s)
+        #expect(c.helloSkipReason() == "pinned")
+        c.teardown()
+    }
+
     /// D2: if the pointer is on the dock when the hold ends, it stays.
     @Test(.enabled(if: NSScreen.main != nil)) func helloKeepsTheDockWhenThePointerIsOnIt() async {
         let clock = ManualClock()
         let (c, s, _, air) = coordinator(clock: clock)
-        c.update(config: c.config, profile: nil, display: air, surroundings: s)
+        move(c, to: air, s)
+        await advance(clock, .milliseconds(1000))
         finishAnimation(c)
         let cap = c.capsuleFrame
         c.pointer(PointerSample(location: CGPoint(x: cap.midX, y: cap.midY), timestamp: .milliseconds(100)))

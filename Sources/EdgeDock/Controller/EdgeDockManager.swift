@@ -23,6 +23,9 @@ import SettingsStore
     private var topologyToken: ObservationToken?
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
+    /// The session is locked or the screens sleep: no D2 hello (T38).
+    private var sessionAway = false
+    private var awayObservers: [(NotificationCenter, any NSObjectProtocol)] = []
     private var appearanceObservation: NSKeyValueObservation?
     /// The document as of the last settings notification (for `settings.changed`).
     private var lastDocument: DedockDocument
@@ -80,6 +83,14 @@ import SettingsStore
         // Light / Dark switches re-derive the tokens: label colours follow the system appearance.
         appearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
             Task { @MainActor in self?.sync(reason: "appearance") }
+        }
+        let ws = NSWorkspace.shared.notificationCenter, dn = DistributedNotificationCenter.default()
+        for (center, name, away) in [(ws, NSWorkspace.screensDidSleepNotification, true), (ws, NSWorkspace.screensDidWakeNotification, false),
+                                     (dn, Notification.Name("com.apple.screenIsLocked"), true),
+                                     (dn, Notification.Name("com.apple.screenIsUnlocked"), false)] as [(NotificationCenter, Notification.Name, Bool)] {
+            awayObservers.append((center, center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sessionAway = away }
+            }))
         }
         hub.addSink(self)
         debugCommands = DebugCommandListener { [weak self] in self?.perform($0) }
@@ -153,6 +164,7 @@ import SettingsStore
                 c.onRemoveTile = { [weak self] tile in self?.remove(tile: tile, from: config.profileID) }
                 c.onReorder = { [weak self] order in self?.reorder(order, in: config.profileID) }
                 c.onPin = { [weak self] urls, index in self?.pin(urls, at: index, in: config.profileID) }
+                c.helloAllowed = { [weak self] in !(self?.sessionAway ?? false) }
                 coordinators[config.id] = c
             }
         }
