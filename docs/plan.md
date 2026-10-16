@@ -485,7 +485,7 @@ T-ids continue from M1.
 | Area | Rows | Needs |
 |---|---|---|
 | Carried from M1 | x-07 to x-17 scripted as listed in `docs/evaluation.md` §7.4; 50-trial NFR-4 perf mode; leaks after 100 cycles; dropped frames | x-17 needs the user to turn Reduce Motion on and off |
-| Permissions | hot start: grant → feature on within 2 s, revoke → M1 behaviour within 2 s; a grant survives a rebuild (T24) | the user grants and revokes in System Settings; agents never toggle permissions |
+| Permissions | hot start: grant → feature on within 2 s, revoke → M1 behaviour within 2 s; a grant survives a rebuild (T24): after the user has created the identity, two rebuilds give the same `codesign -d -r-` output and Accessibility stays granted | the user grants and revokes in System Settings; agents never toggle permissions |
 | Onboarding | first launch (empty data dir) shows Welcome after `edgeReady`, non-activating, no key focus; replay through a new closed-enum debug command | — |
 | Recovery | `killall Dock` → reveal within 1 s; sleep/wake and display sleep; 20 full-screen cycles with a harness-owned app | the user's OK for each `killall Dock` and sleep window |
 | Native Dock matrix | a subset of the 9 cells live | the user changes the Dock's position and auto-hide, or approves the harness doing it with a restore |

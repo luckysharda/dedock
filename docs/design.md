@@ -379,6 +379,15 @@ Light / Dark / System appearance applies to panels (DD-704); the dock style is c
 
 All 11 app UI surfaces are picked.
 
+**Drag-out confirm (T25, row 43; P2 when built).**
+
+- On drop the tile springs straight back to its slot (0.2 s, instant under Reduce Motion) while the question is open, so the dock never shows a gap; Remove then closes the gap with the normal relayout.
+- The panel never takes key focus, so Esc and Return reach it only when it has focus (VoiceOver, Full Keyboard Access). A click elsewhere and the 8 s timeout always mean Keep. With Accessibility granted (T28), a global key monitor makes Esc work everywhere; the panel still does not take focus to get it.
+- One question at a time; a second drag-out while one is open is ignored.
+- The panel posts an accessibility announcement with its question when it shows.
+
+**H4 state line.** "No windows" when the count is 0. In M2 the count comes from the window list (owner, layer, alpha and size, never titles) and is read when a tile becomes hovered and on running changes; it is approximate and not live while the label is shown until T28's Accessibility window list.
+
 **M3 Control panel rules.**
 
 - *Non-modal (§2.3a).* The panel is a non-activating `NSPanel`, not an `NSMenu`: no menu-tracking loop runs, so the pointer monitors, reveal timers and the dock keep working while it is open. It never starts a modal session; Quit asks nothing.
