@@ -121,6 +121,8 @@ public struct DockSurroundings: Sendable, Equatable {
             guard let self else { return }
             if case .arming = t.to { self.onArmed?() }
             if t.to == .hidden || t.to == .hiding { self.model.hoveredTile = nil }
+            // Hidden again: the reveal corridor ends (REG-067); a new zone entry starts another.
+            if t.to == .hidden { self.evaluator.dropCorridor() }
             self.onChange?()
         }
         panel.orderFrontRegardless()
