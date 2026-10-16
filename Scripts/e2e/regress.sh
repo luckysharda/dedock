@@ -60,8 +60,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -419,7 +419,8 @@ nd = (d.get('nativeDock') or g['screens'][0].get('nativeDock') or {}).get('rect'
 print(int(nd['topLeft'][0] + nd['topLeft'][2] / 2) if nd else '')" $G 2>/dev/null)
     if [[ -z $nx ]]; then check "$cid" skip "GEOM reports no native Dock footprint on this screen"; return; fi
     n0=$(wc -l < $L)
-    print -l "edge bottom $nx" "wait 400" "push bottom $nx 6 5 60" "wait 300" "move $nx 400" "wait 300" > $R/ndock-probe.txt
+    # starts and ends off the edge (y 400), so no zone strip is touched on the way in or out
+    print -l "move $nx 400" "wait 200" "edge bottom $nx" "wait 400" "push bottom $nx 6 5 60" "wait 300" "move $nx 400" "wait 300" > $R/ndock-probe.txt
     $B/pointer -q script $R/ndock-probe.txt
     hits=$(log_count $L $pid '^edge[.]zoneEnter' $n0)
     check "$cid" $(( hits == 0 )) "zone entries while dwelling and pushing over the native Dock: $hits"
@@ -431,7 +432,23 @@ import json, sys
 for l in open(sys.argv[1]):
     e = json.loads(l)
     if e.get('role') == 'AXMenuBarItem' and (e.get('label') or '').lower() == 'dedock' and 'x' in e: print(int(e['x'] + e['w'] / 2)); break" $R/cua/tree.jsonl 2>/dev/null)
+    # The candidate span along the top edge before exclusions (zones.computed span=a..b; else the
+    # capsule ± 40). Outside it, no zone could exist anyway, so the row would prove nothing: SKIP.
+    local span=($(python3 -c "
+import json, re, sys
+sp = None
+for l in open(sys.argv[1]):
+    if l.startswith('{'):
+        r = json.loads(l)
+        if r.get('processID') == int(sys.argv[2]):
+            m = re.match(r'zones[.]computed edge=top .*span=(-?[0-9]+)[.][.](-?[0-9]+)', r.get('eventMessage', ''))
+            if m: sp = (m.group(1), m.group(2))
+if not sp:
+    d = json.load(open(sys.argv[3]))['docks'][0]; x, y, w, h = d['capsule']['topLeft']; sp = (int(x - 40), int(x + w + 40))
+print(*sp)" $L $pid $G 2>/dev/null))
     if [[ -z $sx ]]; then check "$cid" 0 "Dedock's status item not found in the AX tree"
+    elif (( ${#span} == 2 )) && (( sx < span[1] || sx > span[2] )); then
+      check "$cid" skip "Dedock's status item (x $sx) is outside the top zone's candidate span ${span[1]}..${span[2]}: nothing to prove here"
     else
       n0=$(wc -l < $L)
       print -l "edge top $sx" "wait 700" "move $sx 400" "wait 300" > $R/status-probe.txt
@@ -607,7 +624,7 @@ for tag in $edge_list; do
     rmetric launch.${tag}_ms $(edge_ready_ms $sub)
     # zone thickness 3 pt, 6 pt on the native Dock's edge (derived, REG-062)
     local zt=3; [[ $(defaults read com.apple.dock orientation 2>/dev/null || echo bottom) == $(edge_of $tag) ]] && zt=6
-    $E/geom-check.py $B/runs/$sub/data/e2e/geometry.json layout=$B/runs/$sub/data/layout.json padding=$padding gap=$gap zone=$zt > $B/runs/$sub/geom.txt 2>&1
+    $E/geom-check.py $B/runs/$sub/data/e2e/geometry.json layout=$B/runs/$sub/data/layout.json padding=$padding gap=$gap zone=$zt toprule=$toprule > $B/runs/$sub/geom.txt 2>&1
     tool "geom-check $tag" $?
     gf=$(grep -c '^FAIL' $B/runs/$sub/geom.txt); gp=$(grep -c '^PASS' $B/runs/$sub/geom.txt)
     # fail closed: a crashed or empty geom-check has no PASS lines

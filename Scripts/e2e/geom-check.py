@@ -107,9 +107,12 @@ for d in g["docks"]:
             gate(span_ok, f"{ztag} span = capsule ± {SPAN}, clipped by {CORNER} pt corners", f"y {zy}..{zy + zh} vs capsule {cy}..{cy + ch}")
             gate(zy >= vy - 0.01, f"{ztag} below the menu bar", f"zone top {zy} ≥ visibleFrame top {vy}")
         elif edge == "top":
-            # x-18: the content span ± 40 MINUS status items (and a notch): one or more strips, each inside it
             lo, hi = max(cx - SPAN, fx + CORNER), min(cx + cw + SPAN, fx + fw - CORNER)
-            gate(zx >= lo - 0.51 and zx + zw <= hi + 0.51, f"{ztag} inside the content span ± {SPAN} (minus status items)", f"x {zx}..{zx + zw} within {lo}..{hi}")
+            rule = d.get("zoneRule", "primary")
+            if rule == "nearestFree":   # the content span is blocked: a strip of at least 80 pt outside it
+                gate(zw >= 80 - 0.51 and (zx + zw <= lo + 0.51 or zx >= hi - 0.51), f"{ztag} nearest free strip (≥ 80 pt, outside the span)", f"x {zx}..{zx + zw}, span {lo}..{hi}")
+            else:                       # primary (minus status items / notch) or optionOnly (⌥-gated): inside the span
+                gate(zx >= lo - 0.51 and zx + zw <= hi + 0.51, f"{ztag} inside the content span ± {SPAN} ({rule})", f"x {zx}..{zx + zw} within {lo}..{hi}")
         else:
             # bottom: content span ± 40; beside the native Dock (REG-065) the whole edge minus the Dock's
             # footprint and the corners. Strips stay inside the corners and off the Dock's footprint.
@@ -121,6 +124,8 @@ for d in g["docks"]:
             else:
                 span_ok = near(zx, max(cx - SPAN, fx + CORNER)) and near(zx + zw, min(cx + cw + SPAN, fx + fw - CORNER))
                 gate(span_ok, f"{ztag} span = capsule ± {SPAN}, clipped by {CORNER} pt corners", f"x {zx}..{zx + zw} vs capsule {cx}..{cx + cw}")
+    if edge == "top" and "toprule" in args and "zoneRule" in d:
+        gate(d["zoneRule"] == args["toprule"], f"{tag} zone rule", f"{d['zoneRule']} (exp {args['toprule']} on this machine)")
     if edge == "bottom":
         nd = (d.get("nativeDock") or s.get("nativeDock") or {}).get("rect")
         if nd:

@@ -400,12 +400,17 @@ Scripts/e2e/teardown.sh selftest-nozone > /dev/null 2>&1
 check "x-18 scenario: no trigger zone in GEOM gives a FAIL report (exit 1), never a probe" "[[ \$(cat $T/nozone.rc) == 1 ]] && grep -q 'FAIL trigger zone: GEOM has no zone on the bottom edge' $T/nozone.txt && grep -q 'VERDICT FAIL x-01 bottom' $T/nozone.txt"
 # hide delay: an armingHide that follows the reveal's animationEnd (the pointer left while revealing)
 # is not a lateness sample; a normal leave still is
-{ print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":1000000000,"category":"reveal","eventMessage":"reveal.transition edge=top from=revealing to=armingHide cause=animationEnd inh=-"}'
+{ print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":998000000,"category":"edge","eventMessage":"edge.zoneExit edge=top zone=z-0 x=960.00 y=1052.00"}'
+  print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":1000000000,"category":"reveal","eventMessage":"reveal.transition edge=top from=revealing to=armingHide cause=animationEnd inh=-"}'
   print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":1008600000,"category":"reveal","eventMessage":"reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-"}'
   print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":2000000000,"category":"reveal","eventMessage":"reveal.transition edge=top from=shown to=armingHide cause=leave inh=-"}'
   print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":2009600000,"category":"reveal","eventMessage":"reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-"}' } > $T/hide-reveal.ndjson
 $B/analyze timing $T/hide-reveal.ndjson show=300 hide=400 > $T/hide-reveal.txt 2>&1
-check "hide delay: a hide after leaving during the reveal is not timed; a normal leave is" "grep -q 'INFO hide delay: 1 hide' $T/hide-reveal.txt && grep -q 'PASS hide delay: n=1' $T/hide-reveal.txt"
+sed 's/"machTimestamp":998000000/"machTimestamp":990000000/' $T/hide-reveal.ndjson > $T/hide-reveal-late.ndjson
+python3 -c "
+import sys; t = open(sys.argv[1]).read().replace('1008600000', '1015000000'); open(sys.argv[1], 'w').write(t)" $T/hide-reveal-late.ndjson
+$B/analyze timing $T/hide-reveal-late.ndjson show=300 hide=400 > $T/hide-reveal-late.txt 2>&1
+check "hide delay: a hide after leaving during the reveal is timed from the zone exit (on time PASS, 200 ms late FAIL); a normal leave as before" "grep -q 'INFO hide delay: 1 hide' $T/hide-reveal.txt && grep -q 'PASS hide delay: n=1' $T/hide-reveal.txt && grep -q '^PASS hide delay after a leave during the reveal' $T/hide-reveal.txt && grep -q '^FAIL hide delay after a leave during the reveal' $T/hide-reveal-late.txt"
 check "scenario dry run" "Scripts/e2e/launch.sh selftest-dry --bin $B/fake-dock >/dev/null && Scripts/e2e/scenario.sh selftest-dry L x-01 n=2 dry=1 | grep -q 'edge left' ; Scripts/e2e/teardown.sh selftest-dry >/dev/null"
 
 echo
