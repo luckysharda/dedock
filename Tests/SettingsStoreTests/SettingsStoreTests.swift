@@ -499,3 +499,127 @@ final class TestClock: Clock, @unchecked Sendable {
         #expect(TileItem.newID() != TileItem.newID())
     }
 }
+
+/// Row 46: migrations through the real load path (`LayoutFile.load`), with test-only steps:
+/// production has no steps until v2 (no v0 file was ever written).
+@Suite struct MigrationLoadPathTests {
+    /// A v0 document: the edge lived at the top level. Plus a key no step knows about.
+    static let v0 = #"{"schemaVersion":0,"edge":"right","futureThing":42,"docks":[{"id":"dock-0","edge":"left","profileID":"default"}],"profiles":[{"id":"default","name":"Default","items":[]}]}"#
+
+    /// The synthetic 0 → 1 step: move the top-level edge into docks[0].edge.
+    static let step01: Migration.Step = { doc in
+        var d = doc
+        if let edge = d["edge"], case .array(var docks)? = d["docks"], case .object(var first)? = docks.first {
+            first["edge"] = edge
+            docks[0] = .object(first)
+            d["docks"] = .array(docks)
+        }
+        d["edge"] = nil
+        return d
+    }
+
+    func directory(with json: String) throws -> URL {
+        let dir = try tempDirectory()
+        try Data(json.utf8).write(to: dir.appendingPathComponent(LayoutFile.fileName))
+        return dir
+    }
+
+    @Test func v0LoadsAsV1AndUnknownKeysSurvive() async throws {
+        let dir = try directory(with: Self.v0)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let result = try await LayoutFile(directory: dir, steps: [0: Self.step01]).load()
+        #expect(result.source == .file)
+        #expect(result.document.schemaVersion == 1)
+        #expect(result.document.docks.first?.edge == .right)              // moved by the step
+        let object = try #require(try JSONDecoder().decode(JSONValue.self, from: LayoutFile.encode(result.document)).objectValue)
+        #expect(object["edge"] == nil)                                     // the old key is gone
+        #expect(object["futureThing"] == .number(42))                      // untouched keys survive
+    }
+
+    @Test func stepsRunInOrder() async throws {
+        let dir = try directory(with: Self.v0)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let order = OrderLog()
+        let step12: Migration.Step = { doc in order.append(2); var d = doc; d["stepTwo"] = .bool(true); return d }
+        let step01Logged: Migration.Step = { doc in order.append(1); return try Self.step01(doc) }
+        let result = try await LayoutFile(directory: dir, steps: [0: step01Logged, 1: step12], schema: 2).load()
+        #expect(order.values == [1, 2])
+        #expect(result.document.schemaVersion == 2)
+        #expect(result.document.docks.first?.edge == .right)
+    }
+
+    @Test func theFirstSaveWritesTheNewVersionAndBacksUpTheOld() async throws {
+        let dir = try directory(with: Self.v0)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = LayoutFile(directory: dir, steps: [0: Self.step01])
+        let original = try Data(contentsOf: dir.appendingPathComponent(LayoutFile.fileName))
+        let result = try await file.load()
+        // Loading never writes.
+        #expect(try Data(contentsOf: dir.appendingPathComponent(LayoutFile.fileName)) == original)
+        try await file.save(result.document)
+        let saved = try LayoutFile.decode(Data(contentsOf: dir.appendingPathComponent(LayoutFile.fileName)))
+        #expect(saved.schemaVersion == 1)
+        #expect(try Data(contentsOf: await file.backupURL(1)) == original)  // the pre-migration bytes
+    }
+
+    @Test func aFailingStepLeavesTheFileUntouched() async throws {
+        let dir = try directory(with: Self.v0)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        struct Broken: Error {}
+        let original = try Data(contentsOf: dir.appendingPathComponent(LayoutFile.fileName))
+        await #expect(throws: LayoutFileError.self) {
+            _ = try await LayoutFile(directory: dir, steps: [0: { _ in throw Broken() }]).load()
+        }
+        #expect(try Data(contentsOf: dir.appendingPathComponent(LayoutFile.fileName)) == original)
+        let others = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0 != LayoutFile.fileName }
+        #expect(others.isEmpty)                                            // not moved aside as corrupt
+    }
+
+    /// A file from a newer build: loaded as far as we understand it, never migrated down, not
+    /// written at load; the first save keeps its version and unknown keys and backs it up.
+    @Test func aNewerFileKeepsItsVersionAndKeys() async throws {
+        let v2 = #"{"schemaVersion":2,"newFeature":{"on":true},"docks":[{"id":"dock-0","edge":"left","profileID":"default"}],"profiles":[{"id":"default","name":"Default","items":[]}]}"#
+        let dir = try directory(with: v2)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let original = Data(v2.utf8)
+        let file = LayoutFile(directory: dir)
+        let result = try await file.load()
+        #expect(result.newerSchema == 2)
+        #expect(try Data(contentsOf: dir.appendingPathComponent(LayoutFile.fileName)) == original)   // no write at load
+        var doc = result.document
+        doc.docks[0].edge = .right                                         // a real user change
+        try await file.save(doc)
+        let object = try #require(try JSONDecoder().decode(JSONValue.self,
+                                                           from: Data(contentsOf: dir.appendingPathComponent(LayoutFile.fileName))).objectValue)
+        #expect(object["schemaVersion"] == .number(2))
+        #expect(object["newFeature"] == .object(["on": .bool(true)]))
+        #expect(try Data(contentsOf: await file.backupURL(1)) == original)
+    }
+
+    /// Row 46: the save is an atomic replace (a new file is renamed into place), never an
+    /// in-place write.
+    @Test func saveIsAnAtomicReplace() async throws {
+        let dir = try tempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = LayoutFile(directory: dir)
+        try await file.save(.makeDefault())
+        let url = dir.appendingPathComponent(LayoutFile.fileName)
+        let first = try FileManager.default.attributesOfItem(atPath: url.path)[.systemFileNumber] as? Int
+        try await file.save(.makeDefault(nativeDockEdge: .left))
+        let second = try FileManager.default.attributesOfItem(atPath: url.path)[.systemFileNumber] as? Int
+        #expect(first != nil && first != second)
+    }
+}
+
+final class OrderLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _values: [Int] = []
+    var values: [Int] {
+        lock.lock(); defer { lock.unlock() }
+        return _values
+    }
+    func append(_ v: Int) {
+        lock.lock(); defer { lock.unlock() }
+        _values.append(v)
+    }
+}

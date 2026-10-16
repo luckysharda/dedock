@@ -2,8 +2,10 @@ import Foundation
 
 /// Schema migrations, applied to the raw JSON tree before typed decoding (architecture §7).
 ///
-/// Step `n` turns a schema-`n` document into schema `n + 1`. v1 is the first schema, so there
-/// are no steps yet; the table is where they go.
+/// Step `n` turns a schema-`n` document into schema `n + 1`. v1 is the first schema: no v0 file
+/// was ever written, so production has no steps until v2, and a document without
+/// `schemaVersion` reads as v1. Tests inject synthetic steps through `LayoutFile` to run the real
+/// load path (evaluation row 46).
 public enum Migration {
     public typealias Step = @Sendable ([String: JSONValue]) throws -> [String: JSONValue]
 

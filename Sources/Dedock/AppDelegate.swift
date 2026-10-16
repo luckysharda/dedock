@@ -34,6 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let (model, result) = try await SettingsModel.load(file: file, clock: clock, nativeDockEdge: nativeEdge)
             settings = model
             DedockLog.event(.settings, "settings.loaded", ["source": "\(result.source)", "docks": model.document.docks.count])
+            if let newer = result.newerSchema {
+                // A newer build wrote this file: loaded as far as we understand it, not migrated
+                // down, not written until the user changes something (architecture §7).
+                DedockLog.event(.settings, "settings.newerSchema", ["version": newer])
+            }
             if let error = model.lastSaveError {
                 DedockLog.error(.settings, "saving the default layout failed: \(error)")
             }

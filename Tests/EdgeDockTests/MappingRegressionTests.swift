@@ -285,3 +285,56 @@ extension MappingRegressionTests {
         c.teardown()
     }
 }
+
+/// T25(5): the M1 criteria values, pinned (evaluation rows 23, 24, 26, 28, 34).
+@Suite(.serialized) @MainActor struct M1PinTests {
+    /// Row 23: the hide delay defaults to 400 ms.
+    @Test func hideDelayDefaultsTo400ms() {
+        #expect(RevealSettings().hideDelayMs == 400)
+        #expect(DedockDocument.makeDefault().docks[0].revealConfig(reduceMotion: false).hideDelay == .milliseconds(400))
+    }
+
+    /// Rows 24 and 26: the zone thickness is clamped to 1–20 pt and the edge inset to 0–48 pt.
+    @Test func zoneAndInsetClamps() {
+        var d = DedockDocument.makeDefault().docks[0]
+        d.reveal.triggerThicknessPt = 0
+        #expect(d.triggerParameters.thickness == 1)
+        d.reveal.triggerThicknessPt = 50
+        #expect(d.triggerParameters.thickness == 20)
+        d.placement.edgeGapPt = -5
+        #expect(d.tokens(lightAppearance: false, reduceTransparency: false).edgeGap == 0)
+        d.placement.edgeGapPt = 100
+        #expect(d.tokens(lightAppearance: false, reduceTransparency: false).edgeGap == 48)
+    }
+
+    /// Row 34: the popoverOpen and pinnedByUser holds keep the dock shown when the pointer leaves.
+    @Test(arguments: [HoldOpenToken.popoverOpen, .pinnedByUser])
+    func holdsKeepTheDockShown(token: HoldOpenToken) {
+        var m = RevealStateMachine()
+        _ = m.handle(.zoneEntered(.wall), progress: 0)
+        _ = m.handle(.timerFired(.dwell), progress: 0)
+        _ = m.handle(.animationFinished(generation: m.activeGeneration!), progress: 1)
+        _ = m.handle(.hold(token, true), progress: 1)
+        _ = m.handle(.zoneLeft, progress: 1)
+        let effects = m.handle(.pointerInside(false), progress: 1)
+        #expect(m.phase == .shown)
+        #expect(!effects.contains { if case .startTimer(.hide, _) = $0 { true } else { false } })
+        _ = m.handle(.hold(token, false), progress: 1)
+        #expect(m.phase == .armingHide)                  // released: the normal hide starts
+    }
+
+    /// Row 28: the panel stays at its fixed frame; only its content moves when revealing.
+    @Test(.enabled(if: NSScreen.main != nil)) func panelFrameIsFixedWhileRevealing() {
+        let config = DedockDocument.makeDefault().docks[0]
+        let (c, _, _) = AppRegressionTests().makeCoordinator(config)
+        let frame = c.panel.frame
+        #expect(frame == c.layout.panelFrame)
+        c.controller.send(.command(.reveal))
+        #expect(c.panel.frame == frame)
+        if let g = c.controller.machine.activeGeneration { c.controller.send(.animationFinished(generation: g)) }
+        #expect(c.panel.frame == frame)
+        c.controller.send(.command(.hide(explicit: true)))
+        #expect(c.panel.frame == frame)
+        c.teardown()
+    }
+}
