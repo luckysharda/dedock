@@ -246,6 +246,44 @@ check "score: an ENV check is shown as ENV, listed as unverifiable, and does not
 mkfix selftest-socc PASS 1.2; print '{"id":"cua C7 shown tile takes the hit T","ok":false,"skip":false,"void":true,"detail":"occluded"}' >> $SR/selftest-socc/checks.jsonl
 python3 Scripts/e2e/score.py $SR/selftest-socc $T/m1.json > $T/s-occ.txt; echo $? > $T/s-occ.rc
 check "score: a VOID check makes the card VOID (exit 3), shown as VOID, not FAIL" "[[ \$(cat $T/s-occ.rc) == 3 ]] && grep -q '1 void (occluded, rerun)' $T/s-occ.txt && grep -q '| cua C7 shown tile takes the hit T | VOID |' $T/s-occ.txt"
+# x-19 gap hold (REG-067): the plan finds the band on top / beside the native Dock and SKIPs a side
+# edge; the judge needs no hide during the hold and a hide hideDelay ± 16 ms after the later leave.
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+tile = lambda x, y: {"id": "t-a", "name": "A", "frame": {"topLeft": [x, y, 54, 62]}}
+g = lambda e, cap, zones, t: {"docks": [{"edge": e, "capsule": {"topLeft": cap}, "zones": [{"rect": {"topLeft": z}} for z in zones], "tiles": [t], "showDwellMs": 300}]}
+json.dump(g("top", [832, 38, 256, 78], [[792, 0, 336, 3]], tile(840, 46)), open(f"{T}/gap-top.json", "w"))
+json.dump(g("bottom", [832, 916, 256, 78], [[24, 1074, 400, 6], [1496, 1074, 400, 6]], tile(840, 924)), open(f"{T}/gap-bottom.json", "w"))
+json.dump(g("left", [8, 400, 78, 256], [[0, 380, 3, 296]], tile(16, 408)), open(f"{T}/gap-left.json", "w"))
+json.dump({"docks": [{"reveal": {"hysteresisPt": 16, "hideDelayMs": 400}}]}, open(f"{T}/gap-layout.json", "w"))
+def log(name, ev):
+    with open(f"{T}/{name}", "w") as f:
+        f.write("Filtering the log data\n")
+        for ms, m in ev:
+            s, frac = divmod(ms, 1000)
+            f.write(json.dumps({"processID": 7, "timestamp": f"2026-10-16 10:00:{10 + s:02d}.{frac:03d}000+0530", "eventMessage": m}) + "\n")
+ok1 = [(0, "reveal.transition edge=top from=hidden to=arming cause=zone inh=-"), (300, "reveal.transition edge=top from=arming to=revealing cause=dwell inh=-"),
+       (520, "reveal.transition edge=top from=revealing to=shown cause=animationEnd inh=-")]
+ok2 = [(3000, "reveal.transition edge=top from=shown to=armingHide cause=leave inh=-"), (3405, "reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-")]
+log("gap-ok.ndjson", ok1 + ok2)
+log("gap-bad.ndjson", ok1 + [(1200, "reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-")]
+    + [(3000, "reveal.transition edge=top from=shown to=armingHide cause=leave inh=-"), (3600, "reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-")])
+PY
+for e in top bottom left; do python3 Scripts/e2e/gap-hold.py plan $T/gap-$e.json $T/gap-layout.json > $T/gap-plan-$e.txt; done
+python3 Scripts/e2e/gap-hold.py judge $T/gap-ok.ndjson 7 0 4 99 400 T > $T/gap-ok.txt
+python3 Scripts/e2e/gap-hold.py judge $T/gap-bad.ndjson 7 0 5 99 400 T > $T/gap-bad.txt
+check "x-19 gap-hold plan: band on top and beside the native Dock, SKIP where the capsule meets the zone" "python3 -c \"import sys; t=open(sys.argv[1]).read().split(); b=open(sys.argv[2]).read().split(); sys.exit(not (t[0]=='top' and 3 < float(t[5]) < 22 and b[0]=='bottom' and float(b[5]) > 1010 and float(b[4]) < 816))\" $T/gap-plan-top.txt $T/gap-plan-bottom.txt && grep -q '^skip no gap' $T/gap-plan-left.txt"
+check "x-19 gap-hold judge: held shown + hide 405 ms after the leave PASS; a hide in the hold or 600 ms late FAIL" "[[ \$(grep -c \$'\t1\t' $T/gap-ok.txt) == 2 && \$(grep -c \$'\t0\t' $T/gap-bad.txt) == 2 ]] && grep -q 'hide began 405 ms' $T/gap-ok.txt"
+# T25 drag-out plan: drop past the capsule + hysteresis, the padding click outside every tile cell
+python3 -c "
+import json, sys
+json.dump({'docks': [{'edge': 'right', 'capsule': {'topLeft': [1834, 388, 78, 256]}, 'zones': [{'rect': {'topLeft': [1917, 368, 3, 296]}}], 'showDwellMs': 120,
+  'tiles': [{'id': 't-calculator', 'name': 'Calculator', 'frame': {'topLeft': [1842, 396, 62, 54]}}]}]}, open(sys.argv[1] + '/t25-geom.json', 'w'))
+json.dump({'docks': [{'reveal': {'hysteresisPt': 16, 'hideDelayMs': 400}}], 'profiles': [{'items': [{'id': 't-calculator'}, {'id': 't-notes'}]}]}, open(sys.argv[1] + '/t25-layout.json', 'w'))" $T
+python3 Scripts/e2e/t25.py plan $T/t25-geom.json $T/t25-layout.json 0 > $T/t25-plan.txt
+python3 Scripts/e2e/t25.py ids $T/t25-layout.json > $T/t25-ids.txt
+check "T25 plan: drop 136 pt inside the capsule's inner side, padding click in the capsule outside the tile, the confirm's title" "python3 -c \"import sys; p=open(sys.argv[1]).read().split(); sys.exit(not (p[0]=='right' and float(p[4])==1698.0 and 1834 < float(p[6]) < 1842 and p[10]=='t-calculator' and ' '.join(p[11:])=='Remove “Calculator” from the Edge Dock?'))\" $T/t25-plan.txt && [[ \$(cat $T/t25-ids.txt) == 't-calculator t-notes' ]]"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id

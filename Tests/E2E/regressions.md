@@ -2,7 +2,7 @@
 
 **This file is the only allocator of REG ids and the canonical detection detail for each one** (agreed 2026-10-15; `docs/evaluation.md` §5 mirrors the ids with a one-line check). Every bug gets a REG id here **before** it is fixed: say what broke, how it is detected, and which suite catches it. The implementer's unit guards are named after the same ids (`@Test("REG-0xx: …")`).
 
-Ask the E2E lane for the next free id. **Next free: REG-065.**
+Ask the E2E lane for the next free id. **Next free: REG-068.**
 
 ## How the suite runs
 
@@ -83,6 +83,9 @@ Ask the E2E lane for the next free id. **Next free: REG-065.**
 | REG-062 | `Scenario.apply` stored edge-derived reveal values (`showDwellMs` 300 for Reveal at Top; `triggerThicknessPt` 6 on the native Dock's edge) in `layout.json`, so a later edge change (status menu, EdgePicker, debug `setEdge`) kept them: Top → Left kept a 300 ms dwell instead of 120 ms (#27 review) | unit guard (Top card → edge left: 120 ms dwell, 3 pt thickness); E2E planned: seed the Top scenario, `setEdge=left` over the debug channel, effective dwell / zone thickness from GEOM or the log | unit (E2E planned) | app |
 | REG-063 | Six numeric entry fields in Settings (each paired with a slider: Show delay, Hide delay, Full-screen show delay, Trigger thickness, Corner exclusion, Distance from edge) had a value but no accessible name, so VoiceOver read only the number (7690688, both edges) | cua C8 "settings controls labelled" (every control has a description or title; a value alone is not a name; system scroller parts excluded) | regress.sh (cua checks, `settings=1`) | app |
 | REG-064 | Closing Settings left the dock shown: `openSettings` revealed it explicitly, and that reveal's first-visit latch (S-13) outlived the `editing` hold, so with the pointer away nothing hid it (7690688, both edges). Planner: Settings holds the dock only while open; on close, normal behaviour | cua C8 "closing Settings releases the hold" (pointer well away; `inhibitor token=editing on=false` → `reveal.transition to=hidden`) | regress.sh (cua checks, `settings=1`) + unit | app |
+| REG-065 | With the native Dock visible at the bottom, the bottom dock had no reachable trigger zone: no strip to reveal from beside the native Dock (`95411f2`: zone strips beside it, never over its own trigger) | geom-check "zone reachable beside the native Dock"; x-18 B scenarios probe the widest strip; row "B native Dock span never triggers" | regress.sh (`edges=…,B`) + geom-check | app |
+| REG-066 | The top dock's zone was empty: a wide status-level overlay of another app was taken for a status item and excluded the whole span (`95411f2`: only real status items are excluded, with nearest-free and ⌥ fallbacks; `zones.computed` logged) | geom-check top zone rule (`toprule=`); x-18 T scenarios; row "T status item area never triggers" | regress.sh (`edges=…,T`) + geom-check | app |
+| REG-067 | Where the shown capsule does not touch its zone (top: the menu-bar band; bottom beside the native Dock: the diagonal from a side strip over the Dock), a pause of more than the hide delay on the way from the zone to the dock hid it. Fix: the reveal corridor counts the path from the zone entry to the capsule as inside until the first capsule visit | x-19 rows "gap hold keeps the dock shown" (1 s in the band: no hide) and "corridor ends after the first capsule visit" (leaving through the band later: hide at hideDelay ± 16 ms after the leave), `Scripts/e2e/gap-hold.py`; SKIP on edges with no band | regress.sh (`reg067=1`) + unit | app |
 
 ## Adding an entry
 

@@ -1,11 +1,17 @@
 #!/bin/zsh
 # M1 Edge Dock end-to-end regression suite (Tests/E2E/regressions.md, docs/evaluation.md §5).
 #
-#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [settings=1] [dry=1]
+#   Scripts/e2e/regress.sh run <app-worktree> [id=<run-id>] [edges=L,R] [idle=1|0] [x06seeds=2,3,4] [padding=8] [gap=8] [psharing=allow] [reg061=1] [settings=1] [reg067=1] [t25=1] [dry=1]
 #       reg061=1: gate REG-061 (the tile's AX element is the whole cell): C3 AX frame = GEOM cell ±1 pt,
 #       C7 cell edge = AXButton with the tile's label. Off until a build carries the fix.
 #       settings=1: run C8 (open Settings over the debug channel, labels, the editing hold, close via its
 #       own AX close button). Needs a build with the Settings window; without it C8 is SKIP.
+#       reg067=1: x-19 "gap hold" per edge (REG-067, the reveal corridor): 1 s in the band between
+#       the zone and the capsule keeps the dock shown; after the first capsule visit, leaving through
+#       the band hides it on time. SKIP on edges where the capsule meets its zone (left, right).
+#       t25=1: T25 drag-out to remove, in its own launch on the right edge: the non-activating
+#       confirm, Keep (AX press), a click elsewhere (Dedock's own capsule padding), Remove (layout
+#       persisted), a second drag-out ignored, the 8 s timeout. Needs a build with T25.
 #       shots=1: after the suite, one screenshot per edge of the PINNED dock over a harness-owned
 #       neutral grey backdrop (capsule + 40 pt), kept locally in build/e2e/runs/<id>/shots/
 #       (never committed; no user window is ever in the frame).
@@ -60,8 +66,8 @@ esac
 
 # ---------------------------------------------------------------- run
 app=${1:?usage: regress.sh run <app-worktree> [id=] [edges=L,R] [idle=1] [dry=1]}; shift
-id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary
-for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
+id=reg-$(date -u +%Y%m%dT%H%M%SZ) edges=L,R idle=1 dry=0 x06seeds= padding=8 gap=8 shots=0 psharing= reg061=0 settings=0 toprule=primary reg067=0 t25=0
+for kv in "$@"; do case $kv in id=*) id=${kv#id=} ;; reg067=*) reg067=${kv#reg067=} ;; t25=*) t25=${kv#t25=} ;; edges=*) edges=${kv#edges=} ;; idle=*) idle=${kv#idle=} ;; dry=*) dry=${kv#dry=} ;; x06seeds=*) x06seeds=${kv#x06seeds=} ;; padding=*) padding=${kv#padding=} ;; gap=*) gap=${kv#gap=} ;; shots=*) shots=${kv#shots=} ;; psharing=*) psharing=${kv#psharing=} ;; reg061=*) reg061=${kv#reg061=} ;; settings=*) settings=${kv#settings=} ;; toprule=*) toprule=${kv#toprule=} ;; esac; done
 extra_seeds=(${(s:,:)x06seeds})
 bundle=$app/build/Dedock.app
 bid=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" $bundle/Contents/Info.plist 2>/dev/null)
@@ -79,10 +85,10 @@ edge_list=(${(s:,:)edges})
 # Calibrated on the first full run (2026-10-15: 489 s for edges L,R + idle): launches, settle
 # waits and VOID re-runs make each edge ~200 s; each extra x-06 seed ~15 s.
 # Calibrated on the 82d2d69 candidate (edges L,R + 3 extra x-06 seeds + shots + idle: 293 s measured).
-est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0)) + (idle ? 70 : 0) ))
+est=$(( 15 + ${#edge_list} * (85 + ${#extra_seeds} * 8 + 10 + (shots ? 8 : 0) + (reg067 ? 8 : 0)) + (idle ? 70 : 0) + (t25 ? 45 : 0) ))
 echo "regress $id: app $(git -C $app rev-parse --short HEAD) edges=$edges idle=$idle — moves the cursor for about $est s"
 if (( dry )); then
-  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}; idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
+  echo "plan: x-00 + REG-026 (empty data dir); per edge: launch, geom-check (padding=$padding gap=$gap), cua checks C1–C8, contract, x-01 n=4, x-02 n=4, x-03 n=3, x-04 n=3, x-05a n=3; hideDelay 0 run: x-05b n=3, x-06 seed 1${x06seeds:+ + seeds $x06seeds}$( (( reg067 )) && print -n '; x-19 gap hold (REG-067) per edge')$( (( t25 )) && print -n '; T25 drag-out (own launch, right edge)'); idle 60 s$( (( shots )) && print -n '; E1 shots per edge (pinned, neutral backdrop)'); post checks"
   exit 0
 fi
 
@@ -135,10 +141,14 @@ run_start=$(date '+%Y-%m-%d %H:%M:%S')   # local time, for the REG-055 system-lo
     [[ $t == T ]] && print -l "T status item area never triggers" "T menu draws above the top dock"
     [[ $t == L ]] && print -l "cua C8 Settings window opens $t" "cua C8 settings controls labelled $t" "cua C8 dock held shown while Settings is open $t" \
                               "cua C8 closing Settings releases the hold $t" "cua C9 style switch in Settings reaches GEOM $t"
+    (( reg067 )) && print -l "x-19 REG-067 gap hold keeps the dock shown $t" "x-19 REG-067 corridor ends after the first capsule visit $t"
     for scn in x-01 x-02 x-03 x-04 x-05a x-05b x-06; do print -r -- "$t.$scn-$t"; done
     for sd in $extra_seeds; do print -r -- "$t.x-06-$t-s$sd"; done
     (( shots )) && print -l "shot $t" "REG-006 S$t"
   done
+  (( t25 )) && print -l "T25 drag-out asks without taking focus R" "T25 Keep keeps the tile R" "T25 a click elsewhere keeps the tile R" \
+                        "T25 Remove removes the tile and persists it R" "T25 a second drag-out while asking is ignored R" \
+                        "T25 no answer in 8 s keeps the tile R" "REG-006 D"
   (( idle )) && print -l "I.idle-L" "REG-006 I"
   print -l "REG-016 cursor restored" "REG-017 no modifier held" "REG-015 no Dedock left running" "REG-055 no pointer hand-off"
 } > $root/expected.txt
@@ -380,6 +390,7 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   fi
   [[ $side == L ]] && reg062 $R $pid
   [[ $side == B || $side == T ]] && edge_rows $R $pid $side
+  (( reg067 )) && gap_hold $R $pid $side
   cmp -s $C/geom-pair.json $G || print "relayout during step (GEOM changed after the snapshot; C1/C3 use the paired GEOM)" >> $C/pair.txt
   DEDOCK_REG061=$reg061 python3 $E/cua-eval.py $C $R/data/e2e/geometry.json $pid $side > $C/results.txt 2> $C/cua-eval.err; tool "cua-eval $side" $? 0
   while IFS=$'\t' read -r cid ok detail; do check "$cid" $ok "$detail"; done < $C/results.txt
@@ -494,6 +505,137 @@ m = [w['layer'] for w in ws if w.get('onscreen') and w['layer'] not in (0, 24) a
 print(max(m) if m else -1)" $R/menu-windows.jsonl 2>/dev/null || echo -1)
     check "$cid" $(( mrc == 0 && lv > 24 )) "status menu opened: $( (( mrc == 0 )) && echo yes || echo no); its window layer: $lv (dock 24)"
   fi
+}
+
+gap_hold() {  # gap_hold <run dir> <pid> <side>: x-19 "gap hold" (REG-067, reg067=1)
+  # Zone dwell → reveal; 1 s in the band between the zone and the capsule ± hysteresis (the top
+  # edge's menu-bar band; the diagonal over the native Dock beside it) → still shown (the reveal
+  # corridor); into the capsule; back to the band and hold → the hide starts hideDelay ± 16 ms after
+  # the leave (the corridor is gone after the first visit). Edges where the capsule meets its zone
+  # have no band: SKIP. Real input during the probe makes both rows VOID.
+  local R=$1 pid=$2 side=$3 L=$1/log.ndjson n0 n1 n2 lp cid ok detail
+  local p=($(python3 $E/gap-hold.py plan $R/data/e2e/geometry.json $R/data/layout.json 2>&1))
+  local ids=("x-19 REG-067 gap hold keeps the dock shown $side" "x-19 REG-067 corridor ends after the first capsule visit $side")
+  if [[ ${p[1]} == skip ]]; then
+    for cid in $ids; do check "$cid" skip "${p[2,-1]}"; done; return
+  elif (( ${#p} != 10 )); then
+    tool "gap-hold plan $side" 2 0; for cid in $ids; do check "$cid" 0 "no plan: ${p[*]}"; done; return
+  fi
+  local e=${p[1]} al=${p[2]} t=(${p[3]} ${p[4]}) g=(${p[5]} ${p[6]}) aw=(${p[7]} ${p[8]}) hide=${p[9]} dwell=${p[10]}
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
+  $B/pointer -q move ${aw[1]} ${aw[2]}; sleep 0.8   # start hidden, away from the dock
+  $B/listen 8 > $R/gap-listen.txt & lp=$!; sleep 0.3
+  n0=$(wc -l < $L)
+  print -l "edge $e $al" "wait $(( dwell + 500 ))" "glide ${g[1]} ${g[2]} 600" "wait 1000" > $R/gap-1.txt
+  $B/pointer -q script $R/gap-1.txt; sleep 0.3
+  n1=$(wc -l < $L)
+  print -l "glide ${t[1]} ${t[2]} 200" "wait 400" "glide ${g[1]} ${g[2]} 150" "wait $(( hide + 500 ))" "move ${aw[1]} ${aw[2]}" "wait 600" > $R/gap-2.txt
+  $B/pointer -q script $R/gap-2.txt; sleep 0.5
+  n2=$(wc -l < $L)
+  wait $lp 2>/dev/null
+  $B/analyze contamination $R/gap-listen.txt > $R/gap-contam.txt 2>&1; tool "analyze contamination gap $side" $? 0 1
+  python3 $E/gap-hold.py judge $L $pid $n0 $n1 $n2 $hide $side > $R/gap-results.txt 2> $R/gap-judge.err; tool "gap-hold judge $side" $? 0
+  local foreign=$(grep -c '^FAIL input contamination' $R/gap-contam.txt)
+  while IFS=$'\t' read -r cid ok detail; do
+    if (( foreign )); then check "$cid" void "real input during the probe (rerun): $detail"; else check "$cid" $ok "$detail"; fi
+  done < $R/gap-results.txt
+}
+
+t25_rows() {  # t25_rows <run dir> <pid>: T25 drag-out to remove (row 43), t25=1, own launch on the right edge
+  # ⌘-drag a tile out past the capsule + hysteresis → the non-activating confirm (non-key, frontmost
+  # unchanged, popoverOpen hold); Keep (AX press) and a click elsewhere (on Dedock's own capsule
+  # padding) keep it; Remove removes it and persists the layout; a second drag-out while the question
+  # is open is ignored; no answer in 8 s keeps it. Only this launch's isolated data dir is touched;
+  # every press is on Dedock's own windows. Real input during the probe makes every row VOID.
+  local R=$1 pid=$2 L=$1/log.ndjson G=$1/data/e2e/geometry.json Y=$1/data/layout.json lp n f0 f1 fc w k
+  local -A row
+  local pl ids0 ids1
+  t25_plan() { pl=($(python3 $E/t25.py plan $G $Y $1)); (( ${#pl} >= 12 )) }
+  t25_title() { print -r -- "${pl[12,-1]}" }
+  t25_reveal_drag() {  # reveal at the zone, onto tile pl, ⌘-drag it out; leaves the question open
+    print -l "edge ${pl[1]} ${pl[2]}" "wait $(( ${pl[10]} + 500 ))" "glide ${pl[3]} ${pl[4]} 80" "wait 200" > $R/t25-reveal.txt
+    $B/pointer -q script $R/t25-reveal.txt
+    $B/pointer -q drag ${pl[3]} ${pl[4]} ${pl[5]} ${pl[6]} 300 100 cmd
+    sleep 0.6
+  }
+  t25_asked() { $B/axprobe tree $pid 1 | python3 -c "import json,sys; t=sys.argv[1]; sys.exit(not any(json.loads(l).get('role') == 'AXWindow' and json.loads(l).get('label') == t for l in sys.stdin if l.strip()))" "$(t25_title)" }
+  t25_result() { log_count $L $pid "^tile[.]removeConfirm .*id=$1 .*result=$2|^tile[.]removeConfirm .*result=$2 .*id=$1" $3 }
+  $E/desktop-lock.sh touch $me >/dev/null
+  moved=1
+  $B/listen 60 > $R/t25-listen.txt & lp=$!; sleep 0.3
+  t25_plan 0 || { tool "t25 plan" 2 0; row[ask]="0	no plan: ${pl[*]}" }
+  if (( ${#pl} >= 12 )); then
+    ids0=$(python3 $E/t25.py ids $Y)
+    f0=$($B/axprobe front | python3 -c "import json,sys; print(json.load(sys.stdin)['pid'])")
+    # 1. ask, non-key, frontmost unchanged, the dock held shown; 2. Keep (AX press)
+    n=$(wc -l < $L); t25_reveal_drag
+    t25_asked; w=$(( $? == 0 ))
+    f1=$($B/axprobe front | python3 -c "import json,sys; print(json.load(sys.stdin)['pid'])")
+    k=$($B/axprobe focus $pid | python3 -c "import json,sys; print(int(json.load(sys.stdin)['app_focus']))")
+    local held=$(log_count $L $pid '^inhibitor .*token=popoverOpen on=true' $n)
+    row[ask]="$(( w && f1 == f0 && f1 != pid && k == 0 && held > 0 ))	question window '$(t25_title)': $( (( w )) && echo up || echo missing); frontmost unchanged: $( (( f1 == f0 )) && echo yes || echo no) (not Dedock: $( (( f1 != pid )) && echo yes || echo no)); key window in Dedock: $( (( k )) && echo yes || echo no); popoverOpen hold: $held"
+    n=$(wc -l < $L)
+    $B/axpress press $pid "$(t25_title)" Keep > $R/t25-keep.txt 2>&1; tool "axpress Keep" $? 0
+    sleep 0.6; ids1=$(python3 $E/t25.py ids $Y)
+    local r=$(t25_result ${pl[11]} keep $n); t25_asked; local gone=$(( $? != 0 ))
+    row[keep]="$(( r == 1 && gone ))	Keep pressed: result=keep logged $r time(s); question closed: $( (( gone )) && echo yes || echo no); layout items unchanged: $([[ $ids1 == $ids0 ]] && echo yes || echo no)"
+    [[ $ids1 == $ids0 ]] || row[keep]="0	${row[keep]#*	}"
+    $B/pointer -q move ${pl[5]} $(( ${pl[6]%.*} + 300 )); sleep 0.8   # away: the dock hides
+    # 3. a click elsewhere (Dedock's own capsule padding, no tile) keeps it
+    n=$(wc -l < $L); t25_reveal_drag
+    # Click only once the hit at the padding point is Dedock's (its mouse gate open): a click that
+    # could pass through to the window underneath is never sent.
+    $B/pointer -q move ${pl[7]} ${pl[8]}
+    local mine=0
+    for k in {1..10}; do sleep 0.1
+      $B/axprobe at ${pl[7]} ${pl[8]} only=$pid | python3 -c "import json,sys; sys.exit(json.load(sys.stdin).get('pid') != int(sys.argv[1]))" $pid && { mine=1; break }
+    done
+    (( mine )) && $B/pointer -q click ${pl[7]} ${pl[8]}; sleep 0.6
+    ids1=$(python3 $E/t25.py ids $Y); r=$(t25_result ${pl[11]} keep $n); t25_asked; gone=$(( $? != 0 ))
+    (( mine )) || r=0
+    row[click]="$(( r == 1 && gone ))	click on the capsule's own padding$( (( mine )) || print -n ' NOT SENT (the hit there was not Dedock within 1 s)'): result=keep logged $r time(s); question closed: $( (( gone )) && echo yes || echo no); layout items unchanged: $([[ $ids1 == $ids0 ]] && echo yes || echo no)"
+    [[ $ids1 == $ids0 ]] || row[click]="0	${row[click]#*	}"
+    $B/pointer -q move ${pl[5]} $(( ${pl[6]%.*} + 300 )); sleep 0.8
+    # 4. Remove: gone from the layout file (persisted at once) and from GEOM
+    n=$(wc -l < $L); t25_reveal_drag
+    $B/axpress press $pid "$(t25_title)" Remove > $R/t25-remove.txt 2>&1; tool "axpress Remove" $? 0
+    sleep 1.2
+    ids1=$(python3 $E/t25.py ids $Y); r=$(t25_result ${pl[11]} remove $n)
+    local gids=$(python3 $E/t25.py geomids $G)
+    local inl=0 ing=0; [[ " $ids1 " == *" ${pl[11]} "* ]] && inl=1; [[ " $gids " == *" ${pl[11]} "* ]] && ing=1
+    row[remove]="$(( r == 1 && !inl && !ing ))	Remove pressed: result=remove logged $r time(s); '${pl[11]}' in the saved layout: $( (( inl )) && echo yes || echo no); in GEOM: $( (( ing )) && echo yes || echo no) (items $(print -r -- $ids0 | wc -w | tr -d ' ') → $(print -r -- $ids1 | wc -w | tr -d ' '))"
+    $B/pointer -q move ${pl[5]} $(( ${pl[6]%.*} + 300 )); sleep 0.8
+    # 5. while one question is open, a second drag-out is ignored; 6. no answer in 8 s keeps it
+    ids0=$ids1
+    if t25_plan 0; then
+      local first_id=${pl[11]} first_title="$(t25_title)"
+      n=$(wc -l < $L); t25_reveal_drag
+      local wins0=$($B/axprobe tree $pid 1 | grep -c '"label":"Remove ')
+      if t25_plan 1; then
+        $B/pointer -q drag ${pl[3]} ${pl[4]} ${pl[5]} ${pl[6]} 300 100 cmd; sleep 0.6   # the dock is held shown
+      fi
+      local wins1=$($B/axprobe tree $pid 1 | grep -c '"label":"Remove ')
+      local second_id=${pl[11]}
+      sleep 8.6
+      ids1=$(python3 $E/t25.py ids $Y)
+      local rt=$(t25_result $first_id timeout $n) r2=$(log_count $L $pid "^tile[.]removeConfirm .*id=$second_id" $n)
+      $B/axprobe tree $pid 1 | grep -q "\"label\":\"$first_title\""; gone=$(( $? != 0 ))
+      row[second]="$(( wins0 == 1 && wins1 == 1 && r2 == 0 ))	question windows before / after a second drag-out ('$second_id'): $wins0 / $wins1; questions about it: $r2"
+      row[timeout]="$(( rt == 1 && gone ))	no answer: result=timeout logged $rt time(s) after 8.6 s; question closed: $( (( gone )) && echo yes || echo no); layout items unchanged: $([[ $ids1 == $ids0 ]] && echo yes || echo no)"
+      [[ $ids1 == $ids0 ]] || row[timeout]="0	${row[timeout]#*	}"
+    fi
+    $B/pointer -q move ${pl[5]} $(( ${pl[6]%.*} + 300 )); sleep 0.6
+  fi
+  kill $lp 2>/dev/null; wait $lp 2>/dev/null
+  $B/analyze contamination $R/t25-listen.txt > $R/t25-contam.txt 2>&1; tool "analyze contamination t25" $? 0 1
+  local foreign=$(grep -c '^FAIL input contamination' $R/t25-contam.txt) key cid v
+  for key cid in ask "T25 drag-out asks without taking focus R" keep "T25 Keep keeps the tile R" click "T25 a click elsewhere keeps the tile R" \
+                 remove "T25 Remove removes the tile and persists it R" second "T25 a second drag-out while asking is ignored R" \
+                 timeout "T25 no answer in 8 s keeps the tile R"; do
+    v=${row[$key]:-"0	not reached"}
+    if (( foreign )); then check "$cid" void "real input during the probe (rerun): ${v#*	}"; else check "$cid" ${v%%	*} "${v#*	}"; fi
+  done
 }
 
 run_scn() {  # run_scn <sub-run> <L|R> <scenario> [args]; re-runs once if contaminated (VOID)
@@ -677,6 +819,19 @@ for tag in $edge_list; do
     check "launch ${tag}0" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-${tag}0.txt)"
   fi
 done
+
+if (( t25 )); then
+  echo "t25"
+  sub=$id-D
+  if launch $sub --app $app --set 'docks[0].edge="right"' --timeout 8 > $root/launch-D.txt 2>&1 && launched $root/launch-D.txt; then
+    print -r -- "D $sub" >> $root/index.txt
+    sleep 1
+    t25_rows $B/runs/$sub $(sed -n 's/^APP_PID=//p' $B/runs/$sub/run.env)
+    teardown_check $sub; check "REG-006 D" $(( $? == 0 )) "native Dock prefs unchanged"
+  else
+    check "launch D" 0 "no launch.edgeReady (build/e2e/runs/$id/launch-D.txt)"
+  fi
+fi
 
 if (( idle )); then
   echo "idle"
