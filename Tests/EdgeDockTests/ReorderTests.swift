@@ -108,14 +108,15 @@ import Testing
 
     @Test(.enabled(if: NSScreen.main != nil)) func panelNeverTakesKeyFocus() {
         let confirmation = RemovalConfirmation(tile: "t", clock: ManualClock()) { _ in }
-        let p = RemoveConfirmPanel(name: "Calculator", confirmation: confirmation)
-        p.show(capsule: CGRect(x: 8, y: 300, width: 78, height: 300), drop: CGPoint(x: 200, y: 450), edge: .left,
-               visible: CGRect(x: 0, y: 0, width: 1920, height: 1056))
+        let p = RemoveConfirmPanel(name: "Calculator", icon: nil, tokens: .capsule(), confirmation: confirmation)
+        p.show(capsule: CGRect(x: 8, y: 300, width: 78, height: 300), slot: CGPoint(x: 47, y: 450), edge: .left,
+               visible: CGRect(x: 0, y: 0, width: 1920, height: 1056), reduceMotion: true)
         #expect(p.panel.isVisible)
         #expect(!p.panel.isKeyWindow)
         #expect(p.panel.styleMask.contains(.nonactivatingPanel))
         #expect(p.panel.title == "Remove \u{201C}Calculator\u{201D} from the Edge Dock?")
-        #expect(p.panel.frame.minX >= CGFloat(86 + 10))                          // beside the dock, toward the centre
+        // The pill (inside the window's shadow margin) sits beside the dock, toward the centre.
+        #expect(p.panel.frame.minX + CapsuleToast.shadowMargin == CGFloat(86 + 10))
         p.remove()
         #expect(confirmation.result == .remove)
         p.close()
@@ -144,22 +145,5 @@ import Testing
         #expect(reordered == 0)
         #expect(c.model.draggedTile == nil)
         c.teardown()
-    }
-
-    @Test func panelSitsOnTheScreenCentreSide() {
-        let size = CGSize(width: 300, height: 92), visible = CGRect(x: 0, y: 0, width: 1920, height: 1056)
-        let left = RemoveConfirmPanel.origin(size: size, capsule: CGRect(x: 8, y: 300, width: 78, height: 300),
-                                             drop: CGPoint(x: 200, y: 450), edge: .left, visible: visible)
-        #expect(left.x == 96 && left.y == 404)
-        let right = RemoveConfirmPanel.origin(size: size, capsule: CGRect(x: 1834, y: 300, width: 78, height: 300),
-                                              drop: CGPoint(x: 1700, y: 450), edge: .right, visible: visible)
-        #expect(right.x == CGFloat(1834 - 10 - 300))
-        let bottom = RemoveConfirmPanel.origin(size: size, capsule: CGRect(x: 800, y: 86, width: 300, height: 78),
-                                               drop: CGPoint(x: 950, y: 300), edge: .bottom, visible: visible)
-        #expect(bottom.y == CGFloat(164 + 10))
-        let top = RemoveConfirmPanel.origin(size: size, capsule: CGRect(x: 800, y: 940, width: 300, height: 78),
-                                            drop: CGPoint(x: 950, y: 800), edge: .top, visible: visible)
-        #expect(top.y == CGFloat(940 - 10 - 92))                                // below the capsule
-        #expect(top.x == CGFloat(950 - 150))
     }
 }

@@ -81,11 +81,13 @@ import SwiftUI
     }
 
     /// The current Window appearance and material, after Reduce Transparency.
-    var look: WindowLook {
-        let app = settings.document.app
-        return WindowLook(appearance: WindowLook.Appearance(rawValue: app.windowAppearance.rawValue) ?? .system,
-                          material: WindowLook.Material(rawValue: app.windowMaterial.rawValue) ?? .frosted,
-                          reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency)
+    var look: WindowLook { Self.look(for: settings.document.app) }
+
+    /// The window look for these preferences: Settings and the launch notice share it.
+    public static func look(for app: AppPreferences) -> WindowLook {
+        WindowLook(appearance: WindowLook.Appearance(rawValue: app.windowAppearance.rawValue) ?? .system,
+                   material: WindowLook.Material(rawValue: app.windowMaterial.rawValue) ?? .frosted,
+                   reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency)
     }
 
     /// Applies the look at once (a change in Settings plays on the open window).

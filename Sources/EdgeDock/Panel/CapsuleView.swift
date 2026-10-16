@@ -46,8 +46,10 @@ import QuartzCore
     // The capsule never takes clicks; the root view routes them.
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    /// - Parameter crossFade: a tint change found at reveal fades over 0.3 s (LG4).
-    func apply(frame: CGRect, tokens t: DockTokens, crossFade: Bool = false) {
+    /// - Parameters:
+    ///   - crossFade: a tint change found at reveal fades over 0.3 s (LG4).
+    ///   - radius: overrides the capsule radius (the P2 toast pill is 26 pt).
+    func apply(frame: CGRect, tokens t: DockTokens, crossFade: Bool = false, radius r: CGFloat? = nil) {
         if crossFade {
             let fade = CATransition()
             fade.type = .fade
@@ -58,7 +60,7 @@ import QuartzCore
         CATransaction.setDisableActions(true)
         self.frame = frame
         blur.frame = bounds
-        radius = t.capsuleRadius
+        radius = r ?? t.capsuleRadius
 
         // Light Glass (and Liquid Glass's light tint) blurs in the light appearance.
         let light = t.style == .lightGlass || (t.blurMaterial == .popover)

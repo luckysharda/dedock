@@ -81,8 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(settings: settings, docks: manager) { [weak settingsWindow] in settingsWindow?.show() }
     }
 
-    /// Notices on screen; each is released when its OK is clicked.
-    private var noticePanels: [LaunchNoticePanel] = []
+    /// The notice on screen (one at a time, P2), and the ones waiting behind it.
+    private var noticePanel: LaunchNoticePanel?
+    private var queuedNotices: [LaunchNotices.Notice] = []
 
     /// Tells the user once about a layout problem found at launch (architecture §7). Runs after
     /// the docks are live (`LaunchNotices`), in a non-modal panel so the dock keeps working
@@ -92,11 +93,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .recovered: DedockLog.event(.settings, "settings.notice", ["kind": "recovered"])
         case .readOnly: DedockLog.event(.settings, "settings.notice", ["kind": "readOnly"])
         }
-        let panel = LaunchNoticePanel(notice) { [weak self] closed in
-            self?.noticePanels.removeAll { $0 === closed }
+        queuedNotices.append(notice)
+        showNextNotice()
+    }
+
+    /// One notice at a time: the next appears once the current one is closed.
+    private func showNextNotice() {
+        guard noticePanel == nil, !queuedNotices.isEmpty, let settings else { return }
+        let notice = queuedNotices.removeFirst()
+        let panel = LaunchNoticePanel(notice, look: SettingsWindowController.look(for: settings.document.app)) { [weak self] _ in
+            self?.noticePanel = nil
+            self?.showNextNotice()
         }
-        noticePanels.append(panel)
-        panel.show()
+        noticePanel = panel
+        panel.show(statusItem: statusItem?.screenFrame, visible: NSScreen.screens.first?.visibleFrame,
+                   reduceMotion: manager?.reducesMotion ?? false)
     }
 
     /// Launching dedock again while it runs opens Settings (plan T18 item 3).

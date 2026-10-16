@@ -298,9 +298,9 @@ extension AppRegressionTests {
         #expect(NSApplication.shared.modalWindow == nil)
         #expect(!notice.panel.isKeyWindow)              // keystrokes stay with the user's app
         #expect(notice.panel.styleMask.contains(.nonactivatingPanel))
-        #expect(notice.panel.title == "Your Edge Dock layout was damaged")
+        #expect(notice.panel.title == "Your Edge Dock layout was damaged. Dedock started fresh.")
         notice.dismiss()
-        #expect(!notice.panel.isVisible)
+        #expect(notice.toast.isClosing)                 // reported at once, then a 0.30 s fade
         #expect(closed.count == 1 && closed.first === notice)
     }
 
