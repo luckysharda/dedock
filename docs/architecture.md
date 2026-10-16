@@ -743,7 +743,7 @@ public enum LayoutEngine {
 }
 ```
 
-**Display binding (v0).** The model lets a dock bind to `main` (default) or to a specific `DisplayIdentity` with "fall back to the built-in display while disconnected"; v0 exposes only `main` with the built-in fallback (DD-941 partial), the picker comes in M8. On every new layout the manager re-resolves each binding, moves or suspends the instance, and never creates a duplicate (CoolDock FACT F4/F5, `<pack>/dedock-plan/system-design.md` §8). Follow-pointer, all-displays and ordered lists come with DD-941–DD-944.
+**Display binding (v0).** The model lets a dock bind to `main` (default) or to a specific `DisplayIdentity` with "fall back to the built-in display while disconnected" (the main display when there is no built-in one); v0 exposes only `main` with that fallback (DD-941 partial), the picker comes in M8. On every new layout the manager re-resolves each binding, moves or suspends the instance, and never creates a duplicate (CoolDock FACT F4/F5, `<pack>/dedock-plan/system-design.md` §8). Follow-pointer, all-displays and ordered lists come with DD-941–DD-944.
 
 ---
 
@@ -849,7 +849,7 @@ While this menu tracks, `PointerHub` switches to its timer fallback (§6.3).
 | Section | Controls |
 |---|---|
 | Scenario cards (DD-910) | Reveal on Left, Reveal on Right, Reveal at Bottom (beside the native Dock when it is visible there), Reveal at Top (optional, marked as such), Pinned. One card is badged Recommended from the native Dock's edge. A card sets edge, mode, delays and trigger values in one step; any later change marks the dock Custom. |
-| Display | v0: main display, falling back to the built-in display (DD-941 partial); a display picker comes with DD-942–DD-946 (M8) |
+| Display | v0: main display, falling back to the built-in display, or the main display when there is none (DD-941 partial); a display picker comes with DD-942–DD-946 (M8) |
 | Timing | show delay, hide delay, fullscreen delay, "Hide in fullscreen" |
 | Trigger | thickness, span (dock length / whole edge), corner exclusion, push-through on/off, shared-edge policy (shown only when the edge has shared segments) |
 | Placement and size | alignment, distance from edge, dock size (one slider, tile thickness 32–96 pt, default 56; scales tile, padding and gap together), drag to rearrange, confirm removal |
