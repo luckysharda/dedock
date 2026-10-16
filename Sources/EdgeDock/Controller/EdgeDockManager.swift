@@ -106,6 +106,7 @@ import SettingsStore
 
     private var surroundings: DockSurroundings {
         DockSurroundings(layout: topology.layout, nativeDock: dockPrefs.current, reduceMotion: reduceMotion,
+                         reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
                          statusItems: fullscreen.statusItems, statusItemsRejected: fullscreen.statusItemsRejected,
                          fullscreen: fullscreen.states)
     }

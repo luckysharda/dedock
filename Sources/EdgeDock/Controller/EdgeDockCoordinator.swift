@@ -11,6 +11,8 @@ public struct DockSurroundings: Sendable, Equatable {
     public var layout: DisplayLayout
     public var nativeDock: NativeDockPreferences
     public var reduceMotion: Bool
+    /// The system Reduce Transparency setting: Liquid Glass and the glass styles draw solid.
+    public var reduceTransparency: Bool = false
     /// Menu-bar status-item rects per display (AppKit global), from `FullscreenProbe` (REG-044).
     public var statusItems: [DisplayIdentity: [CGRect]] = [:]
     /// Status-level windows rejected as not item-sized, per display (for `zones.computed`).
@@ -69,22 +71,25 @@ public struct DockSurroundings: Sendable, Equatable {
     private var specs: [TileSpec] = []
     /// LG4 Adaptive (Liquid Glass): the tint and what it was read from (design.md §7.2a).
     private(set) var liquid = LiquidTintPolicy()
-    /// Builds the tokens for a tint in the current system state (appearance, Reduce
-    /// Transparency). Tests pin the system state here.
-    var tokensFor: (DockConfig, LiquidTint) -> DockTokens = { config, tint in config.tokens(liquid: tint) }
+    /// Reduce Transparency, from the surroundings (like Reduce Motion).
+    private var reduceTransparency: Bool
+    /// Where LG4 readings come from (the desktop picture file); tests inject their own.
+    private let background: BackgroundReader
     private var backgroundKey: WallpaperLuminance.Key?
     private var backgroundTask: Task<Void, Never>?
 
     init(config: DockConfig, profile: Profile?, display: DisplaySnapshot, surroundings: DockSurroundings,
-         running: RunningAppsMonitor, icons: IconCache, clock: any Clock<Duration>) {
+         running: RunningAppsMonitor, icons: IconCache, clock: any Clock<Duration>, background: BackgroundReader = .wallpaper) {
         id = config.id
         self.config = config
         self.display = display
         self.running = running
         evaluator = TriggerEvaluator(parameters: config.triggerParameters(nativeDockEdge: surroundings.nativeDock.orientation))
         reduceMotion = surroundings.reduceMotion
+        reduceTransparency = surroundings.reduceTransparency
+        self.background = background
 
-        let tokens = config.tokens(liquid: .dark)
+        let tokens = Self.tokens(config, liquid: .dark, reduceTransparency: surroundings.reduceTransparency)
         model = DockViewModel(tokens: tokens, icons: icons)
         tiles = Self.tileModels(profile, running: running)
         layout = Self.layout(config, tiles: profile?.items ?? [], display: display, surroundings: surroundings)
@@ -162,7 +167,8 @@ public struct DockSurroundings: Sendable, Equatable {
         tiles = Self.tileModels(profile, running: running)
         let newLayout = Self.layout(new, tiles: profile?.items ?? [], display: newDisplay, surroundings: surroundings)
         let newSpecs = (profile?.items ?? []).map(\.tileSpec)
-        model.tokens = tokensFor(new, liquid.applied)
+        reduceTransparency = surroundings.reduceTransparency
+        model.tokens = Self.tokens(new, liquid: liquid.applied, reduceTransparency: reduceTransparency)
         let geometryChanged = newLayout != layout || oldConfig.edge != new.edge
         // The drag's frozen layout and order no longer match the dock (REG-048).
         if geometryChanged || newSpecs != specs { cancelReorder(reason: "relayout") }
@@ -204,14 +210,37 @@ public struct DockSurroundings: Sendable, Equatable {
         // every frame, and the average barely moves with it.
         let c = layout.capsuleFrame
         let depth = (((config.edge.isVertical ? c.width : c.height) + model.tokens.edgeGap) / 16).rounded(.up) * 16
-        guard let key = WallpaperLuminance.key(display: display, edge: config.edge, depth: depth), key != backgroundKey else { return }
+        guard let key = background.key(display, config.edge, depth) else {
+            if backgroundKey != nil || !backgroundUnavailableLogged { logUnavailable() }
+            backgroundKey = nil
+            return
+        }
+        guard key != backgroundKey else { return }
         backgroundKey = key
         backgroundTask?.cancel()
+        let read = background.read
         backgroundTask = Task { @MainActor [weak self] in
-            guard let luminance = await WallpaperLuminance.read(key), !Task.isCancelled,
-                  let self, self.backgroundKey == key else { return }
+            let luminance = await read(key)
+            guard !Task.isCancelled, let self, self.backgroundKey == key else { return }
+            guard let luminance else { self.logUnavailable(); return }
             self.observeBackground(luminance: luminance)
         }
+    }
+
+    private var backgroundUnavailableLogged = false
+
+    /// No reading: no desktop picture file, or one ImageIO cannot decode (some dynamic or
+    /// aerial wallpapers). The tint stays as it is.
+    private func logUnavailable() {
+        backgroundUnavailableLogged = true
+        DedockLog.event(.edge, "dock.tint.reading", ["unavailable": 1, "applied": liquid.applied.rawValue])
+    }
+
+    /// The tokens for a tint: appearance (label colours) live, Reduce Transparency from the
+    /// surroundings.
+    static func tokens(_ config: DockConfig, liquid: LiquidTint, reduceTransparency: Bool) -> DockTokens {
+        config.tokens(lightAppearance: NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua,
+                      reduceTransparency: reduceTransparency, liquid: liquid)
     }
 
     /// A background reading. The tint never changes while the dock is shown: the change waits
@@ -231,9 +260,11 @@ public struct DockSurroundings: Sendable, Equatable {
         guard let tint = liquid.reveal() else { return }
         DedockLog.event(.edge, "dock.tint", ["tint": tint.rawValue])
         if reduceMotion {
-            model.tokens = tokensFor(config, tint)
+            model.tokens = Self.tokens(config, liquid: tint, reduceTransparency: reduceTransparency)
         } else {
-            withAnimation(.easeInOut(duration: 0.3)) { model.tokens = tokensFor(config, tint) }   // text and dots
+            withAnimation(.easeInOut(duration: 0.3)) {   // text and dots
+                model.tokens = Self.tokens(config, liquid: tint, reduceTransparency: reduceTransparency)
+            }
         }
         panel.root.applyCapsule(crossFade: !reduceMotion)
     }

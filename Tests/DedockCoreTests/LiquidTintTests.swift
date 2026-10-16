@@ -59,5 +59,11 @@ struct LiquidTintTests {
         #expect(WallpaperSampling.region(imageSize: image, screenSize: screen, edge: .bottom, depth: 100)
                 == CGRect(x: 50, y: 90, width: 100, height: 10))
         #expect(WallpaperSampling.region(imageSize: .zero, screenSize: screen, edge: .left, depth: 100) == .zero)
+        // Not filling (fit, stretch, centre): the whole picture maps onto the screen, 2000 pt
+        // across 200 px, so 100 pt is 10 px at the very edge.
+        #expect(WallpaperSampling.region(imageSize: image, screenSize: CGSize(width: 2000, height: 1000), edge: .left,
+                                         depth: 100, fill: false) == CGRect(x: 0, y: 0, width: 10, height: 100))
+        #expect(WallpaperSampling.region(imageSize: image, screenSize: CGSize(width: 2000, height: 1000), edge: .bottom,
+                                         depth: 100, fill: false) == CGRect(x: 0, y: 90, width: 200, height: 10))
     }
 }

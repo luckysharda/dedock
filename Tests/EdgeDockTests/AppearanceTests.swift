@@ -98,18 +98,17 @@ struct AppearanceTests {
                                                                   edge: .left, depth: 100, screenSize: CGSize(width: 2000, height: 1000))) == nil)
     }
 
-    /// The coordinator's tokens are pinned to Reduce Transparency off and the dark appearance:
-    /// a runner with Reduce Transparency on would otherwise (rightly) draw Liquid Glass as Dark.
-    func makeCoordinator(mode: DockConfig.Mode = .reveal) -> EdgeDockCoordinator {
+    /// Reduce Transparency comes from the surroundings (pinned here, whatever the host's setting),
+    /// and no wallpaper is read: the test feeds the readings.
+    func makeCoordinator(mode: DockConfig.Mode = .reveal, reduceTransparency: Bool = false) -> EdgeDockCoordinator {
         var config = DockConfig(id: "D1", edge: .left, mode: mode)
         config.appearance.style = .liquidGlass
         let display = AppRegressionTests.regDisplay
-        let s = DockSurroundings(layout: DisplayLayout(displays: [display]), nativeDock: NativeDockPreferences(), reduceMotion: true)
+        let s = DockSurroundings(layout: DisplayLayout(displays: [display]), nativeDock: NativeDockPreferences(), reduceMotion: true,
+                                 reduceTransparency: reduceTransparency)
         let profile = Profile(id: config.profileID, name: "p", items: [TileItem(id: "t1", kind: .app, bundleID: "com.apple.calculator")])
-        let c = EdgeDockCoordinator(config: config, profile: profile, display: display, surroundings: s,
-                                    running: RunningAppsMonitor(), icons: IconCache(), clock: ManualClock())
-        c.tokensFor = { config, tint in config.tokens(lightAppearance: false, reduceTransparency: false, liquid: tint) }
-        return c
+        return EdgeDockCoordinator(config: config, profile: profile, display: display, surroundings: s,
+                                   running: RunningAppsMonitor(), icons: IconCache(), clock: ManualClock(), background: .none)
     }
 
     /// LG4: a reading never changes a shown dock; the next reveal applies it.
@@ -124,6 +123,19 @@ struct AppearanceTests {
         c.observeBackground(luminance: 0.1)                  // while revealing/shown
         #expect(c.liquid.applied == .light && c.liquid.pending == .dark)
         #expect(rgba(c.model.tokens.textPrimary) == [0x11, 0x11, 0x11, 255])
+    }
+
+    /// Reduce Transparency: Liquid Glass is the solid Dark style, and a light reading changes
+    /// nothing visible.
+    @Test(.enabled(if: NSScreen.main != nil)) func reduceTransparencyDrawsLiquidGlassAsDarkWithNoTint() {
+        let c = makeCoordinator(reduceTransparency: true)
+        defer { c.teardown() }
+        let dark = DockTokens.capsule(.m, style: .dark)
+        c.observeBackground(luminance: 0.9)
+        c.controller.send(.command(.reveal))
+        let t = c.model.tokens
+        #expect(t.style == .liquidGlass && t.blurMaterial == nil && t.systemGlassTint == nil && t.specularRim == 0)
+        #expect(rgba(t.capsuleTint) == rgba(dark.capsuleTint) && rgba(t.textPrimary) == [255, 255, 255, 255])
     }
 
     /// LG4: a Pinned dock is always shown, so it takes a change at once (cross-faded).

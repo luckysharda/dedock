@@ -55,17 +55,27 @@ public enum Luminance {
 /// Where to read the wallpaper under a dock (LG4 until Screen Recording, design.md §7.2a).
 public enum WallpaperSampling {
     /// The strip of the desktop picture behind a dock on `edge`, in image pixels (top-left
-    /// origin). The picture is assumed to fill the screen (the macOS default): it is centre-
-    /// cropped to the screen's aspect, then the strip `depth` points deep along the edge is
-    /// taken, scaled to the image.
-    public static func region(imageSize: CGSize, screenSize: CGSize, edge: ScreenEdge, depth: CGFloat) -> CGRect {
+    /// origin), `depth` points deep along the edge.
+    /// - Parameter fill: the picture fills the screen (the macOS default): it is centre-cropped
+    ///   to the screen's aspect first. Otherwise (fit, stretch, centre) the whole picture is
+    ///   mapped onto the screen, an approximation that keeps the strip on the right side.
+    public static func region(imageSize: CGSize, screenSize: CGSize, edge: ScreenEdge, depth: CGFloat,
+                              fill: Bool = true) -> CGRect {
         guard imageSize.width > 0, imageSize.height > 0, screenSize.width > 0, screenSize.height > 0 else { return .zero }
-        // Aspect fill: the scale at which the image covers the screen.
-        let scale = max(screenSize.width / imageSize.width, screenSize.height / imageSize.height)
-        let visible = CGSize(width: screenSize.width / scale, height: screenSize.height / scale)
-        let crop = CGRect(x: (imageSize.width - visible.width) / 2, y: (imageSize.height - visible.height) / 2,
+        let crop: CGRect
+        let scaleAlong: CGFloat     // points per image pixel across the edge
+        if fill {
+            // Aspect fill: the scale at which the image covers the screen.
+            let scale = max(screenSize.width / imageSize.width, screenSize.height / imageSize.height)
+            let visible = CGSize(width: screenSize.width / scale, height: screenSize.height / scale)
+            crop = CGRect(x: (imageSize.width - visible.width) / 2, y: (imageSize.height - visible.height) / 2,
                           width: visible.width, height: visible.height)
-        let d = min(max(depth, 1) / scale, edge.isVertical ? crop.width : crop.height)
+            scaleAlong = scale
+        } else {
+            crop = CGRect(origin: .zero, size: imageSize)
+            scaleAlong = edge.isVertical ? screenSize.width / imageSize.width : screenSize.height / imageSize.height
+        }
+        let d = min(max(depth, 1) / scaleAlong, edge.isVertical ? crop.width : crop.height)
         switch edge {
         case .left: return CGRect(x: crop.minX, y: crop.minY, width: d, height: crop.height)
         case .right: return CGRect(x: crop.maxX - d, y: crop.minY, width: d, height: crop.height)
