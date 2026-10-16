@@ -1,4 +1,5 @@
 import AppKit
+import DedockCore
 
 /// Edge Dock visual tokens: **E1 Capsule** in the **A2 Frosted** direction (docs/design.md §7.1,
 /// user pick 2026-10-15). Views read sizes, colours, radii and materials only from here.
@@ -27,7 +28,12 @@ public struct DockTokens: Sendable {
     public static let tileRange: ClosedRange<CGFloat> = Size.s.tile...Size.xl.tile
 
     /// `dd.dock.style` (default Dark Glass).
-    public enum Style: String, Sendable, CaseIterable { case darkGlass, black, lightGlass }
+    public enum Style: String, Sendable, CaseIterable { case darkGlass, black, dark, lightGlass, liquidGlass }
+
+    /// The system glass material (`NSGlassEffectView`, public API) exists from macOS 26.
+    public static var systemGlassAvailable: Bool {
+        if #available(macOS 26, *) { true } else { false }
+    }
 
     // Geometry (design.md §7.1; scales with Dock Size, DD-926).
     public var tileThickness: CGFloat      // t: 62 pt at M
@@ -72,6 +78,11 @@ public struct DockTokens: Sendable {
     public var blurMaterial: NSVisualEffectView.Material?
     public var capsuleTint: NSColor
     public var capsuleEdge: NSColor        // 1 px inner edge
+    /// Liquid Glass on macOS 26+: the capsule is the system glass with this tint (LG4).
+    public var systemGlassTint: NSColor?
+    /// Liquid Glass stand-in on macOS 14–15: a specular rim at the capsule's top, `white @ 0.22`
+    /// fading to 0 over 40 % of its height (0 = none).
+    public var specularRim: CGFloat
     public var widgetPlate: NSColor
     public var widgetPlateEdge: NSColor
     public var textPrimary: NSColor
@@ -84,14 +95,20 @@ public struct DockTokens: Sendable {
 
     /// E1 Capsule at a Dock Size, in a style; `reduceTransparency` swaps the blur for the solid fallback.
     public static func capsule(_ size: Size = .m, style: Style = .darkGlass, reduceTransparency: Bool = false,
-                               lightAppearance: Bool = false) -> DockTokens {
-        capsule(tile: size.tile, style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance)
+                               lightAppearance: Bool = false, liquid: LiquidTint = .dark,
+                               systemGlass: Bool = DockTokens.systemGlassAvailable) -> DockTokens {
+        capsule(tile: size.tile, style: style, reduceTransparency: reduceTransparency, lightAppearance: lightAppearance,
+                liquid: liquid, systemGlass: systemGlass)
     }
 
     /// E1 Capsule at any tile thickness in `tileRange` (the size slider's live preview): tiles,
     /// gaps, padding and radii scale together with `tile / 62`.
+    /// - Parameters:
+    ///   - liquid: the LG4 tint for Liquid Glass (chosen from what is behind the dock).
+    ///   - systemGlass: whether the system glass material exists (macOS 26+); otherwise the stand-in.
     public static func capsule(tile: CGFloat, style: Style = .darkGlass, reduceTransparency: Bool = false,
-                               lightAppearance: Bool = false) -> DockTokens {
+                               lightAppearance: Bool = false, liquid: LiquidTint = .dark,
+                               systemGlass: Bool = DockTokens.systemGlassAvailable) -> DockTokens {
         let t = min(max(tile, tileRange.lowerBound), tileRange.upperBound)
         let k = t / 62
         func white(_ a: CGFloat) -> NSColor { NSColor(white: 1, alpha: a) }
@@ -112,6 +129,7 @@ public struct DockTokens: Sendable {
             labelRunningDot: .systemGreen,
             labelEdge: white(0.08),
             style: style, blurMaterial: .hudWindow, capsuleTint: hex(0x121214, 0.55), capsuleEdge: white(0.10),
+            systemGlassTint: nil, specularRim: 0,
             widgetPlate: white(0.09), widgetPlateEdge: white(0.08), textPrimary: white(1), textSecondary: hex(0xA0A0A5),
             shadowColor: .black, shadowRadius: 24, shadowY: 8, shadowOpacity: 0.25, missingAppOpacity: 0.35)
 
@@ -124,22 +142,47 @@ public struct DockTokens: Sendable {
             tokens.widgetPlate = white(0.07)
             tokens.widgetPlateEdge = white(0.06)
             tokens.textSecondary = hex(0x878787)
+        case .dark:
+            // Matte: solid, no blur (design.md §7.1).
+            tokens.blurMaterial = nil
+            tokens.capsuleTint = hex(0x1C1C1E)
+            tokens.capsuleEdge = white(0.08)
+            tokens.widgetPlate = hex(0x2A2A2C)
+            tokens.widgetPlateEdge = white(0.06)
+            tokens.textSecondary = hex(0x98989D)
+        case .liquidGlass:
+            // LG4 Adaptive: the light tint takes Light Glass text and dots; the dark one keeps
+            // Dark Glass's. On macOS 26+ the system glass carries the tint; before that, Dark or
+            // Light Glass with a specular rim stands in.
+            if liquid == .light { tokens.applyLightGlassInk(hex) }
+            if systemGlass {
+                tokens.blurMaterial = nil
+                tokens.capsuleTint = .clear
+                tokens.systemGlassTint = liquid == .light ? hex(0xEAEDF2, 0.42) : hex(0x121214, 0.30)
+            } else {
+                tokens.blurMaterial = liquid == .light ? .popover : .hudWindow
+                tokens.capsuleTint = liquid == .light ? hex(0xEAEDF2, 0.55) : hex(0x121214, 0.55)
+                if liquid == .light { tokens.capsuleEdge = white(0.68) }
+                tokens.specularRim = 0.22
+            }
         case .lightGlass:
             tokens.blurMaterial = .popover
             tokens.capsuleTint = hex(0xEAEDF2, 0.55)
             tokens.capsuleEdge = white(0.68)
             tokens.widgetPlate = white(0.45)
             tokens.widgetPlateEdge = white(0.55)
-            tokens.textPrimary = hex(0x111111)
-            tokens.textSecondary = hex(0x555555)
-            tokens.indicatorRunning = NSColor(white: 0, alpha: 0.7)
-            tokens.indicatorHidden = NSColor(white: 0, alpha: 0.35)
-            tokens.dividerColor = NSColor(white: 0, alpha: 0.18)
+            tokens.applyLightGlassInk(hex)
         }
         if reduceTransparency {
+            // Liquid Glass is not adaptive under Reduce Transparency: it is the solid Dark style.
+            if style == .liquidGlass {
+                var dark = capsule(tile: tile, style: .dark, reduceTransparency: false, lightAppearance: lightAppearance)
+                dark.style = .liquidGlass
+                return dark
+            }
             tokens.blurMaterial = nil
             switch style {
-            case .darkGlass, .black:
+            case .darkGlass, .black, .dark, .liquidGlass:
                 tokens.capsuleTint = hex(0x1C1C1E)
                 tokens.widgetPlate = hex(0x2A2A2C)
             case .lightGlass:
@@ -148,5 +191,16 @@ public struct DockTokens: Sendable {
             }
         }
         return tokens
+    }
+}
+
+extension DockTokens {
+    /// Light Glass text and indicators (design.md §7.1).
+    mutating func applyLightGlassInk(_ hex: (UInt32, CGFloat) -> NSColor) {
+        textPrimary = hex(0x111111, 1)
+        textSecondary = hex(0x555555, 1)
+        indicatorRunning = NSColor(white: 0, alpha: 0.7)
+        indicatorHidden = NSColor(white: 0, alpha: 0.35)
+        dividerColor = NSColor(white: 0, alpha: 0.18)
     }
 }

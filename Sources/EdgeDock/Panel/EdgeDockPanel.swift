@@ -83,7 +83,8 @@ import SwiftUI
     }
 
     /// Re-applies the capsule's frame and material from the model (after layout or token changes).
-    func applyCapsule() {
+    /// - Parameter crossFade: a Liquid Glass tint change fades over 0.3 s (LG4).
+    func applyCapsule(crossFade: Bool = false) {
         let frames = model.islands.isEmpty ? [model.capsule] : model.islands
         while capsules.count < frames.count {
             let c = CapsuleView(frame: .zero)
@@ -91,7 +92,7 @@ import SwiftUI
             capsules.append(c)
         }
         while capsules.count > frames.count { capsules.removeLast().removeFromSuperview() }
-        for (view, frame) in zip(capsules, frames) { view.apply(frame: frame, tokens: model.tokens) }
+        for (view, frame) in zip(capsules, frames) { view.apply(frame: frame, tokens: model.tokens, crossFade: crossFade) }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

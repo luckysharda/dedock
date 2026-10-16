@@ -12,10 +12,13 @@ public struct DockGeometrySnapshot: Sendable {
     public let layout: DockLayout?
     public let zones: [HotZone]
     public let tiles: [TileModel]
-    /// `dd.dock.style` in effect (`darkGlass`, `black`, `lightGlass`).
+    /// `dd.dock.style` in effect (`darkGlass`, `black`, `dark`, `lightGlass`, `liquidGlass`).
     public var style: String = "darkGlass"
-    /// The capsule material: the blur material's name, or `solid` (Reduce Transparency).
+    /// The capsule material: the blur material's name, `glass` (the system glass, Liquid Glass on
+    /// macOS 26+), or `solid` (Dark, Reduce Transparency).
     public var material: String = "solid"
+    /// Liquid Glass only: the LG4 tint applied (`dark`, `light`).
+    public var liquidTint: String?
     /// The effective show dwell in ms (after the top edge's 300 ms minimum).
     public var showDwellMs: Int = 0
     /// The rule that produced the zones (`ZoneRule`), and the native Dock footprint they avoid.
@@ -49,6 +52,7 @@ public struct GeometryWriter: Sendable {
                 "mode": dock.mode.rawValue, "state": dock.phase.name, "style": dock.style, "material": dock.material, "showDwellMs": dock.showDwellMs, "zoneRule": dock.zoneRule,
                 "zones": dock.zones.map { ["id": $0.id, "kind": $0.kind.rawValue, "rect": rect($0.rect)] as [String: Any] },
             ]
+            if let tint = dock.liquidTint { o["liquidTint"] = tint }
             if let n = dock.nativeDock {
                 o["nativeDock"] = ["edge": n.edge.rawValue, "autohide": n.autohide,
                                    "rect": rect(n.edge.strip(of: dock.display.frame, along: n.span, thickness: n.thickness))]

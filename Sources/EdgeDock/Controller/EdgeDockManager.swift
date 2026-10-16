@@ -23,6 +23,8 @@ import SettingsStore
     private var topologyToken: ObservationToken?
     private var settingsObserver: UUID?
     private var accessibilityObserver: (any NSObjectProtocol)?
+    /// A Space change can bring another desktop picture: LG4 re-reads it (T37).
+    private var spaceObserver: (any NSObjectProtocol)?
     private var appearanceObservation: NSKeyValueObservation?
     /// The document as of the last settings notification (for `settings.changed`).
     private var lastDocument: DedockDocument
@@ -77,6 +79,9 @@ import SettingsStore
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.sync(reason: "reduceMotion") } }
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.coordinators.values.forEach { $0.refreshBackground() } } }
         // Light / Dark switches re-derive the tokens: label colours follow the system appearance.
         appearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
             Task { @MainActor in self?.sync(reason: "appearance") }
@@ -101,6 +106,7 @@ import SettingsStore
 
     private var surroundings: DockSurroundings {
         DockSurroundings(layout: topology.layout, nativeDock: dockPrefs.current, reduceMotion: reduceMotion,
+                         reduceTransparency: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
                          statusItems: fullscreen.statusItems, statusItemsRejected: fullscreen.statusItemsRejected,
                          fullscreen: fullscreen.states)
     }
@@ -210,7 +216,9 @@ import SettingsStore
             return DockGeometrySnapshot(id: c.id, display: c.display, edge: c.config.edge,
                                         mode: c.config.mode == .pinned ? .pinned : .reveal, phase: c.phase,
                                         layout: c.layout, zones: c.zones, tiles: c.tiles,
-                                        style: tokens.style.rawValue, material: Self.materialName(tokens.blurMaterial),
+                                        style: tokens.style.rawValue,
+                                        material: tokens.systemGlassTint != nil ? "glass" : Self.materialName(tokens.blurMaterial),
+                                        liquidTint: c.config.appearance.style == .liquidGlass ? c.liquid.applied.rawValue : nil,
                                         showDwellMs: Self.ms(c.config.revealConfig(reduceMotion: reduceMotion).showDwell),
                                         zoneRule: c.derivation?.rule.rawValue ?? "primary", nativeDock: c.nativeDockFootprint)
         }

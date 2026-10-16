@@ -124,13 +124,16 @@ struct EdgeDockPane: View {
                 SizeSlider(size: dockBinding(\.appearance.size, custom: false),
                            live: dockBinding(\.appearance.liveTilePt, custom: false))
             }
-            SettingsRow(label: "Style") {
+            SettingsRow(label: "Style", help: DockTokens.systemGlassAvailable ? nil
+                        : "Liquid Glass needs macOS 26; until then it shows as Dark or Light Glass with a highlight.") {
                 Picker("Style", selection: dockBinding(\.appearance.style, custom: false)) {
                     Text("Dark Glass").tag(AppearanceSettings.Style.darkGlass)
                     Text("Black").tag(AppearanceSettings.Style.black)
+                    Text("Dark").tag(AppearanceSettings.Style.dark)
                     Text("Light Glass").tag(AppearanceSettings.Style.lightGlass)
+                    Text("Liquid Glass").tag(AppearanceSettings.Style.liquidGlass)
                 }
-                .labelsHidden().pickerStyle(.segmented).frame(width: 260)
+                .labelsHidden().pickerStyle(.segmented).frame(width: 400)
             }
             SettingsRow(label: "Drag to rearrange", help: "⌘-drag always rearranges.") {
                 Toggle("Drag to rearrange", isOn: dockBinding(\.appearance.dragToRearrange, custom: false)).labelsHidden()

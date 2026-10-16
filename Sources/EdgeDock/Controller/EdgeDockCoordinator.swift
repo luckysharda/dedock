@@ -11,6 +11,8 @@ public struct DockSurroundings: Sendable, Equatable {
     public var layout: DisplayLayout
     public var nativeDock: NativeDockPreferences
     public var reduceMotion: Bool
+    /// The system Reduce Transparency setting: Liquid Glass and the glass styles draw solid.
+    public var reduceTransparency: Bool = false
     /// Menu-bar status-item rects per display (AppKit global), from `FullscreenProbe` (REG-044).
     public var statusItems: [DisplayIdentity: [CGRect]] = [:]
     /// Status-level windows rejected as not item-sized, per display (for `zones.computed`).
@@ -67,17 +69,27 @@ public struct DockSurroundings: Sendable, Equatable {
     private var reorder: ReorderSession?
     /// The tile specs the current layout was built from.
     private var specs: [TileSpec] = []
+    /// LG4 Adaptive (Liquid Glass): the tint and what it was read from (design.md §7.2a).
+    private(set) var liquid = LiquidTintPolicy()
+    /// Reduce Transparency, from the surroundings (like Reduce Motion).
+    private var reduceTransparency: Bool
+    /// Where LG4 readings come from (the desktop picture file); tests inject their own.
+    private let background: BackgroundReader
+    private var backgroundKey: WallpaperLuminance.Key?
+    private var backgroundTask: Task<Void, Never>?
 
     init(config: DockConfig, profile: Profile?, display: DisplaySnapshot, surroundings: DockSurroundings,
-         running: RunningAppsMonitor, icons: IconCache, clock: any Clock<Duration>) {
+         running: RunningAppsMonitor, icons: IconCache, clock: any Clock<Duration>, background: BackgroundReader = .wallpaper) {
         id = config.id
         self.config = config
         self.display = display
         self.running = running
         evaluator = TriggerEvaluator(parameters: config.triggerParameters(nativeDockEdge: surroundings.nativeDock.orientation))
         reduceMotion = surroundings.reduceMotion
+        reduceTransparency = surroundings.reduceTransparency
+        self.background = background
 
-        let tokens = config.tokens
+        let tokens = Self.tokens(config, liquid: .dark, reduceTransparency: surroundings.reduceTransparency)
         model = DockViewModel(tokens: tokens, icons: icons)
         tiles = Self.tileModels(profile, running: running)
         layout = Self.layout(config, tiles: profile?.items ?? [], display: display, surroundings: surroundings)
@@ -126,10 +138,14 @@ public struct DockSurroundings: Sendable, Equatable {
             if t.to == .hidden || t.to == .hiding { self.model.hoveredTile = nil }
             // Hidden again: the reveal corridor ends (REG-067); a new zone entry starts another.
             if t.to == .hidden { self.evaluator.dropCorridor() }
+            // A reveal, or a snap straight to shown (Settings, suppression), applies a pending tint.
+            if t.to == .revealing || (t.to == .shown && t.from != .revealing) { self.applyPendingTint() }
+            if t.to == .hidden { self.refreshBackground() }    // a cheap key check; reads only on a change
             self.onChange?()
         }
         panel.orderFrontRegardless()
         logLayout(reason: "create")
+        refreshBackground()
     }
 
     public var phase: RevealPhase { controller.phase }
@@ -151,7 +167,8 @@ public struct DockSurroundings: Sendable, Equatable {
         tiles = Self.tileModels(profile, running: running)
         let newLayout = Self.layout(new, tiles: profile?.items ?? [], display: newDisplay, surroundings: surroundings)
         let newSpecs = (profile?.items ?? []).map(\.tileSpec)
-        model.tokens = new.tokens
+        reduceTransparency = surroundings.reduceTransparency
+        model.tokens = Self.tokens(new, liquid: liquid.applied, reduceTransparency: reduceTransparency)
         let geometryChanged = newLayout != layout || oldConfig.edge != new.edge
         // The drag's frozen layout and order no longer match the dock (REG-048).
         if geometryChanged || newSpecs != specs { cancelReorder(reason: "relayout") }
@@ -174,7 +191,82 @@ public struct DockSurroundings: Sendable, Equatable {
         evaluator.parameters = new.triggerParameters(nativeDockEdge: surroundings.nativeDock.orientation)
         rebuildZones(surroundings)
         controller.reconfigure(new.revealConfig(reduceMotion: surroundings.reduceMotion))
+        refreshBackground()
         onChange?()
+    }
+
+    // MARK: LG4 Adaptive (Liquid Glass)
+
+    /// Re-reads the wallpaper under the dock's edge when what it depends on changed (the picture,
+    /// the display, the edge, the dock's depth); called at creation, on updates, when the dock
+    /// has hidden, and by the manager on a Space change. Only for the Liquid Glass style.
+    func refreshBackground() {
+        guard config.appearance.style == .liquidGlass else {
+            backgroundTask?.cancel()
+            backgroundKey = nil
+            return
+        }
+        // The strip's depth, in 16 pt steps: the size slider's live preview resizes the capsule
+        // every frame, and the average barely moves with it.
+        let c = layout.capsuleFrame
+        let depth = (((config.edge.isVertical ? c.width : c.height) + model.tokens.edgeGap) / 16).rounded(.up) * 16
+        guard let key = background.key(display, config.edge, depth) else {
+            if backgroundKey != nil || !backgroundUnavailableLogged { logUnavailable() }
+            backgroundKey = nil
+            return
+        }
+        guard key != backgroundKey else { return }
+        backgroundKey = key
+        backgroundTask?.cancel()
+        let read = background.read
+        backgroundTask = Task { @MainActor [weak self] in
+            let luminance = await read(key)
+            guard !Task.isCancelled, let self, self.backgroundKey == key else { return }
+            guard let luminance else { self.logUnavailable(); return }
+            self.observeBackground(luminance: luminance)
+        }
+    }
+
+    private var backgroundUnavailableLogged = false
+
+    /// No reading: no desktop picture file, or one ImageIO cannot decode (some dynamic or
+    /// aerial wallpapers). The tint stays as it is.
+    private func logUnavailable() {
+        backgroundUnavailableLogged = true
+        DedockLog.event(.edge, "dock.tint.reading", ["unavailable": 1, "applied": liquid.applied.rawValue])
+    }
+
+    /// The tokens for a tint: appearance (label colours) live, Reduce Transparency from the
+    /// surroundings.
+    static func tokens(_ config: DockConfig, liquid: LiquidTint, reduceTransparency: Bool) -> DockTokens {
+        config.tokens(lightAppearance: NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua,
+                      reduceTransparency: reduceTransparency, liquid: liquid)
+    }
+
+    /// A background reading. The tint never changes while the dock is shown: the change waits
+    /// for the next reveal. A Pinned dock is always shown, so it takes the change at once,
+    /// cross-faded.
+    func observeBackground(luminance: Double) {
+        let before = liquid.pending
+        liquid.observe(luminance: luminance)
+        DedockLog.event(.edge, "dock.tint.reading", ["luminance": String(format: "%.2f", luminance),
+                                                     "pending": liquid.pending.rawValue, "applied": liquid.applied.rawValue])
+        if liquid.pending != before, config.mode == .pinned { applyPendingTint() }
+    }
+
+    /// The dock starts to reveal: a pending tint change applies now and cross-fades 0.3 s
+    /// (instant under Reduce Motion).
+    private func applyPendingTint() {
+        guard let tint = liquid.reveal() else { return }
+        DedockLog.event(.edge, "dock.tint", ["tint": tint.rawValue])
+        if reduceMotion {
+            model.tokens = Self.tokens(config, liquid: tint, reduceTransparency: reduceTransparency)
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) {   // text and dots
+                model.tokens = Self.tokens(config, liquid: tint, reduceTransparency: reduceTransparency)
+            }
+        }
+        panel.root.applyCapsule(crossFade: !reduceMotion)
     }
 
     /// Running state changed: only the tile models change, never the geometry.
@@ -201,6 +293,7 @@ public struct DockSurroundings: Sendable, Equatable {
     }
 
     func teardown() {
+        backgroundTask?.cancel()
         controller.invalidate()
         panel.orderOut(nil)
         panel.close()
