@@ -121,13 +121,8 @@ struct EdgeDockPane: View {
             ValueSlider(label: "Distance from edge", value: dockBinding(\.placement.edgeGapPt, custom: false),
                         range: 0...48, unit: "pt")
             SettingsRow(label: "Dock size") {
-                Picker("Dock size", selection: dockBinding(\.appearance.size, custom: false)) {
-                    Text("S").tag(AppearanceSettings.Size.s)
-                    Text("M").tag(AppearanceSettings.Size.m)
-                    Text("L").tag(AppearanceSettings.Size.l)
-                    Text("XL").tag(AppearanceSettings.Size.xl)
-                }
-                .labelsHidden().pickerStyle(.segmented).frame(width: 200)
+                SizeSlider(size: dockBinding(\.appearance.size, custom: false),
+                           live: dockBinding(\.appearance.liveTilePt, custom: false))
             }
             SettingsRow(label: "Style") {
                 Picker("Style", selection: dockBinding(\.appearance.style, custom: false)) {

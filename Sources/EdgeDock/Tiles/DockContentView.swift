@@ -25,7 +25,7 @@ struct DockContentView: View {
             if let id = model.hoveredTile, let tile = model.tiles.first(where: { $0.id == id }),
                tile.kind != .separator, let f = model.tileFrames[id] {
                 let lane = labelLane(for: f)
-                LabelView(text: tile.name, tokens: t)
+                LabelView(content: TileLabelContent(tile), tokens: t)
                     .frame(width: lane.width, height: lane.height, alignment: labelAlignment)
                     .position(x: lane.midX, y: h - lane.midY)
             }
@@ -34,19 +34,8 @@ struct DockContentView: View {
         .transaction { $0.animation = nil } // the label is instant (motion.tile.label)
     }
 
-    /// The label lane toward the screen centre, `labelGap` from the capsule, beside the hovered
-    /// tile (DD-903 item 3), panel-local. The label sits at the lane's capsule-side end.
     private func labelLane(for f: CGRect) -> CGRect {
-        let t = model.tokens
-        let c = model.capsule
-        let laneLength = t.labelLane - t.labelGap
-        let across = t.labelFontSize * 3
-        switch model.edge {
-        case .left: return CGRect(x: c.maxX + t.labelGap, y: f.midY - across / 2, width: laneLength, height: across)
-        case .right: return CGRect(x: c.minX - t.labelGap - laneLength, y: f.midY - across / 2, width: laneLength, height: across)
-        case .bottom: return CGRect(x: f.midX - laneLength / 2, y: c.maxY + t.labelGap, width: laneLength, height: across)
-        case .top: return CGRect(x: f.midX - laneLength / 2, y: c.minY - t.labelGap - across, width: laneLength, height: across)
-        }
+        DockViewModel.labelLane(for: f, capsule: model.capsule, edge: model.edge, tokens: model.tokens)
     }
 
     private var labelAlignment: Alignment {
@@ -128,21 +117,35 @@ struct TileView: View {
     }
 }
 
-/// Native-Dock-style tooltip: dark rounded fill, 12 pt Medium, 1 px inner edge.
+/// H4 "Name and state" (design.md §7.2a): the name in 13 pt semibold, the state in 11 pt with a
+/// green dot while running; dark rounded fill, 1 px inner edge.
 struct LabelView: View {
-    let text: String
+    let content: TileLabelContent
     let tokens: DockTokens
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: tokens.labelRadius, style: .continuous)
-        Text(text)
-            .font(.system(size: tokens.labelFontSize, weight: .medium))
-            .foregroundStyle(Color(nsColor: tokens.labelText))
-            .lineLimit(1)
-            .padding(.horizontal, tokens.labelPaddingH)
-            .padding(.vertical, tokens.labelPaddingV)
-            .background(shape.fill(Color(nsColor: tokens.labelFill)))
-            .overlay(shape.strokeBorder(Color(nsColor: tokens.labelEdge), lineWidth: 1))
-            .fixedSize()
+        VStack(alignment: .leading, spacing: 2) {
+            Text(content.name)
+                .font(.system(size: tokens.labelFontSize, weight: .semibold))
+                .foregroundStyle(Color(nsColor: tokens.labelText))
+            if let state = content.state {
+                HStack(spacing: 4) {
+                    if content.running {
+                        Circle().fill(Color(nsColor: tokens.labelRunningDot)).frame(width: 6, height: 6)
+                    }
+                    Text(state)
+                        .font(.system(size: tokens.labelStateFontSize))
+                        .foregroundStyle(Color(nsColor: tokens.labelStateText))
+                }
+            }
+        }
+        .lineLimit(1)
+        .padding(.horizontal, tokens.labelPaddingH)
+        .padding(.vertical, tokens.labelPaddingV)
+        .background(shape.fill(Color(nsColor: tokens.labelFill)))
+        .overlay(shape.strokeBorder(Color(nsColor: tokens.labelEdge), lineWidth: 1))
+        .fixedSize()
+        .accessibilityHidden(true)    // the tile's AX element already carries name and state
     }
 }

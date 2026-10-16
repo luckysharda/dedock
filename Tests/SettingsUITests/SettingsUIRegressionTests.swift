@@ -21,3 +21,14 @@ import Testing
         #expect(ValueSlider(label: "Scale", value: .constant(0), range: 0...1, unit: "").valueFieldLabel == "Scale")
     }
 }
+
+/// Z1: the size slider snaps to the nearest stop on release (T25 row 27).
+@Suite @MainActor struct SizeSliderTests {
+    @Test func releaseSnapsToTheNearestStop() {
+        #expect(SizeSlider.tile(.s) == 48 && SizeSlider.tile(.xl) == 92)
+        #expect(SizeSlider.snapped(live: 70, size: .m) == .l)
+        #expect(SizeSlider.snapped(live: 49, size: .xl) == .s)
+        #expect(SizeSlider.snapped(live: nil, size: .m) == .m)          // a click without a drag
+        #expect(SizeSlider.range == 48...92)
+    }
+}
