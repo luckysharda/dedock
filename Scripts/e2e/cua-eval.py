@@ -3,7 +3,7 @@
 
     Scripts/e2e/cua-eval.py <cua-dir> <geometry.json> <app-pid> <L|R>
 
-Prints "<check id>\t<0|1>\t<detail>" per check. Inputs: windows.jsonl / tree.jsonl / hit-*.json(l)
+Prints "<check id>\t<0|1|skip|void>\t<detail>" per check (void: the probe point was occluded). Inputs: windows.jsonl / tree.jsonl / hit-*.json(l)
 from Scripts/e2e/axprobe (which never records another app's role or label, REG-041), front-*.json,
 cua-state.json from cua-driver get_window_state.
 """
@@ -16,8 +16,26 @@ notes = [l.strip() for l in open(f"{C}/pair.txt")] if os.path.exists(f"{C}/pair.
 pair_note = (" [" + "; ".join(notes) + "]") if notes else ""
 tiles = {t["name"]: t["frame"]["topLeft"] for t in d["tiles"]}
 def rows(f): return [json.loads(l) for l in open(f) if l.strip()]
+def first_line(f):
+    try: return open(f).readline().strip()
+    except OSError: return "0 not recorded"
 res = []
 def chk(cid, ok, detail): res.append((f"cua {cid} {side}", int(bool(ok)), detail))
+def jload(f, default):
+    try: return json.load(open(f))
+    except (OSError, ValueError): return default
+# Occlusion (axprobe occluder): another app took the click at a point from a window above the dock's
+# level. A row probed there proves nothing about the dock: VOID (rerun), never PASS; and when no tile
+# centre of the edge was clear, FAIL "unverifiable" (the edge cannot be tested in this environment).
+occl = {r["tile"]: r["occl"] for r in (rows(f"{C}/occl.jsonl") if os.path.exists(f"{C}/occl.jsonl") else [])}
+any_clear = not occl or any(not o.get("occluded") for o in occl.values())
+def occluded(cid, o, what):
+    """True (and the row written) when the probe point was occluded."""
+    if not o.get("occluded"): return False
+    note = f"{what}: occluded by another app's window at layer {o.get('layer', '?')} (above the dock's 24)"
+    if any_clear: res.append((f"cua {cid} {side}", "void", note + ": rerun"))
+    else: res.append((f"cua {cid} {side}", 0, note + "; unverifiable: every tile centre on this edge is occluded"))
+    return True
 ws = [w for w in rows(f"{C}/windows.jsonl") if w["w"] > 50 and w["h"] > 50]
 px, py, pw, ph = d["panel"]["topLeft"]
 ok = len(ws) == 1 and ws[0]["layer"] == 24 and ws[0]["onscreen"] and all(abs(a - b) <= 0.5 for a, b in zip((ws[0]["x"], ws[0]["y"], ws[0]["w"], ws[0]["h"]), (px, py, pw, ph)))
@@ -66,24 +84,35 @@ chk("C4 status item", len(si) == 1, f"AXMenuBarItem 'dedock' (any case): {len(si
 fronts = [json.load(open(f"{C}/{f}")) for f in ("front-launch.json", "front-shown.json")]
 chk("C5 non-activating", all(f.get("pid") != pid for f in fronts), "frontmost after launch and with the pointer on a shown tile is not Dedock")
 hid = rows(f"{C}/hit-hidden.jsonl")
-chk("C6 click-through while hidden", hid and all(h["hit"].get("pid") != pid for h in hid), f"{sum(h['hit'].get('pid') != pid for h in hid)}/{len(hid)} tile centres reach the window underneath")
+clear_hid = [h for h in hid if not occl.get(h["tile"], {}).get("occluded")]
+n_occ = len(hid) - len(clear_hid)
+if hid and not clear_hid:
+    occluded("C6 click-through while hidden", next(iter(occl.values())), f"all {len(hid)} tile centres")
+else:
+    chk("C6 click-through while hidden", clear_hid and all(h["hit"].get("pid") != pid for h in clear_hid),
+        f"{sum(h['hit'].get('pid') != pid for h in clear_hid)}/{len(clear_hid)} tile centres reach the window underneath"
+        + (f" ({n_occ} occluded by another app's window above the dock: not counted)" if n_occ else ""))
 t = json.load(open(f"{C}/hit-shown-tile.json")); o = json.load(open(f"{C}/hit-shown-outside.json"))
-first = next(iter(tiles))
-chk("C7 shown tile takes the hit", t.get("pid") == pid and t.get("label") == first, f"pointer on '{first}': hit {'Dedock' if t.get('pid') == pid else 'other app'}, label '{t.get('label', '')}'")
+# The probe tile: the first tile whose centre no other app's window occluded (regress.sh probe-tile.txt).
+pick = first_line(f"{C}/probe-tile.txt") if os.path.exists(f"{C}/probe-tile.txt") else ""
+first = next((n for n in tiles if n.replace(" ", "_") == pick), next(iter(tiles)))
+if t.get("pid") == pid or not occluded("C7 shown tile takes the hit", jload(f"{C}/occl-tile.json", {}), f"pointer on '{first}'"):
+    chk("C7 shown tile takes the hit", t.get("pid") == pid and t.get("label") == first, f"pointer on '{first}': hit {'Dedock' if t.get('pid') == pid else 'other app'}, label '{t.get('label', '')}'")
 try:
     ce = json.load(open(f"{C}/hit-shown-cell.json"))
     # REG-061: once the tile's AX element is the whole cell, the cell edge must find the tile itself
     # (AXButton with its label), not just "somewhere in the dock" (the content AXGroup today).
     ok = ce.get("pid") == pid and (not REG061 or (ce.get("role") == "AXButton" and ce.get("label") == first))
-    chk("C7 tile cell edge stays in the dock", ok,
-        f"2 pt inside the '{first}' cell, outside its icon: hit {'Dedock' if ce.get('pid') == pid else 'other app'} ({ce.get('role') or '-'} '{ce.get('label', '')}')"
-        + (" (REG-061: exp AXButton '" + first + "')" if REG061 else " (REG-061 pending: role reported, not gated)"))
+    if ce.get("pid") == pid or not occluded("C7 tile cell edge stays in the dock", jload(f"{C}/occl-cell.json", {}), f"2 pt inside the '{first}' cell"):
+        chk("C7 tile cell edge stays in the dock", ok,
+            f"2 pt inside the '{first}' cell, outside its icon: hit {'Dedock' if ce.get('pid') == pid else 'other app'} ({ce.get('role') or '-'} '{ce.get('label', '')}')"
+            + (" (REG-061: exp AXButton '" + first + "')" if REG061 else " (REG-061 pending: role reported, not gated)"))
 except Exception as ex:
     chk("C7 tile cell edge stays in the dock", False, f"not probed or unreadable: {type(ex).__name__}")
-chk("C7 4 pt outside passes through", o.get("pid") != pid, f"4 pt outside the capsule: hit {'Dedock' if o.get('pid') == pid else 'other app'}")
-def first_line(f):
-    try: return open(f).readline().strip()
-    except OSError: return "0 not recorded"
+gate_note = first_line(f"{C}/gate-outside.txt") if os.path.exists(f"{C}/gate-outside.txt") else ""
+# An occluder at the outside point would make "hit other app" a false PASS: VOID instead.
+if not occluded("C7 4 pt outside passes through", jload(f"{C}/occl-outside.json", {}), "4 pt outside the capsule"):
+    chk("C7 4 pt outside passes through", o.get("pid") != pid, f"4 pt outside the capsule: hit {'Dedock' if o.get('pid') == pid else 'other app'}" + (f"; {gate_note}" if gate_note else ""))
 # C9: dd.dock.style in GEOM (Settings builds): the harness seed uses the default, Dark Glass, whose
 # material is hudWindow ('solid' under Reduce Transparency). SKIP when the build writes no style.
 MATERIALS = {"darkGlass": {"hudWindow", "solid"}, "black": {"hudWindow", "solid"}, "lightGlass": {"popover", "solid"}}
@@ -92,7 +121,10 @@ if "style" not in d:
 else:
     chk("C9 dock style tokens", d.get("style") == "darkGlass" and d.get("material") in MATERIALS["darkGlass"],
         f"GEOM style {d.get('style')!r}, material {d.get('material')!r} (exp the default darkGlass / hudWindow)")
-if not os.path.exists(f"{C}/c9-switch.txt"):
+SETTINGS_SIDE = side == "L"   # C8 and the C9 live switch run once per run, on the left launch
+if not SETTINGS_SIDE:
+    pass
+elif not os.path.exists(f"{C}/c9-switch.txt"):
     res.append((f"cua C9 style switch in Settings reaches GEOM {side}", "skip", "pending: run with settings=1 on a build with the Style setting"))
 else:
     sw = first_line(f"{C}/c9-switch.txt")
@@ -107,7 +139,9 @@ C8 = ["C8 Settings window opens", "C8 settings controls labelled", "C8 dock held
 SETTINGS_TITLE = "Dedock Settings"
 CONTROLS = {"AXButton", "AXCheckBox", "AXRadioButton", "AXSlider", "AXPopUpButton", "AXMenuButton",
             "AXTextField", "AXComboBox", "AXIncrementor", "AXSwitch", "AXSegmentedControl"}
-if not os.path.exists(f"{C}/settings-tree.jsonl"):
+if not SETTINGS_SIDE:
+    pass
+elif not os.path.exists(f"{C}/settings-tree.jsonl"):
     for cid in C8: res.append((f"cua {cid} {side}", "skip", "pending: run with settings=1 on a build with the Settings window"))
 else:
     st = rows(f"{C}/settings-tree.jsonl")

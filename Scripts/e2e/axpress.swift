@@ -7,6 +7,8 @@
 // Build: swiftc -O Scripts/e2e/axpress.swift -o build/e2e/axpress
 // Run:   build/e2e/axpress close <pid> <window title>
 //        build/e2e/axpress press <pid> <window title> <control title or description>   (exit 3: not found)
+//        build/e2e/axpress menu <pid>          open the app's OWN status-item menu (x-18: menu above the top dock)
+//        build/e2e/axpress menu-cancel <pid>   close it again (AXCancel on the menu)
 
 import AppKit
 import ApplicationServices
@@ -14,8 +16,9 @@ import ApplicationServices
 func fail(_ m: String) -> Never { FileHandle.standardError.write("axpress: \(m)\n".data(using: .utf8)!); exit(2) }
 
 let a = Array(CommandLine.arguments.dropFirst())
-guard (a.count == 3 && a[0] == "close") || (a.count == 4 && a[0] == "press"), let pid = Int32(a[1]) else {
-    fail("usage: axpress close <pid> <window title> | press <pid> <window title> <control>")
+guard (a.count == 3 && a[0] == "close") || (a.count == 4 && a[0] == "press") || (a.count == 2 && (a[0] == "menu" || a[0] == "menu-cancel")),
+      let pid = Int32(a[1]) else {
+    fail("usage: axpress close <pid> <window title> | press <pid> <window title> <control> | menu <pid> | menu-cancel <pid>")
 }
 // REG-051: acting on a live app needs the REAL lock, checked here and not only by the caller.
 // The tool lives at <worktree>/build/e2e/axpress; the lock script at <worktree>/Scripts/e2e/.
@@ -43,6 +46,23 @@ func attr<T>(_ e: AXUIElement, _ name: String) -> T? {
     var v: CFTypeRef?
     guard AXUIElementCopyAttributeValue(e, name as CFString, &v) == .success else { return nil }
     return v as? T
+}
+if a[0] == "menu" || a[0] == "menu-cancel" {
+    // The app's own status item (its AXExtrasMenuBar), never another app's menu bar.
+    guard let bar: AXUIElement = attr(AXUIElementCreateApplication(pid), "AXExtrasMenuBar"),
+          let items: [AXUIElement] = attr(bar, kAXChildrenAttribute), let item = items.first else { fail("no status item for pid \(pid)") }
+    if a[0] == "menu" {
+        // Opening a menu-bar item's menu blocks in menu tracking, so AXPress commonly returns
+        // kAXErrorCannotComplete (-25204) although the menu IS open; the caller verifies the menu window.
+        let r = AXUIElementPerformAction(item, kAXPressAction as CFString)
+        guard r == .success || r == .cannotComplete else { fail("AXPress on the status item failed: \(r.rawValue)") }
+        print(r == .success ? "opened the status-item menu" : "pressed the status item (AX: cannot complete, as during menu tracking)"); exit(0)
+    }
+    let menus: [AXUIElement] = attr(item, kAXChildrenAttribute) ?? []
+    guard let menu = menus.first else { print("no open menu"); exit(0) }
+    let r = AXUIElementPerformAction(menu, kAXCancelAction as CFString)
+    guard r == .success else { fail("AXCancel on the menu failed: \(r.rawValue)") }
+    print("closed the status-item menu"); exit(0)
 }
 let windows: [AXUIElement] = attr(AXUIElementCreateApplication(pid), kAXWindowsAttribute) ?? []
 guard let w = windows.first(where: { (attr($0, kAXTitleAttribute) as String?) == a[2] }) else { fail("no window titled '\(a[2])'") }

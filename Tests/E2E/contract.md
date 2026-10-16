@@ -42,6 +42,7 @@ Every message starts with the **event name**, then space-separated `key=value` p
 | `launch` | `launch.edgeReady` | `ms` (since process start, from `kinfo_proc`) | first time a hot zone is armed after launch |
 | `edge` | `edge.zoneEnter` | `edge` (left/right/bottom/top), `zone` (id), `kind` (wall/shared), `x`, `y` (AppKit global pt) | pointer sample first lands inside a zone |
 | `edge` | `edge.zoneExit` | `edge`, `zone`, `x`, `y` | pointer sample first lands outside the zone it was in |
+| `edge` | `zones.computed` | `edge`, `dock`, `rule` (primary/besideNativeDock/nearestFree/optionOnly), `span` (a..b, the candidate along the edge before exclusions), `statusItems`, `statusRejected` (status-level windows not item-sized), `notch` (bool), `nativeDock` (a..b or `-`), `segments` | once per zone rebuild (REG-065/066). Spans and counts only, never names |
 | `edge` | `edge.push` | `edge`, `acc` (accumulated toward-edge delta, pt) | each time the push-through accumulator changes while armed (debug only) |
 | `reveal` | `reveal.transition` | `edge`, `from`, `to` (hidden/arming/revealing/shown/armingHide/hiding), `cause` (zone/dwell/push/leave/return/hideDelay/animationEnd/explicit/inhibitor/cooldown/settings/suppression/button), `inh` (active inhibitors, comma list or `-`) | every state-machine transition |
 | `reveal` | `reveal.begin` | `edge`, `kind` (reveal/hide/fadeIn/fadeOut), `from`, `to` (translation pt), `dur` (s), `curve` (spring/bezier/easeIn/fade) | at the `CATransaction` commit that starts the animation |
@@ -95,6 +96,13 @@ Path: `~/Library/Application Support/Dedock Debug/e2e/geometry.json` (the debug 
 ```
 
 Rects are `[x, y, width, height]` in global points. `topLeft` is computer-use space (origin at the top-left of the main display, y down). Tile frames are the **target** (laid-out) frames, not animated ones. `state` is the reveal state at write time.
+
+Per-dock fields added since M1 (additive; the harness reads them when present):
+- `showDwellMs`: the EFFECTIVE show dwell after per-edge derivation (the top edge's minimum is 300 ms; REG-062). Scenarios judge against it, not the stored setting.
+- `style` (darkGlass/black/lightGlass) and `material` (hudWindow/popover; `solid` under Reduce Transparency): `dd.dock.style` (C9).
+- `zoneRule` (primary/besideNativeDock/nearestFree/optionOnly): which rule built the trigger zones (REG-065/066).
+- `nativeDock`: `{"edge", "autohide", "rect"}`, the native Dock's footprint strip on this dock's edge, or `null` when the native Dock isn't on that edge. It's used by the bottom rows "zone reachable beside the native Dock" and "native Dock span never triggers".
+- `zones`: may hold several strips (bottom beside the native Dock; top between status items). An empty list means the dock cannot be revealed from its edge, which geom-check and the scenarios report as a FAIL.
 
 ## 5. Frame log (`DEDOCK_FRAME_LOG=1`)
 

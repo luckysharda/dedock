@@ -18,7 +18,7 @@ set -euo pipefail
 
 HARNESS=${0:A:h:h:h}
 B=$HARNESS/build/e2e
-run=${1:?usage: scenario.sh <run-id> <L|R> <scenario> [n=] [seed=]}
+run=${1:?usage: scenario.sh <run-id> <L|R|B|T> <scenario> [n=] [seed=]}
 side=${2:?L or R}
 scn=${3:?scenario}
 shift 3
@@ -49,52 +49,93 @@ done
 # Geometry (evaluation.md §7.1): from GEOM when the app wrote it, else the fallback numbers.
 read W H <<<$($B/pointer screen | sed 's/.*w=\([0-9.]*\) h=\([0-9.]*\)/\1 \2/')
 W=${W%.*} H=${H%.*}
-if [[ $side == L ]]; then edge=left; in_x=600; else edge=right; in_x=$(( W - 601 )); fi
-probe_y=$(( H / 2 ))
+# along: the probe position along the edge (y on left/right, x on bottom/top); (in_x, in_y): the
+# "inward" resting point, off the edge and outside the capsule + 16 pt hysteresis.
+case $side in
+  L) edge=left;   along=$(( H / 2 )); in_x=600;            in_y=$along ;;
+  R) edge=right;  along=$(( H / 2 )); in_x=$(( W - 601 )); in_y=$along ;;
+  B) edge=bottom; along=$(( W / 2 )); in_x=$along;         in_y=$(( H - 400 )) ;;
+  T) edge=top;    along=$(( W / 2 )); in_x=$along;         in_y=400 ;;
+  *) echo "side must be L, R, B or T" >&2; exit 2 ;;
+esac
 if [[ -f ${GEOM:-/nonexistent} ]]; then
-  read probe_y in_x <<<$(python3 - $GEOM $edge $probe_y $in_x <<'EOF'
+  read along in_x in_y nozone depth <<<$(python3 - $GEOM $edge $along $in_x $in_y <<'EOF'
 import json, sys
-g, edge, py, ix = json.load(open(sys.argv[1])), sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+g, edge, al, ix, iy = json.load(open(sys.argv[1])), sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
 d = next((d for d in g.get("docks", []) if d.get("edge") == edge), None)
+nozone, depth = 0, 120
 if d and "capsule" in d:
     x, y, w, h = d["capsule"]["topLeft"]
-    py = int(y + h / 2)                                  # zone span centre = capsule centre
-    ix = int(x + w + 16 + 60) if edge == "left" else int(x - 16 - 60)  # outside capsule + hysteresis
-print(py, ix)
+    off = 16 + 60                                        # outside capsule + hysteresis
+    vert = edge in ("left", "right")
+    # Probe the middle of the widest trigger-zone strip (beside the native Dock on the bottom,
+    # between status items on top); on left/right that is the capsule centre (span = capsule ± 40).
+    zs = [z["rect"]["topLeft"] for z in d.get("zones", [])]
+    if "zones" in d and not zs:
+        nozone = 1
+    if zs:
+        z = max(zs, key=lambda r: r[3] if vert else r[2])
+        mid = int(z[1] + z[3] / 2) if vert else int(z[0] + z[2] / 2)
+    else:
+        mid = int(y + h / 2) if vert else int(x + w / 2)
+    if vert:
+        al = iy = mid
+        ix = int(x + w + off) if edge == "left" else int(x - off)
+    else:
+        al = ix = mid
+        iy = int(y - off) if edge == "bottom" else int(y + h + off)
+    # x-06 crossing amplitude: past the capsule's far side + 16 pt hysteresis + 30 pt, measured from
+    # the screen edge (the top capsule sits below the menu bar, so a fixed 120 pt never left it).
+    sw, sh = max(s["frame"]["topLeft"][0] + s["frame"]["topLeft"][2] for s in g["screens"]), max(s["frame"]["topLeft"][1] + s["frame"]["topLeft"][3] for s in g["screens"])
+    far = {"left": x + w, "right": sw - x, "top": y + h, "bottom": sh - y}[edge]
+    depth = int(far + 16 + 30)
+print(al, ix, iy, nozone, depth)
 EOF
 )
 fi
+probe_y=$along   # kept for the header line below
 
 O=$R/$scn-$side${tag:+-$tag}   # tag=: repeat the same scenario (e.g. x-06 seeds) into separate dirs
 mkdir -p $O
+# No trigger zone in GEOM: nothing to probe, and the dock can't be revealed from this edge. A FAIL
+# (an app finding, e.g. REG-065), never a skip and never a broken run.
+if [[ ${nozone:-0} == 1 && $scn != perf-move ]]; then
+  { echo "== $scn $edge ($run)"; echo "FAIL trigger zone: GEOM has no zone on the $edge edge (the dock cannot be revealed from it)"; echo "VERDICT FAIL $scn $edge"; } > $O/report.txt
+  cat $O/report.txt; exit 1
+fi
 S=$O/driver-script.txt
 # Delays from the seeded layout (schema keys reveal.showDwellMs / reveal.hideDelayMs, in ms).
 show=$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print(int(d['docks'][0].get('reveal',{}).get('showDwellMs',120)))" $DATA_DIR/layout.json 2>/dev/null || echo 120)
+# The EFFECTIVE dwell when GEOM reports it (derived per edge: the top edge's minimum is 300 ms, REG-062);
+# the stored value is only the user's setting.
+if [[ -f ${GEOM:-/nonexistent} ]]; then
+  gshow=$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]))['docks'][0];print(int(d['showDwellMs']))" $GEOM 2>/dev/null) && show=$gshow
+fi
 hide=$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print(int(d['docks'][0].get('reveal',{}).get('hideDelayMs',400)))" $DATA_DIR/layout.json 2>/dev/null || echo 400)
 settle=$(( hide + 180 + 400 ))   # wait for a full hide before the next trial
 
 {
-  echo "# $scn $edge probe_y=$probe_y in_x=$in_x show=$show hide=$hide n=$n seed=$seed"
-  echo "move $in_x $probe_y"; echo "wait 500"
+  echo "# $scn $edge along=$along in=$in_x,$in_y show=$show hide=$hide n=$n seed=$seed"
+  echo "move $in_x $in_y"; echo "wait 500"
   case $scn in
-    x-01) for i in {1..$n}; do echo "mark trial$i"; echo "edge $edge $probe_y"; echo "wait $(( show + 400 ))"; echo "glide $in_x $probe_y 60"; echo "wait $settle"; done ;;
-    x-02) for i in {1..$n}; do echo "mark trial$i"; echo "edge $edge $probe_y"; echo "wait 80"; echo "move $in_x $probe_y"; echo "wait 300"; done ;;
+    x-01) for i in {1..$n}; do echo "mark trial$i"; echo "edge $edge $along"; echo "wait $(( show + 400 ))"; echo "glide $in_x $in_y 60"; echo "wait $settle"; done ;;
+    x-02) for i in {1..$n}; do echo "mark trial$i"; echo "edge $edge $along"; echo "wait 80"; echo "move $in_x $in_y"; echo "wait 300"; done ;;
     x-03) for i in {1..$n}; do
-            echo "mark push$i"; echo "edge $edge $probe_y"; echo "push $edge $probe_y 10 5 50"; echo "wait 400"; echo "glide $in_x $probe_y 60"; echo "wait $settle"
-            echo "mark pull$i"; echo "edge $edge $probe_y"; echo "pull $edge $probe_y 10 5 50"; echo "wait 400"; echo "glide $in_x $probe_y 60"; echo "wait $settle"
+            echo "mark push$i"; echo "edge $edge $along"; echo "push $edge $along 10 5 50"; echo "wait 400"; echo "glide $in_x $in_y 60"; echo "wait $settle"
+            echo "mark pull$i"; echo "edge $edge $along"; echo "pull $edge $along 10 5 50"; echo "wait 400"; echo "glide $in_x $in_y 60"; echo "wait $settle"
           done ;;
     x-04) for i in {1..$n}; do
-            echo "mark hide$i"; echo "edge $edge $probe_y"; echo "wait $(( show + 400 ))"; echo "glide $in_x $probe_y 60"; echo "wait $settle"
-            echo "mark return$i"; echo "edge $edge $probe_y"; echo "wait $(( show + 400 ))"; echo "glide $in_x $probe_y 60"; echo "wait 300"; echo "edge $edge $probe_y"; echo "wait 600"; echo "glide $in_x $probe_y 60"; echo "wait $settle"
+            echo "mark hide$i"; echo "edge $edge $along"; echo "wait $(( show + 400 ))"; echo "glide $in_x $in_y 60"; echo "wait $settle"
+            echo "mark return$i"; echo "edge $edge $along"; echo "wait $(( show + 400 ))"; echo "glide $in_x $in_y 60"; echo "wait 300"; echo "edge $edge $along"; echo "wait 600"; echo "glide $in_x $in_y 60"; echo "wait $settle"
           done ;;
-    x-05a) for i in {1..$n}; do echo "mark trial$i"; echo "edge $edge $probe_y"; echo "wait $(( show + 400 ))"; echo "glide $in_x $probe_y 60"; echo "wait $(( hide + 90 - 60 ))"; echo "edge $edge $probe_y"; echo "wait 600"; echo "glide $in_x $probe_y 60"; echo "wait $settle"; done ;;
-    x-05b) for i in {1..$n}; do echo "mark trial$i"; echo "edge $edge $probe_y"; echo "wait $(( show + 100 ))"; echo "move $in_x $probe_y"; echo "wait 800"; done ;;
+    x-05a) for i in {1..$n}; do echo "mark trial$i"; echo "edge $edge $along"; echo "wait $(( show + 400 ))"; echo "glide $in_x $in_y 60"; echo "wait $(( hide + 90 - 60 ))"; echo "edge $edge $along"; echo "wait 600"; echo "glide $in_x $in_y 60"; echo "wait $settle"; done ;;
+    x-05b) for i in {1..$n}; do echo "mark trial$i"; echo "edge $edge $along"; echo "wait $(( show + 100 ))"; echo "move $in_x $in_y"; echo "wait 800"; done ;;
     x-06) # Legs average 50 ms, far below the dwell, so the dock must already be shown and the
           # hide must start at once (hideDelayMs 0): each outbound leg starts a hide and each
           # inbound leg reverses it. Prime with a dwell reveal.
           if (( hide != 0 )); then echo "x-06 needs a run launched with --set 'docks[0].reveal.hideDelayMs=0'" >&2; exit 2; fi
-          echo "mark prime"; echo "edge $edge $probe_y"; echo "wait $(( show + 400 ))"
-          echo "mark crossings"; echo "crossings $edge $probe_y 20 2000 120 $seed"; echo "glide $in_x $probe_y 60"; echo "wait $settle" ;;
+          echo "mark prime"; echo "edge $edge $along"; echo "wait $(( show + 400 ))"
+          echo "mark crossings"; echo "crossings $edge $along 20 2000 ${depth:-120} $seed"; echo "glide $in_x $in_y 60"; echo "wait $settle" ;;
     perf-move) echo "mark circles"; echo "circles $(( W / 2 )) $(( H / 2 )) 150 60 60" ;;
     *) echo "unknown scenario $scn" >&2; exit 2 ;;
   esac

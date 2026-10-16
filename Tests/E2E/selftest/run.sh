@@ -218,6 +218,28 @@ rm -rf $T/cua-061b; cp -R Tests/E2E/selftest/cua-fixture $T/cua-061b
 print -r -- '{"pid":99,"role":"AXButton","label":"Calculator","other_app":false}' > $T/cua-061b/hit-shown-cell.json
 DEDOCK_REG061=1 python3 Scripts/e2e/cua-eval.py $T/cua-061b Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-061b.txt
 check "cua-eval: REG-061 gates (C3 whole cell; C7 cell edge needs the tile's AXButton)" "grep -q \$'^cua C3 tiles in AX tree L\t1.*REG-061' $T/cua-061.txt && grep -q \$'^cua C3 tiles in AX tree L\t0' $T/cua-061-tiny.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t0' $T/cua-061.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t1' $T/cua-061b.txt && grep -q \$'^cua C7 tile cell edge stays in the dock L\t1.*REG-061 pending' $T/cua.txt"
+# Occlusion (cand-95411f2c: another app's window above the dock over the top centre): a row probed
+# under one is VOID (never PASS); with no clear tile centre on the edge it FAILs as unverifiable.
+mkocc() {  # mkocc <dir> <occluded tiles: all|first>
+  rm -rf $1; cp -R Tests/E2E/selftest/cua-fixture $1
+  python3 -c "
+import json, sys
+d, mode = sys.argv[1], sys.argv[2]
+rows = [json.loads(l) for l in open(d + '/hit-hidden.jsonl') if l.strip()]
+occ = {'occluded': True, 'layer': 1500, 'x': 0, 'y': 0, 'w': 400, 'h': 200}
+with open(d + '/occl.jsonl', 'w') as f:
+    for i, r in enumerate(rows): f.write(json.dumps({'tile': r['tile'], 'occl': occ if mode == 'all' or i == 0 else {'occluded': False}}) + '\n')
+for k in ('tile', 'cell', 'outside'):
+    json.dump(occ, open(f'{d}/occl-{k}.json', 'w')); json.dump({'pid': 5, 'role': '', 'label': '', 'other_app': True}, open(f'{d}/hit-shown-{k}.json', 'w'))
+open(d + '/probe-tile.txt', 'w').write(rows[1 if mode == 'first' else 0]['tile'] + '\n')" $1 $2
+}
+mkocc $T/cua-occ first; python3 Scripts/e2e/cua-eval.py $T/cua-occ Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-occ.txt
+mkocc $T/cua-occall all; python3 Scripts/e2e/cua-eval.py $T/cua-occall Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-occall.txt
+check "cua-eval: occluded C7 probes are VOID (never PASS), C6 counts only clear tiles" "[[ \$(grep -cE \$'^cua C7 [^\t]*\tvoid\t.*layer 1500' $T/cua-occ.txt) == 3 ]] && grep -q \$'^cua C6 click-through while hidden L\t1\t.*1 occluded' $T/cua-occ.txt && grep -q \$'^cua C7 shown tile takes the hit L\tvoid\tpointer on .Notes.' $T/cua-occ.txt"
+check "cua-eval: every tile centre occluded → C6 and C7 FAIL as unverifiable" "[[ \$(grep -cE \$'^cua C(6|7) [^\t]*\t0\t.*unverifiable' $T/cua-occall.txt) == 4 ]] && ! grep -qE \$'^cua C(6|7) [^\t]*\t(1|void)\t' $T/cua-occall.txt"
+mkfix selftest-socc PASS 1.2; print '{"id":"cua C7 shown tile takes the hit T","ok":false,"skip":false,"void":true,"detail":"occluded"}' >> $SR/selftest-socc/checks.jsonl
+python3 Scripts/e2e/score.py $SR/selftest-socc $T/m1.json > $T/s-occ.txt; echo $? > $T/s-occ.rc
+check "score: a VOID check makes the card VOID (exit 3), shown as VOID, not FAIL" "[[ \$(cat $T/s-occ.rc) == 3 ]] && grep -q '1 void (occluded, rerun)' $T/s-occ.txt && grep -q '| cua C7 shown tile takes the hit T | VOID |' $T/s-occ.txt"
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id
@@ -375,6 +397,42 @@ check "a private lock dir never counts as the real lock" "! DEDOCK_LOCKS=$T/tloc
 check "touch is owner-checked" "! DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh touch owner-b > /dev/null && DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh touch owner-a > /dev/null"
 DEDOCK_LOCKS=$T/tlocks Scripts/e2e/desktop-lock.sh release owner-a > /dev/null
 check "pointer release with nothing held" "$B/pointer release | grep -q 'label=released' && $B/pointer mods | grep -q '^mods=0'"
+# x-18 bottom/top: geom-check zone rules beside the native Dock (REG-065), empty zones FAIL
+python3 - $T <<'PY'
+import json, sys
+T = sys.argv[1]
+def geom(zones, nd=True):
+    return {"screens": [{"id": 1, "main": True, "scale": 1, "frame": {"topLeft": [0, 0, 1920, 1080]}, "visibleFrame": {"topLeft": [0, 30, 1920, 972]}}],
+            "docks": [{"id": "dock-0", "screen": 1, "edge": "bottom", "mode": "reveal", "state": "hidden", "showDwellMs": 120,
+                       "capsule": {"topLeft": [832, 916, 256, 78]}, "panel": {"topLeft": [808, 672, 304, 330]}, "tiles": [],
+                       "zones": [{"id": f"z{i}", "kind": "wall", "rect": {"topLeft": r}} for i, r in enumerate(zones)],
+                       "nativeDock": {"edge": "bottom", "autohide": False, "rect": {"topLeft": [540, 1074, 840, 6]}} if nd else None}]}
+json.dump(geom([[24, 1074, 516, 6], [1380, 1074, 516, 6]]), open(f"{T}/g-both.json", "w"))
+json.dump(geom([[24, 1074, 516, 6]]), open(f"{T}/g-left.json", "w"))
+json.dump(geom([]), open(f"{T}/g-none.json", "w"))
+json.dump(geom([[24, 1074, 600, 6]]), open(f"{T}/g-under.json", "w"))
+PY
+for f in both left none under; do python3 Scripts/e2e/geom-check.py $T/g-$f.json padding=8 gap=8 inset=8 zone=6 > $T/gc-$f.txt; done
+check "x-18 geom-check: zone strips on both sides of the native Dock PASS 'reachable'; one side, none, or under the Dock FAIL" "grep -q '^PASS dock-0 bottom zone reachable beside the native Dock' $T/gc-both.txt && grep -q '^FAIL dock-0 bottom zone reachable beside the native Dock' $T/gc-left.txt && grep -q '^FAIL dock-0 bottom has a trigger zone' $T/gc-none.txt && grep -q \"^FAIL dock-0 bottom zone z0 (wall) off the native Dock's footprint\" $T/gc-under.txt"
+# scenario: a GEOM with zones = [] is a FAIL report (no probe), not a skip or a broken run
+Scripts/e2e/launch.sh selftest-nozone --bin $B/fake-dock --set 'docks[0].edge="bottom"' > /dev/null 2>&1
+sleep 0.3; cp $T/g-none.json $B/runs/selftest-nozone/data/e2e/geometry.json
+Scripts/e2e/scenario.sh selftest-nozone B x-01 n=1 dry=1 > $T/nozone.txt 2>&1; echo $? > $T/nozone.rc
+Scripts/e2e/teardown.sh selftest-nozone > /dev/null 2>&1
+check "x-18 scenario: no trigger zone in GEOM gives a FAIL report (exit 1), never a probe" "[[ \$(cat $T/nozone.rc) == 1 ]] && grep -q 'FAIL trigger zone: GEOM has no zone on the bottom edge' $T/nozone.txt && grep -q 'VERDICT FAIL x-01 bottom' $T/nozone.txt"
+# hide delay: an armingHide that follows the reveal's animationEnd (the pointer left while revealing)
+# is not a lateness sample; a normal leave still is
+{ print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":998000000,"category":"edge","eventMessage":"edge.zoneExit edge=top zone=z-0 x=960.00 y=1052.00"}'
+  print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":1000000000,"category":"reveal","eventMessage":"reveal.transition edge=top from=revealing to=armingHide cause=animationEnd inh=-"}'
+  print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":1008600000,"category":"reveal","eventMessage":"reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-"}'
+  print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":2000000000,"category":"reveal","eventMessage":"reveal.transition edge=top from=shown to=armingHide cause=leave inh=-"}'
+  print -r -- '{"subsystem":"app.dedock.Dedock","machTimestamp":2009600000,"category":"reveal","eventMessage":"reveal.transition edge=top from=armingHide to=hiding cause=hideDelay inh=-"}' } > $T/hide-reveal.ndjson
+$B/analyze timing $T/hide-reveal.ndjson show=300 hide=400 > $T/hide-reveal.txt 2>&1
+sed 's/"machTimestamp":998000000/"machTimestamp":990000000/' $T/hide-reveal.ndjson > $T/hide-reveal-late.ndjson
+python3 -c "
+import sys; t = open(sys.argv[1]).read().replace('1008600000', '1015000000'); open(sys.argv[1], 'w').write(t)" $T/hide-reveal-late.ndjson
+$B/analyze timing $T/hide-reveal-late.ndjson show=300 hide=400 > $T/hide-reveal-late.txt 2>&1
+check "hide delay: a hide after leaving during the reveal is timed from the zone exit (on time PASS, 200 ms late FAIL); a normal leave as before" "grep -q 'INFO hide delay: 1 hide' $T/hide-reveal.txt && grep -q 'PASS hide delay: n=1' $T/hide-reveal.txt && grep -q '^PASS hide delay after a leave during the reveal' $T/hide-reveal.txt && grep -q '^FAIL hide delay after a leave during the reveal' $T/hide-reveal-late.txt"
 check "scenario dry run" "Scripts/e2e/launch.sh selftest-dry --bin $B/fake-dock >/dev/null && Scripts/e2e/scenario.sh selftest-dry L x-01 n=2 dry=1 | grep -q 'edge left' ; Scripts/e2e/teardown.sh selftest-dry >/dev/null"
 
 echo

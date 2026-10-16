@@ -205,10 +205,30 @@ func cmdTiming(_ ev: [Event], _ o: [String: Double]) {
 
     // Hide delay.
     var hideErr: [Double] = [], cancelled = 0
+    // Normally the hide timer starts AT the armingHide transition (cause=leave). If the pointer left
+    // while the dock was still revealing (top edge: 300 ms dwell), the timer started at that earlier
+    // leave and armingHide only follows at animationEnd. Those hides are timed from the last zone exit
+    // before it, allowing up to 100 ms for the pointer's travel from the zone to the hysteresis edge
+    // (the log has no line for that crossing): early or more than tol + 100 ms late still FAILs.
+    var leftWhileRevealing = 0, midErr: [Double] = []
+    let exits = ev.filter { $0.name == "edge.zoneExit" }
     for a in tr where a.kv["to"] == "armingHide" {
         guard let end = next(after: a.ms, where: { $0.kv["from"] == "armingHide" }) else { continue }
+        if a.kv["cause"] != "leave" {
+            if end.kv["to"] == "hiding" && end.kv["cause"] == "hideDelay" {
+                leftWhileRevealing += 1
+                if let ex = exits.last(where: { $0.ms < a.ms }) { midErr.append(end.ms - ex.ms - hide) }
+            }
+            continue
+        }
         if end.kv["to"] == "hiding" && end.kv["cause"] == "hideDelay" { hideErr.append(end.ms - a.ms - hide) }
         else if end.kv["to"] == "shown" { cancelled += 1 }
+    }
+    if leftWhileRevealing > 0 { print("INFO hide delay: \(leftWhileRevealing) hide(s) after leaving during the reveal (timed from the zone exit)") }
+    if !midErr.isEmpty {
+        metric("hide_late_midreveal_max_ms", midErr.max()!)
+        gate(midErr.allSatisfy { $0 > -2 && $0 <= tol + 100 }, "hide delay after a leave during the reveal",
+             "n=\(midErr.count) hide=\(Int(hide)) ms, from the zone exit: lateness \(f1(midErr.min()!))…\(f1(midErr.max()!)) ms (allowed −2…\(Int(tol) + 100), incl. ≤ 100 ms travel to the hysteresis edge)")
     }
     if !hideErr.isEmpty {
         metric("hide_late_p95_ms", pct(hideErr, 0.95))
