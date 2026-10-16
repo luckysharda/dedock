@@ -168,9 +168,12 @@ cleanup() {
 trap cleanup EXIT
 trap 'echo "interrupted: tearing down" >&2; exit 130' INT TERM
 
-check() {  # check <id> <0|1|skip|void> <detail>   (void: the probe was occluded, rerun; never a PASS)
-  python3 -c 'import json,sys; s=sys.argv[2]; print(json.dumps({"id": sys.argv[1], "ok": s == "1", "skip": s == "skip", "void": s == "void", "detail": sys.argv[3]}))' "$1" "$2" "$3" >> $root/checks.jsonl
-  print -r -- "$(case $2 in 1) echo PASS ;; skip) echo SKIP ;; void) echo VOID ;; *) echo FAIL ;; esac) $1: $3"
+check() {  # check <id> <0|1|skip|void|env> <detail>
+  # void: the probe point was occluded, rerun (never a PASS). env: unverifiable in this environment
+  # (every tile centre on the edge occluded by another app's window): reported, never a PASS, and
+  # not an app failure, so a third-party overlay cannot block a card.
+  python3 -c 'import json,sys; s=sys.argv[2]; print(json.dumps({"id": sys.argv[1], "ok": s == "1", "skip": s == "skip", "void": s == "void", "env": s == "env", "detail": sys.argv[3]}))' "$1" "$2" "$3" >> $root/checks.jsonl
+  print -r -- "$(case $2 in 1) echo PASS ;; skip) echo SKIP ;; void) echo VOID ;; env) echo ENV ;; *) echo FAIL ;; esac) $1: $3"
 }
 rmetric() { print -r -- "{\"metric\":\"$1\",\"value\":$2}" >> $root/run-metrics.jsonl }
 
@@ -297,9 +300,11 @@ for t in g['docks'][0]['tiles']:
 import json, sys
 rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
 clear = [r['tile'] for r in rows if not r['occl'].get('occluded')]
-pick = clear[0] if clear else rows[0]['tile']
-print(next(l for l in open(sys.argv[2]) if l.split()[0] == pick).strip())" $C/occl.jsonl $C/tiles.txt))
-  print -r -- ${first[1]} > $C/probe-tile.txt
+pick = clear[0] if clear else (rows[0]['tile'] if rows else None)
+print(next((l for l in open(sys.argv[2]) if l.split() and l.split()[0] == pick), '').strip())" $C/occl.jsonl $C/tiles.txt))
+  print -r -- ${first[1]-} > $C/probe-tile.txt
+  # No tile to probe (an empty dock in GEOM): C7 is not probed and its rows FAIL as "not probed".
+  if (( ${#first} != 3 )); then tool "cua C7 no tile to probe $side" 1 0; else
   local pts=($(python3 -c "
 import json, sys; d = json.load(open(sys.argv[1]))['docks'][0]; x, y, w, h = d['capsule']['topLeft']; e = d['edge']
 tx, ty = float(sys.argv[2]), float(sys.argv[3])
@@ -324,9 +329,9 @@ print(e, al, *o, *a)" $R/data/e2e/geometry.json ${first[2]} ${first[3]}))
   # from the cell's edge on the side away from the screen edge (along x on left/right docks, along y on
   # bottom/top docks): still the dock, never the window under it.
   local cell=($(python3 -c "
-import json; d = json.load(open('$R/data/e2e/geometry.json'))['docks'][0]
-x, y, w, h = next(t for t in d['tiles'] if t['name'].replace(' ', '_') == '${first[1]}')['frame']['topLeft']
-print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (x + w / 2, y + 2), 'top': (x + w / 2, y + h - 2)}[d['edge']])"))
+import json, sys; d = json.load(open(sys.argv[1]))['docks'][0]
+x, y, w, h = next(t for t in d['tiles'] if t['name'].replace(' ', '_') == sys.argv[2])['frame']['topLeft']
+print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (x + w / 2, y + 2), 'top': (x + w / 2, y + h - 2)}[d['edge']])" $R/data/e2e/geometry.json ${first[1]}))
   $B/pointer -q move ${cell[1]} ${cell[2]}; sleep 0.15
   $B/axprobe at ${cell[1]} ${cell[2]} only=$pid > $C/hit-shown-cell.json
   $B/axprobe occluder ${cell[1]} ${cell[2]} $pid > $C/occl-cell.json
@@ -346,6 +351,7 @@ print(*{'left': (x + w - 2, y + h / 2), 'right': (x + 2, y + h / 2), 'bottom': (
   $B/axprobe front > $C/front-shown.json
   $B/pointer -q move ${awy[1]} ${awy[2]}   # leave: the dock hides before the next step
   sleep 1
+  fi
   # C8 (settings=1, a build with Settings): openSettings over the debug channel → a titled Settings
   # window from our pid, every control labelled, the dock held shown (editing) while it is open; its
   # own close button (AX press, our window only) releases the hold and the dock hides (pointer away).

@@ -236,7 +236,13 @@ open(d + '/probe-tile.txt', 'w').write(rows[1 if mode == 'first' else 0]['tile']
 mkocc $T/cua-occ first; python3 Scripts/e2e/cua-eval.py $T/cua-occ Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-occ.txt
 mkocc $T/cua-occall all; python3 Scripts/e2e/cua-eval.py $T/cua-occall Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-occall.txt
 check "cua-eval: occluded C7 probes are VOID (never PASS), C6 counts only clear tiles" "[[ \$(grep -cE \$'^cua C7 [^\t]*\tvoid\t.*layer 1500' $T/cua-occ.txt) == 3 ]] && grep -q \$'^cua C6 click-through while hidden L\t1\t.*1 occluded' $T/cua-occ.txt && grep -q \$'^cua C7 shown tile takes the hit L\tvoid\tpointer on .Notes.' $T/cua-occ.txt"
-check "cua-eval: every tile centre occluded → C6 and C7 FAIL as unverifiable" "[[ \$(grep -cE \$'^cua C(6|7) [^\t]*\t0\t.*unverifiable' $T/cua-occall.txt) == 4 ]] && ! grep -qE \$'^cua C(6|7) [^\t]*\t(1|void)\t' $T/cua-occall.txt"
+check "cua-eval: every tile centre occluded → C6 and C7 are ENV (unverifiable here), never PASS or VOID" "[[ \$(grep -cE \$'^cua C(6|7) [^\t]*\tenv\t.*unverifiable here' $T/cua-occall.txt) == 4 ]] && ! grep -qE \$'^cua C(6|7) [^\t]*\t(1|void)\t' $T/cua-occall.txt"
+rm -rf $T/cua-notile; cp -R Tests/E2E/selftest/cua-fixture $T/cua-notile; rm $T/cua-notile/hit-shown-*.json
+python3 Scripts/e2e/cua-eval.py $T/cua-notile Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-notile.txt 2> $T/cua-notile.err; echo $? > $T/cua-notile.rc
+check "cua-eval: no tile probed → every C7 row FAILs as not probed (no crash)" "[[ \$(cat $T/cua-notile.rc) == 0 && \$(grep -cE \$'^cua C7 [^\t]*\t0\tnot probed' $T/cua-notile.txt) == 3 ]]"
+mkfix selftest-senv PASS 1.2; print '{"id":"cua C7 shown tile takes the hit T","ok":false,"skip":false,"void":false,"env":true,"detail":"all occluded"}' >> $SR/selftest-senv/checks.jsonl
+python3 Scripts/e2e/score.py $SR/selftest-senv $T/m1.json > $T/s-env.txt; echo $? > $T/s-env.rc
+check "score: an ENV check is shown as ENV, listed as unverifiable, and does not fail the card" "[[ \$(cat $T/s-env.rc) == 0 ]] && grep -q '1 ENV (unverifiable here: cua C7 shown tile takes the hit T)' $T/s-env.txt && grep -q '| cua C7 shown tile takes the hit T | ENV |' $T/s-env.txt"
 mkfix selftest-socc PASS 1.2; print '{"id":"cua C7 shown tile takes the hit T","ok":false,"skip":false,"void":true,"detail":"occluded"}' >> $SR/selftest-socc/checks.jsonl
 python3 Scripts/e2e/score.py $SR/selftest-socc $T/m1.json > $T/s-occ.txt; echo $? > $T/s-occ.rc
 check "score: a VOID check makes the card VOID (exit 3), shown as VOID, not FAIL" "[[ \$(cat $T/s-occ.rc) == 3 ]] && grep -q '1 void (occluded, rerun)' $T/s-occ.txt && grep -q '| cua C7 shown tile takes the hit T | VOID |' $T/s-occ.txt"
