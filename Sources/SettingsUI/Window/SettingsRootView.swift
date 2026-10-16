@@ -4,12 +4,13 @@ import SettingsStore
 import SwiftUI
 
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case edgeDock, general, about
+    case edgeDock, appearance, general, about
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .edgeDock: "Edge Dock"
+        case .appearance: "Appearance"
         case .general: "General"
         case .about: "About"
         }
@@ -18,6 +19,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .edgeDock: "sidebar.left"
+        case .appearance: "paintpalette"
         case .general: "gearshape"
         case .about: "info.circle"
         }
@@ -27,6 +29,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     var group: String {
         switch self {
         case .edgeDock: "Features"
+        case .appearance: "Customization"
         case .general, .about: "System"
         }
     }
@@ -38,11 +41,18 @@ enum SettingsPane: String, CaseIterable, Identifiable {
     var pane: SettingsPane = .edgeDock
 }
 
+/// The window's backdrop, so the content is clear over Frosted and Liquid Glass and keeps its
+/// solid background on Solid.
+@MainActor @Observable final class SettingsChrome {
+    var backdrop: WindowLook.Backdrop = .solid
+}
+
 /// Full-height sidebar with group labels and an accent selection row, beside a content column.
 struct SettingsRootView: View {
     let settings: SettingsModel
     let environment: SettingsEnvironment
     let navigation: SettingsNavigation
+    let chrome: SettingsChrome
 
     private var pane: SettingsPane { navigation.pane }
     private var selection: Binding<SettingsPane?> {
@@ -53,14 +63,14 @@ struct SettingsRootView: View {
         HStack(spacing: 0) {
             sidebar
                 .frame(width: SettingsTokens.sidebarWidth)
-                .background(.thinMaterial)
+                .background(chrome.backdrop == .solid ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.clear))
             Divider()
             ScrollView {
                 content
                     .padding(SettingsTokens.contentPadding)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .background(SettingsTokens.contentBackground)
+            .background(chrome.backdrop == .solid ? SettingsTokens.contentBackground : .clear)
         }
         .frame(minWidth: 760, minHeight: 520)
     }
@@ -68,7 +78,7 @@ struct SettingsRootView: View {
     private var sidebar: some View {
         let groups = Dictionary(grouping: SettingsPane.allCases, by: \.group)
         return List(selection: selection) {
-            ForEach(["Features", "System"], id: \.self) { group in
+            ForEach(["Features", "Customization", "System"], id: \.self) { group in
                 Section(group) {
                     ForEach(groups[group] ?? []) { p in
                         Label(p.title, systemImage: p.symbol).tag(p)
@@ -83,9 +93,50 @@ struct SettingsRootView: View {
     @ViewBuilder private var content: some View {
         switch pane {
         case .edgeDock: EdgeDockPane(settings: settings, environment: environment)
+        case .appearance: AppearancePane(settings: settings)
         case .general: GeneralPane(settings: settings)
         case .about: AboutPane()
         }
+    }
+}
+
+/// Window appearance and material (T37b, design.md §7.2): Settings, onboarding, notices and
+/// permission screens. The dock's own style is in the Edge Dock pane.
+struct AppearancePane: View {
+    let settings: SettingsModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SettingsTokens.sectionSpacing) {
+            Text("Appearance").font(.title2.weight(.semibold))
+            SettingsSection(title: "Windows") {
+                SettingsRow(label: "Appearance", help: "Settings and Dedock's other windows. The dock's style is in Edge Dock.") {
+                    Picker("Appearance", selection: binding(\.windowAppearance)) {
+                        Text("System").tag(AppPreferences.WindowAppearance.system)
+                        Text("Light").tag(AppPreferences.WindowAppearance.light)
+                        Text("Dark").tag(AppPreferences.WindowAppearance.dark)
+                    }
+                    .labelsHidden().pickerStyle(.segmented).frame(width: 260)
+                }
+                SettingsRow(label: "Material", help: Self.materialHelp) {
+                    Picker("Material", selection: binding(\.windowMaterial)) {
+                        Text("Frosted").tag(AppPreferences.WindowMaterial.frosted)
+                        Text("Liquid Glass").tag(AppPreferences.WindowMaterial.liquidGlass)
+                        Text("Solid").tag(AppPreferences.WindowMaterial.solid)
+                    }
+                    .labelsHidden().pickerStyle(.segmented).frame(width: 260)
+                    .disabled(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency)
+                }
+            }
+        }
+    }
+
+    static var materialHelp: String? {
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency { return "Reduce Transparency is on, so windows are solid." }
+        return DockTokens.systemGlassAvailable ? nil : "Liquid Glass needs macOS 26; until then it is Frosted."
+    }
+
+    private func binding<V>(_ key: WritableKeyPath<AppPreferences, V>) -> Binding<V> {
+        Binding(get: { settings.document.app[keyPath: key] }, set: { v in settings.update { $0.app[keyPath: key] = v } })
     }
 }
 

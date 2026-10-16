@@ -75,28 +75,43 @@ public struct DedockDocument: JSONObjectModel, Sendable, Equatable {
 // MARK: - App preferences
 
 public struct AppPreferences: JSONObjectModel, Sendable, Equatable {
+    /// Light / Dark / System for Dedock's windows (design.md §7.2, DD-704); the dock style is
+    /// chosen separately.
+    public enum WindowAppearance: String, Sendable, Equatable, CaseIterable { case system, light, dark }
+    /// The windows' background: Frosted (A2), Liquid Glass (macOS 26+), Solid. Reduce
+    /// Transparency forces Solid.
+    public enum WindowMaterial: String, Sendable, Equatable, CaseIterable { case frosted, liquidGlass, solid }
+
     public var showStatusItem: Bool
     /// `nil` follows the system Reduce Motion setting.
     public var reduceMotionOverride: Bool?
+    public var windowAppearance: WindowAppearance
+    public var windowMaterial: WindowMaterial
     public var unknown: [String: JSONValue]
 
-    public init(showStatusItem: Bool = true, reduceMotionOverride: Bool? = nil, unknown: [String: JSONValue] = [:]) {
+    public init(showStatusItem: Bool = true, reduceMotionOverride: Bool? = nil, windowAppearance: WindowAppearance = .system,
+                windowMaterial: WindowMaterial = .frosted, unknown: [String: JSONValue] = [:]) {
         self.showStatusItem = showStatusItem
         self.reduceMotionOverride = reduceMotionOverride
+        self.windowAppearance = windowAppearance
+        self.windowMaterial = windowMaterial
         self.unknown = unknown
     }
 
-    public static let knownKeys: Set<String> = ["showStatusItem", "reduceMotionOverride"]
+    public static let knownKeys: Set<String> = ["showStatusItem", "reduceMotionOverride", "windowAppearance", "windowMaterial"]
 
     public init(object: [String: JSONValue]) {
         let r = JSONReader(object)
         showStatusItem = r.bool("showStatusItem", default: true)
         reduceMotionOverride = r.optionalBool("reduceMotionOverride")
+        windowAppearance = r.enumValue("windowAppearance", default: WindowAppearance.system)
+        windowMaterial = r.enumValue("windowMaterial", default: WindowMaterial.frosted)
         unknown = Self.unknownKeys(of: object)
     }
 
     public var knownObject: [String: JSONValue] {
-        ["showStatusItem": .bool(showStatusItem), "reduceMotionOverride": JSONValue(reduceMotionOverride)]
+        ["showStatusItem": .bool(showStatusItem), "reduceMotionOverride": JSONValue(reduceMotionOverride),
+         "windowAppearance": .string(windowAppearance.rawValue), "windowMaterial": .string(windowMaterial.rawValue)]
     }
 }
 
