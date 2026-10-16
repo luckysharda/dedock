@@ -100,6 +100,9 @@ import SettingsStore
         Int(((ProcessInfo.processInfo.systemUptime - launchTime) * 1000).rounded())
     }
 
+    /// Reduce Motion as the docks use it (the override, else the system setting).
+    public var reducesMotion: Bool { reduceMotion }
+
     private var reduceMotion: Bool {
         settings.document.app.reduceMotionOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
@@ -341,9 +344,13 @@ import SettingsStore
         }
         pendingRemoval = confirmation
         if presentRemovalDefault {
-            let panel = RemoveConfirmPanel(name: name, confirmation: confirmation)
+            // P2: the dock's own style (and LG4 tint), beside the slot the tile sprang back to.
+            let icon = c.tiles.first { $0.id == tile }.flatMap { c.model.icons.icon(for: $0) }
+            let panel = RemoveConfirmPanel(name: name, icon: icon, tokens: c.model.tokens, confirmation: confirmation)
             removalPanel = panel
-            panel.show(capsule: c.capsuleFrame, drop: drop, edge: c.config.edge, visible: c.display.visibleFrame)
+            let slot = c.layout.tileFrames[tile].map { CGPoint(x: $0.midX, y: $0.midY) } ?? drop
+            panel.show(capsule: c.capsuleFrame, slot: slot, edge: c.config.edge, visible: c.display.visibleFrame,
+                       reduceMotion: reduceMotion)
         } else {
             presentRemoval(name, confirmation, c, drop)
             confirmation.start()

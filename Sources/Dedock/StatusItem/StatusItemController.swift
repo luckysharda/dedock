@@ -10,6 +10,13 @@ import SettingsStore
     private let docks: EdgeDockManager
     private let openSettings: () -> Void
 
+    /// The status item's frame on screen (AppKit global), or nil while it is hidden: the
+    /// launch notice drops from under it.
+    var screenFrame: CGRect? {
+        guard item.isVisible, let window = item.button?.window, window.isVisible else { return nil }
+        return window.frame
+    }
+
     init(settings: SettingsModel, docks: EdgeDockManager, openSettings: @escaping () -> Void) {
         self.settings = settings
         self.docks = docks
