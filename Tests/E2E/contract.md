@@ -99,7 +99,8 @@ Rects are `[x, y, width, height]` in global points. `topLeft` is computer-use sp
 
 Per-dock fields added since M1 (additive; the harness reads them when present):
 - `showDwellMs`: the EFFECTIVE show dwell after per-edge derivation (the top edge's minimum is 300 ms; REG-062). Scenarios judge against it, not the stored setting.
-- `style` (darkGlass/black/lightGlass) and `material` (hudWindow/popover; `solid` under Reduce Transparency): `dd.dock.style` (C9).
+- `style` (darkGlass/black/lightGlass, and from T37a dark/liquidGlass) and `material` (hudWindow/popover; `solid` for Dark and under Reduce Transparency; `glass` for Liquid Glass on macOS 26+, whose stand-in on 14–15 is hudWindow for the dark tint and popover for the light one): `dd.dock.style` (C9).
+- `liquidTint` (dark/light): only with `style` liquidGlass; the adaptive tint in use. The log reports each reading (`dock.tint.reading luminance= pending= applied=`) and each change (`dock.tint tint=`), category `edge`.
 - `zoneRule` (primary/besideNativeDock/nearestFree/optionOnly): which rule built the trigger zones (REG-065/066).
 - `nativeDock`: `{"edge", "autohide", "rect"}`, the native Dock's footprint strip on this dock's edge, or `null` when the native Dock isn't on that edge. It's used by the bottom rows "zone reachable beside the native Dock" and "native Dock span never triggers".
 - `zones`: may hold several strips (bottom beside the native Dock; top between status items). An empty list means the dock cannot be revealed from its edge, which geom-check and the scenarios report as a FAIL.

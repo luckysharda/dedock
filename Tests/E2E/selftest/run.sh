@@ -389,6 +389,8 @@ print "1 1 1" > $T/cua-leave-ok/leave-away.txt; print "0 0 1" > $T/cua-leave-stu
 python3 Scripts/e2e/cua-eval.py $T/cua-leave-ok Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-leave-ok.txt
 python3 Scripts/e2e/cua-eval.py $T/cua-leave-stuck Tests/E2E/selftest/cua-geom.json 99 L > $T/cua-leave-stuck.txt
 check "cua-eval: C7 leaving far away hides PASS; no leave FAIL (move seen); SKIP when not recorded" "grep -q \$'^cua C7 leaving far from the shown dock hides it L\t1' $T/cua-leave-ok.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\t0\t.*seen by the listener: yes' $T/cua-leave-stuck.txt && grep -q \$'^cua C7 leaving far from the shown dock hides it L\tskip' $T/cua.txt"
+# T37a style tokens: the default gate is unchanged; Dark → solid and Liquid Glass → glass are known
+check "cua-eval: T37a style/material map knows dark (solid) and liquidGlass (glass and its stand-ins)" "python3 -c \"import re,sys; src=open('Scripts/e2e/cua-eval.py').read(); m=re.search(r'MATERIALS = (\{.*?\})\n', src, re.S); d=eval(m.group(1)); sys.exit(not (d['dark']=={'solid'} and {'glass','hudWindow','popover','solid'}<=d['liquidGlass'] and d['darkGlass']=={'hudWindow','solid'}))\""
 # REG-056 gate: the fixture's window has no subrole/label (fails); with the fixed identity it passes
 check "cua-eval: REG-056 fails without the panel AX identity" "grep -q \$'^cua C1 REG-056 panel AX identity L\t0' $T/cua.txt"
 rm -rf $T/cua-id; cp -R Tests/E2E/selftest/cua-fixture $T/cua-id
